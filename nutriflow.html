@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-title" content="NutriFlow">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="./manifest.webmanifest">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <style>
 :root{
   color-scheme:light dark;
@@ -151,8 +151,11 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   background:var(--surface-2);
 }
 .hero .metric{background:rgba(255,255,255,.16)}
-.metric b,.target b{display:block;font-size:22px;line-height:1.1}
-.metric span,.target span{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.35}
+.metric b{display:block;font-size:22px;line-height:1.1}
+.metric span{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.35}
+.target b{display:block;font-size:17px;line-height:1.2}
+.target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
+.target .weekly-total{color:var(--text);font-weight:650}
 .hero .metric span{color:rgba(255,255,255,.78)}
 .list{display:grid;gap:10px}
 .item{
@@ -177,15 +180,15 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   min-width:0;
 }
 .target-row-head{
-  display:flex;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns:minmax(48px,auto) minmax(0,1fr);
   gap:12px;
   align-items:flex-start;
 }
-.target-row strong{font-size:16px}
+.target-row strong{font-size:15px}
 .target-row b{
-  font-size:17px;
-  line-height:1.25;
+  font-size:16px;
+  line-height:1.35;
   text-align:right;
   min-width:0;
   overflow-wrap:anywhere;
@@ -203,6 +206,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .buy-row input{width:20px;height:20px;accent-color:var(--green)}
 .buy-row.done{opacity:.56}
 .buy-row.done strong{text-decoration:line-through}
+.consumed-section{
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.consumed-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.consumed-head h3{font-size:14px}
 .icon{
   width:34px;
   height:34px;
@@ -226,14 +242,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .amount small{text-align:right}
 .tabs{
   display:flex;
+  flex-wrap:wrap;
   gap:8px;
-  overflow-x:auto;
+  overflow:visible;
   max-width:100%;
   padding:2px 0 8px;
-  scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
 }
-.tabs::-webkit-scrollbar{display:none}
 .tab-chip{
   border:1px solid var(--line);
   border-radius:8px;
@@ -349,10 +363,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   h2{font-size:17px}
   .section-title{align-items:flex-start}
   .subtle{font-size:12px}
-  .target-row-head{display:grid;gap:3px}
+  .target-row-head{grid-template-columns:48px minmax(0,1fr);gap:8px}
   .target-row b{text-align:left;font-size:16px}
-  .target-row strong{font-size:15px}
+  .target-row strong{font-size:14px}
   .target-row small{font-size:13px}
+  .target b{font-size:16px}
+  .target span{font-size:12px}
   .item{grid-template-columns:auto minmax(0,1fr);align-items:start}
   .item .amount{grid-column:2;text-align:left;font-size:13px;color:var(--muted)}
   .item .amount small{display:inline;text-align:left}
@@ -420,6 +436,13 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle">吃完勾掉</span>
         </div>
         <div class="list" id="boughtFoods"></div>
+        <div class="consumed-section" id="consumedSection">
+          <div class="consumed-head">
+            <h3>已吃完历史</h3>
+            <span class="subtle" id="consumedMeta">0 件</span>
+          </div>
+          <div class="list" id="consumedFoods"></div>
+        </div>
       </article>
 
       <article class="card">
@@ -462,13 +485,13 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 
 <script>
 const categories = [
-  {id:"redMeat", name:"红肉", icon:"🥩"},
-  {id:"seafood", name:"鱼虾", icon:"🐟"},
-  {id:"whiteMeat", name:"禽肉", icon:"🍗"},
-  {id:"eggDairySoy", name:"蛋奶豆", icon:"🥛"},
-  {id:"vegetable", name:"蔬菜", icon:"🥦"},
-  {id:"staple", name:"主食", icon:"🍚"},
-  {id:"fruitNut", name:"水果坚果", icon:"🍎"}
+  {id:"redMeat", name:"红肉", icon:"🥩", weeklyAmount:"0.7-1.0kg", weeklyVariety:"2-3 种"},
+  {id:"seafood", name:"鱼虾", icon:"🐟", weeklyAmount:"0.5-0.8kg", weeklyVariety:"2-3 种"},
+  {id:"whiteMeat", name:"禽肉", icon:"🍗", weeklyAmount:"0.3-0.6kg", weeklyVariety:"1-2 种"},
+  {id:"eggDairySoy", name:"蛋奶豆", icon:"🥛", weeklyAmount:"鸡蛋 7-14 个 + 牛奶 2.1L + 豆制品 0.3-0.6kg", weeklyVariety:"3-5 种"},
+  {id:"vegetable", name:"蔬菜", icon:"🥦", weeklyAmount:"2.5-3.5kg", weeklyVariety:"5-8 种"},
+  {id:"staple", name:"主食", icon:"🍚", weeklyAmount:"干粮 0.7-1.0kg + 薯类 0.6-1.0kg", weeklyVariety:"3-5 种"},
+  {id:"fruitNut", name:"水果坚果", icon:"🍎", weeklyAmount:"水果 2.0-2.5kg + 坚果 0.1-0.15kg", weeklyVariety:"4-6 种"}
 ];
 
 const dailyTargets = [
@@ -677,15 +700,19 @@ function render(){
 }
 function renderShopping(){
   const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
-  document.getElementById("boughtFoods").innerHTML = boughtItems.map(purchase => {
+  const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
+  const consumedItems = boughtItems.filter(purchase => consumed[purchase.id]);
+  const renderBoughtItem = (purchase, done) => {
     const icon = iconForFood(purchase.foodId);
-    const done = Boolean(consumed[purchase.id]);
     return `<label class="buy-row ${done ? "done" : ""}">
       <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
-      <div><strong>${purchase.item}</strong><small>${purchase.amount} · ${purchase.store}</small></div>
+      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购买于 ${purchase.date.slice(0,10)}<br>${purchase.store}</small></div>
       <span class="amount">${icon}</span>
     </label>`;
-  }).join("") || `<div class="note">暂无已购买食品。</div>`;
+  };
+  document.getElementById("boughtFoods").innerHTML = activeItems.map(purchase => renderBoughtItem(purchase, false)).join("") || `<div class="note">当前没有正在吃的食品。</div>`;
+  document.getElementById("consumedFoods").innerHTML = consumedItems.map(purchase => renderBoughtItem(purchase, true)).join("") || `<div class="note">还没有吃完记录。</div>`;
+  document.getElementById("consumedMeta").textContent = `${consumedItems.length} 件`;
   document.querySelectorAll("[data-consumed]").forEach(input => {
     input.addEventListener("change", () => {
       consumed[input.dataset.consumed] = input.checked;
@@ -731,7 +758,7 @@ function renderFoods(){
       .slice(0,6)
       .map(food => food.name)
       .join(" / ");
-    return `<div class="target"><b>${category.icon} ${category.name}</b><span>${top}<br>${list.length} 种食材</span></div>`;
+    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周共买 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${top}<br>库内 ${list.length} 种食材可轮换</span></div>`;
   }).join("");
   document.getElementById("weeklySummary").innerHTML = summary;
   const tabs = document.getElementById("foodTabs");
