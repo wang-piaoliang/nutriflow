@@ -231,6 +231,32 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .record:last-child{border-bottom:0}
 .record strong{display:block}
 .record small{display:block;margin-top:4px;color:var(--muted);line-height:1.4}
+.receipt-card{
+  display:grid;
+  gap:10px;
+  padding:13px;
+  border-radius:8px;
+  background:var(--surface-2);
+}
+.receipt-card + .receipt-card{margin-top:12px}
+.receipt-head{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:start;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.receipt-head strong{display:block;font-size:17px}
+.receipt-head small{display:block;margin-top:4px;color:var(--muted);line-height:1.35}
+.receipt-total{text-align:right;font-weight:780;font-size:18px}
+.receipt-line{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+}
+.receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .note{
   margin-top:10px;
@@ -455,13 +481,13 @@ const foods = [
 ];
 
 const purchases = [
-  {id:"2026-07-17-fudi-01", date:"2026-07-17 21:13", foodId:"chickenTender", item:"精选冰鲜鸡小胸", amount:"638g", packageSpec:"称重 0.638kg", totalPrice:17.60, unitPrice:"27.60 元/kg（约 13.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 1"},
-  {id:"2026-07-17-fudi-02", date:"2026-07-17 21:13", foodId:"porkShoulder", item:"精选梅花肉", amount:"368g", packageSpec:"称重 0.368kg", totalPrice:15.30, unitPrice:"41.60 元/kg（约 20.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 2"},
-  {id:"2026-07-17-fudi-03", date:"2026-07-17 21:13", foodId:"edamame", item:"毛豆米", amount:"504g", packageSpec:"称重 0.504kg", totalPrice:14.01, unitPrice:"27.80 元/kg（约 13.90 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 3"},
-  {id:"2026-07-17-fudi-04", date:"2026-07-17 21:13", foodId:"tomato", item:"西红柿", amount:"1440g", packageSpec:"称重 1.440kg", totalPrice:10.33, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 4"},
-  {id:"2026-07-17-fudi-05", date:"2026-07-17 21:13", foodId:"cauliflower", item:"松花菜", amount:"672g", packageSpec:"称重 0.672kg", totalPrice:4.82, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 5"},
-  {id:"2026-07-17-fudi-06", date:"2026-07-17 21:13", foodId:"carrot", item:"精品胡萝卜", amount:"748g", packageSpec:"称重 0.748kg", totalPrice:2.97, unitPrice:"3.98 元/kg（约 1.99 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 6"},
-  {id:"2026-07-17-fudi-07", date:"2026-07-17 21:13", foodId:"bag", item:"fudi 购物袋小", amount:"1 个", packageSpec:"1 个", totalPrice:0.70, unitPrice:"0.70 元/个", store:"fudi 超市五道口店", bought:true, note:"小票序号 7；应收合计 65.73"}
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-01", date:"2026-07-17 21:13", foodId:"chickenTender", item:"精选冰鲜鸡小胸", amount:"638g", packageSpec:"称重 0.638kg", totalPrice:17.60, unitPrice:"27.60 元/kg（约 13.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 1"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-02", date:"2026-07-17 21:13", foodId:"porkShoulder", item:"精选梅花肉", amount:"368g", packageSpec:"称重 0.368kg", totalPrice:15.30, unitPrice:"41.60 元/kg（约 20.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 2"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-03", date:"2026-07-17 21:13", foodId:"edamame", item:"毛豆米", amount:"504g", packageSpec:"称重 0.504kg", totalPrice:14.01, unitPrice:"27.80 元/kg（约 13.90 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 3"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-04", date:"2026-07-17 21:13", foodId:"tomato", item:"西红柿", amount:"1440g", packageSpec:"称重 1.440kg", totalPrice:10.33, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 4"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-05", date:"2026-07-17 21:13", foodId:"cauliflower", item:"松花菜", amount:"672g", packageSpec:"称重 0.672kg", totalPrice:4.82, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 5"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-06", date:"2026-07-17 21:13", foodId:"carrot", item:"精品胡萝卜", amount:"748g", packageSpec:"称重 0.748kg", totalPrice:2.97, unitPrice:"3.98 元/kg（约 1.99 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 6"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-07", date:"2026-07-17 21:13", foodId:"bag", item:"fudi 购物袋小", amount:"1 个", packageSpec:"1 个", totalPrice:0.70, unitPrice:"0.70 元/个", store:"fudi 超市五道口店", bought:true, note:"小票序号 7；应收合计 65.73"}
 ];
 
 let activeFoodCategory = "redMeat";
@@ -477,6 +503,59 @@ function saveConsumed(){
 }
 function categoryById(id){return categories.find(category => category.id === id)}
 function foodById(id){return foods.find(food => food.id === id)}
+function iconForFood(foodId){
+  const icons = {
+    beef:"🥩",
+    porkShoulder:"🥩",
+    porkTenderloin:"🥩",
+    lamb:"🥩",
+    liver:"🥩",
+    mackerel:"🐟",
+    salmon:"🐟",
+    sardine:"🐟",
+    cod:"🐟",
+    shrimp:"🍤",
+    squid:"🦑",
+    scallop:"🦪",
+    tuna:"🐟",
+    chickenThigh:"🍗",
+    chickenBreast:"🍗",
+    chickenTender:"🍗",
+    turkey:"🍗",
+    duck:"🦆",
+    egg:"🥚",
+    milk:"🥛",
+    greekYogurt:"🥛",
+    tofu:"◻",
+    soyMilk:"🥛",
+    edamame:"🫘",
+    cheese:"🧀",
+    leafy:"🥬",
+    broccoli:"🥦",
+    cauliflower:"🥦",
+    mushroom:"🍄",
+    tomato:"🍅",
+    carrot:"🥕",
+    pepper:"🫑",
+    spinach:"🥬",
+    pumpkin:"🎃",
+    rice:"🍚",
+    sweetPotato:"🍠",
+    oats:"🥣",
+    wholeWheatBread:"🍞",
+    noodle:"🍜",
+    corn:"🌽",
+    quinoa:"🌾",
+    apple:"🍎",
+    orange:"🍊",
+    kiwi:"🥝",
+    banana:"🍌",
+    berries:"🫐",
+    nuts:"🥜",
+    bag:"🛍️"
+  };
+  return icons[foodId] || "🛒";
+}
 function parseTarget(target){
   const text = String(target || "");
   const match = text.match(/(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?/);
@@ -536,8 +615,7 @@ function render(){
 function renderShopping(){
   const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
   document.getElementById("boughtFoods").innerHTML = boughtItems.map(purchase => {
-    const food = foodById(purchase.foodId);
-    const icon = food ? categoryById(food.category).icon : "🛒";
+    const icon = iconForFood(purchase.foodId);
     const done = Boolean(consumed[purchase.id]);
     return `<label class="buy-row ${done ? "done" : ""}">
       <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
@@ -554,21 +632,32 @@ function renderShopping(){
   });
 
   const total = purchases.reduce((sum, purchase) => sum + Number(purchase.totalPrice || 0), 0);
-  document.getElementById("purchaseMeta").textContent = `${purchases.length} 条 · ¥${total.toFixed(2)}`;
-  document.getElementById("purchaseHistory").innerHTML = purchases.length ? purchases
-    .slice()
-    .sort((a,b) => b.date.localeCompare(a.date))
-    .map(purchase => {
-      const food = foodById(purchase.foodId);
-      const icon = food ? categoryById(food.category).icon : "🛒";
-      return `<div class="record">
-        <div>
-          <strong>${purchase.bought ? "已买" : "待确认"} · ${purchase.item}</strong>
-          <small>${purchase.date} · ${purchase.amount}${purchase.packageSpec ? ` · ${purchase.packageSpec}` : ""}<br>${purchase.store || "未记录地点"}${purchase.unitPrice ? ` · ${purchase.unitPrice}` : ""}${purchase.note ? `<br>${purchase.note}` : ""}</small>
-        </div>
-        <div class="price">${purchase.totalPrice ? `¥${purchase.totalPrice}` : icon}</div>
-      </div>`;
-    }).join("") : `<div class="note">暂无采购记录。</div>`;
+  const receiptMap = purchases.reduce((map, purchase) => {
+    const key = purchase.receiptId || `${purchase.store || "未知地点"}-${purchase.date}`;
+    if (!map[key]) map[key] = {key, store: purchase.store || "未记录地点", date: purchase.date, items: []};
+    map[key].items.push(purchase);
+    return map;
+  }, {});
+  const receipts = Object.values(receiptMap).sort((a,b) => b.date.localeCompare(a.date));
+  document.getElementById("purchaseMeta").textContent = `${receipts.length} 次 · ${purchases.length} 件 · ¥${total.toFixed(2)}`;
+  document.getElementById("purchaseHistory").innerHTML = receipts.length ? receipts.map(receipt => {
+    const receiptTotal = receipt.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+    const boughtCount = receipt.items.filter(item => item.bought).length;
+    const lines = receipt.items.map(item => `
+      <div class="receipt-line">
+        <span class="icon">${iconForFood(item.foodId)}</span>
+        <div><strong>${item.item}</strong><small>${item.amount}${item.packageSpec ? ` · ${item.packageSpec}` : ""}${item.unitPrice ? `<br>${item.unitPrice}` : ""}</small></div>
+        <div class="price">${item.totalPrice ? `¥${Number(item.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</div>
+      </div>
+    `).join("");
+    return `<div class="receipt-card">
+      <div class="receipt-head">
+        <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件</small></div>
+        <div class="receipt-total">¥${receiptTotal.toFixed(2)}</div>
+      </div>
+      ${lines}
+    </div>`;
+  }).join("") : `<div class="note">暂无采购记录。</div>`;
 }
 function renderFoods(){
   const summary = categories.map(category => {
@@ -595,7 +684,7 @@ function renderFoods(){
     .sort((a,b) => b.score - a.score || a.name.localeCompare(b.name, "zh-CN"));
   document.getElementById("foodList").innerHTML = list.map(food => `
     <div class="item tall">
-      <span class="icon">${categoryById(food.category).icon}</span>
+      <span class="icon">${iconForFood(food.id)}</span>
       <div>
         <strong>${food.name}</strong>
         <small>${food.nutrients}<br>${food.feature}<br>每周目标 ${food.weeklyTarget} · 每周 ${food.weeklyTimes}</small>
