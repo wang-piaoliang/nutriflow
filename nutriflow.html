@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NutriFlow</title>
+<meta name="description" content="每日摄入、采购记录和食材营养库">
+<meta name="theme-color" content="#f6f7f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1110" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NutriFlow">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<style>
+:root{
+  color-scheme:light dark;
+  --bg:#f6f7f2;
+  --surface:#fff;
+  --surface-2:#eef3ec;
+  --surface-3:#f8faf5;
+  --text:#151515;
+  --muted:#687069;
+  --line:rgba(20,20,20,.09);
+  --green:#1f7a4d;
+  --red:#b23a48;
+  --blue:#276cbb;
+  --amber:#a76512;
+  --shadow:0 12px 35px rgba(31,37,45,.09);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0f1110;
+    --surface:#1a1c1a;
+    --surface-2:#232820;
+    --surface-3:#171917;
+    --text:#f3f4ee;
+    --muted:#a9aea6;
+    --line:rgba(255,255,255,.1);
+    --green:#6ccf95;
+    --red:#ff7f8c;
+    --blue:#8cbcff;
+    --amber:#f0b45b;
+    --shadow:0 16px 40px rgba(0,0,0,.35);
+  }
+}
+*{box-sizing:border-box}
+html{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  scroll-behavior:smooth;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+body{
+  margin:0;
+  width:100%;
+  max-width:100%;
+  min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:15px;
+  line-height:1.4;
+  background:var(--bg);
+  color:var(--text);
+  overflow-x:hidden;
+}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+.app{
+  width:100%;
+  max-width:540px;
+  margin:0 auto;
+  padding:16px 12px calc(88px + env(safe-area-inset-bottom));
+  overflow:hidden;
+}
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:8px 0 16px;
+}
+.brand{display:flex;flex-direction:column;gap:3px}
+h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
+.brand span,.muted{color:var(--muted)}
+.brand span{font-size:13px}
+.icon-btn{
+  width:42px;
+  height:42px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  display:grid;
+  place-items:center;
+  box-shadow:var(--shadow);
+}
+.view{display:none}
+.view.active{display:block}
+.stack{display:grid;gap:12px}
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:14px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.hero{
+  color:white;
+  background:
+    linear-gradient(135deg,rgba(25,95,66,.98),rgba(37,88,130,.92)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='210' viewBox='0 0 360 210'%3E%3Crect width='360' height='210' fill='%231f7a4d'/%3E%3Ccircle cx='286' cy='52' r='48' fill='%23f0b45b' opacity='.9'/%3E%3Cpath d='M0 166c54-28 92-28 144 0s96 28 216-20v64H0z' fill='%23fff' opacity='.18'/%3E%3Cpath d='M42 66c34-22 60-22 84 0 23 20 47 18 70-7' stroke='%23fff' stroke-width='10' fill='none' opacity='.24' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size:cover;
+  background-position:center;
+}
+.hero h2{font-size:28px;color:white}
+.hero p{margin:8px 0 0;opacity:.88;font-size:14px;line-height:1.5}
+.section-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:2px 0 12px;
+}
+h2{margin:0;font-size:18px;letter-spacing:0;color:var(--text)}
+h3{margin:0;font-size:15px;letter-spacing:0}
+.subtle{color:var(--muted);font-size:13px}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:30px;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-size:13px;
+  white-space:nowrap;
+}
+.hero .pill{background:rgba(255,255,255,.18);color:white;border-color:rgba(255,255,255,.25)}
+.metrics,.grid2{display:grid;grid-template-columns:1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.metric,.target{
+  min-width:0;
+  padding:13px 10px;
+  border-radius:8px;
+  background:var(--surface-2);
+}
+.hero .metric{background:rgba(255,255,255,.16)}
+.metric b{display:block;font-size:22px;line-height:1.1}
+.metric span{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.35}
+.target b{display:block;font-size:17px;line-height:1.2}
+.target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
+.target .weekly-total{color:var(--text);font-weight:650}
+.hero .metric span{color:rgba(255,255,255,.78)}
+.list{display:grid;gap:10px}
+.item{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:10px;
+  padding:11px;
+  background:var(--surface-2);
+  border-radius:8px;
+  min-width:0;
+}
+.item > div,.buy-row > div,.receipt-line > div{min-width:0}
+.item.slim{grid-template-columns:1fr}
+.item.tall{align-items:start}
+.target-row{
+  display:grid;
+  gap:6px;
+  padding:12px;
+  background:var(--surface-2);
+  border-radius:8px;
+  min-width:0;
+}
+.target-row-head{
+  display:grid;
+  grid-template-columns:minmax(48px,auto) minmax(0,1fr);
+  gap:12px;
+  align-items:flex-start;
+}
+.target-row strong{font-size:15px}
+.target-row b{
+  font-size:16px;
+  line-height:1.35;
+  text-align:right;
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.target-row small{color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.buy-row{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:12px;
+  background:var(--surface-2);
+  border-radius:8px;
+}
+.buy-row input{width:20px;height:20px;accent-color:var(--green)}
+.buy-row.done{opacity:.56}
+.buy-row.done strong{text-decoration:line-through}
+.consumed-section{
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.consumed-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.consumed-head h3{font-size:14px}
+.icon{
+  width:34px;
+  height:34px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:rgba(255,255,255,.72);
+  color:#111;
+  font-size:18px;
+}
+.item strong,.buy-row strong,.receipt-line strong{display:block;font-size:16px;line-height:1.25}
+.item small,.buy-row small,.receipt-line small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.38;
+  overflow-wrap:anywhere;
+}
+.amount{text-align:right;font-weight:740;white-space:nowrap}
+.amount small{text-align:right}
+.tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  overflow:visible;
+  max-width:100%;
+  padding:2px 0 8px;
+}
+.tab-chip{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  padding:8px 11px;
+  white-space:nowrap;
+}
+.tab-chip.active{background:var(--green);border-color:var(--green);color:white}
+.bars{display:grid;gap:12px}
+.bar-row{display:grid;gap:7px}
+.bar-head{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px}
+.track{height:8px;background:var(--surface-2);border-radius:8px;overflow:hidden}
+.fill{height:100%;border-radius:8px;background:var(--green);width:0}
+.fill.warn{background:var(--amber)}
+.fill.hot{background:var(--red)}
+.record{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  padding:13px 0;
+  border-bottom:1px solid var(--line);
+}
+.record:last-child{border-bottom:0}
+.record strong{display:block}
+.record small{display:block;margin-top:4px;color:var(--muted);line-height:1.4}
+.receipt-card{
+  display:grid;
+  gap:10px;
+  padding:13px;
+  border-radius:8px;
+  background:var(--surface-2);
+}
+.receipt-card + .receipt-card{margin-top:12px}
+.receipt-head{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:start;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.receipt-head strong{display:block;font-size:17px}
+.receipt-head small{display:block;margin-top:4px;color:var(--muted);line-height:1.35}
+.receipt-total{text-align:right;font-weight:780;font-size:18px}
+.receipt-line{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+  min-width:0;
+}
+.receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
+.price{font-weight:760;text-align:right;white-space:nowrap}
+.note{
+  margin-top:10px;
+  padding:12px;
+  border-radius:8px;
+  background:var(--surface-3);
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+}
+.bottom-nav{
+  position:fixed;
+  left:50%;
+  bottom:0;
+  transform:translateX(-50%);
+  width:100%;
+  max-width:540px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:4px;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--surface) 88%,transparent);
+  border-top:1px solid var(--line);
+  backdrop-filter:blur(18px);
+}
+.nav-btn{
+  height:54px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  display:grid;
+  place-items:center;
+  gap:2px;
+  font-size:11px;
+}
+.nav-btn b{font-size:20px;line-height:1}
+.nav-btn.active{background:var(--surface-2);color:var(--text)}
+@media (min-width:820px){
+  .app{max-width:980px}
+  .desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .desktop-span{grid-column:1/-1}
+  .grid2{grid-template-columns:repeat(2,1fr)}
+  .item.slim{grid-template-columns:1fr}
+  .bottom-nav{max-width:980px}
+}
+@media (max-width:430px){
+  .app{padding-left:10px;padding-right:10px}
+  .topbar{padding:6px 0 12px}
+  h1{font-size:26px}
+  .brand span{font-size:12px}
+  .icon-btn{width:40px;height:40px}
+  .card{padding:12px}
+  .hero h2{font-size:24px}
+  .hero p{font-size:13px}
+  .grid3{gap:7px}
+  .metric{padding:10px 8px}
+  .metric b{font-size:19px}
+  .metric span{font-size:11px}
+  h2{font-size:17px}
+  .section-title{align-items:flex-start}
+  .subtle{font-size:12px}
+  .target-row-head{grid-template-columns:48px minmax(0,1fr);gap:8px}
+  .target-row b{text-align:left;font-size:16px}
+  .target-row strong{font-size:14px}
+  .target-row small{font-size:13px}
+  .target b{font-size:16px}
+  .target span{font-size:12px}
+  .item{grid-template-columns:auto minmax(0,1fr);align-items:start}
+  .item .amount{grid-column:2;text-align:left;font-size:13px;color:var(--muted)}
+  .item .amount small{display:inline;text-align:left}
+  .tab-chip{padding:7px 10px;font-size:14px}
+  .receipt-head strong{font-size:16px}
+  .receipt-total{font-size:16px}
+  .nav-btn{height:50px}
+}
+@media (max-width:360px){
+  .grid3{grid-template-columns:1fr}
+}
+@media print{
+  body{background:white;color:#111}
+  .bottom-nav,.icon-btn,.tabs{display:none}
+  .app{width:100%;padding:0}
+  .view{display:block}
+  .card{box-shadow:none;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="topbar">
+    <div class="brand">
+      <h1>NutriFlow</h1>
+      <span>每日摄入 · 采购历史 · 食材库</span>
+    </div>
+    <button class="icon-btn" onclick="window.print()" title="打印">⌘</button>
+  </div>
+
+  <section class="view active" id="home">
+    <div class="stack desktop-grid">
+      <article class="card hero desktop-span">
+        <div class="section-title">
+          <h2>今天吃到这些</h2>
+          <span class="pill" id="todayLabel">今天</span>
+        </div>
+        <div class="grid3" id="homeCore"></div>
+        <p>按全天总量判断，不要求每顿完全平均；目标是长期营养、补铁和适度增重。</p>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>每顿目标</h2>
+          <span class="subtle">早餐 / 午餐 / 晚餐</span>
+        </div>
+        <div class="list" id="mealList"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>每天目标</h2>
+          <span class="subtle">全天总量</span>
+        </div>
+        <div class="list" id="dailyList"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="view" id="shopping">
+    <div class="stack desktop-grid">
+      <article class="card">
+        <div class="section-title">
+          <h2>购买的食品</h2>
+          <span class="subtle">吃完勾掉</span>
+        </div>
+        <div class="list" id="boughtFoods"></div>
+        <div class="consumed-section" id="consumedSection">
+          <div class="consumed-head">
+            <h3>已吃完历史</h3>
+            <span class="subtle" id="consumedMeta">0 件</span>
+          </div>
+          <div class="list" id="consumedFoods"></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>采购历史</h2>
+          <span class="subtle" id="purchaseMeta">0 条</span>
+        </div>
+        <div id="purchaseHistory"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="view" id="foods">
+    <div class="stack">
+      <article class="card">
+        <div class="section-title">
+          <h2>每周采购目标</h2>
+          <span class="subtle">按分类汇总</span>
+        </div>
+        <div class="grid2" id="weeklySummary"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>食材营养价值</h2>
+          <span class="subtle">分数满分 5.0</span>
+        </div>
+        <div class="tabs" id="foodTabs"></div>
+        <div class="list" id="foodList"></div>
+      </article>
+    </div>
+  </section>
+</main>
+
+<nav class="bottom-nav" aria-label="主导航">
+  <button class="nav-btn active" data-view="home"><b>◎</b><span>首页</span></button>
+  <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
+  <button class="nav-btn" data-view="shopping"><b>＋</b><span>采购</span></button>
+</nav>
+
+<script>
+const categories = [
+  {id:"redMeat", name:"红肉", icon:"🥩", weeklyAmount:"0.7-1.0kg", weeklyVariety:"2-3 种"},
+  {id:"seafood", name:"鱼虾", icon:"🐟", weeklyAmount:"0.5-0.8kg", weeklyVariety:"2-3 种"},
+  {id:"whiteMeat", name:"禽肉", icon:"🍗", weeklyAmount:"0.3-0.6kg", weeklyVariety:"1-2 种"},
+  {id:"eggDairySoy", name:"蛋奶豆", icon:"🥛", weeklyAmount:"鸡蛋 7-14 个 + 牛奶 2.1L + 豆制品 0.3-0.6kg", weeklyVariety:"3-5 种"},
+  {id:"vegetable", name:"蔬菜", icon:"🥦", weeklyAmount:"2.5-3.5kg", weeklyVariety:"5-8 种"},
+  {id:"staple", name:"主食", icon:"🍚", weeklyAmount:"干粮 0.7-1.0kg + 薯类 0.6-1.0kg", weeklyVariety:"3-5 种"},
+  {id:"fruitNut", name:"水果坚果", icon:"🍎", weeklyAmount:"水果 2.0-2.5kg + 坚果 0.1-0.15kg", weeklyVariety:"4-6 种"}
+];
+
+const dailyTargets = [
+  {name:"蛋白质食材", amount:"250-300g", note:"红肉、鱼虾、猪肉、鸡肉轮换；牛肉和猪肉优先级高。"},
+  {name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
+  {name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
+  {name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
+  {name:"奶/酸奶", amount:"300ml", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。"},
+  {name:"鸡蛋", amount:"1-2 个", note:"便宜稳定的蛋白、B12、胆碱和维 D 来源。"}
+];
+
+const mealTargets = [
+  {name:"早餐", amount:"牛奶 300ml + 鸡蛋 1-2 个 + 主食", note:"全麦面包、燕麦或米饭都可以；不把低脂作为目标。"},
+  {name:"午餐", amount:"肉/鱼 150-200g + 菜 150-250g + 主食 120-180g", note:"优先牛肉、猪肉、鱼；适合备餐。"},
+  {name:"晚餐", amount:"肉/鱼 120-180g + 菜 150-250g + 主食 120-180g", note:"看全天总量补齐，不要求每顿平均。"},
+  {name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
+];
+
+const foods = [
+  {id:"beef", category:"redMeat", name:"牛肉", weeklyTarget:"400-600g", weeklyTimes:"3-4 次", score:5.0, nutrients:"血红素铁、B12、锌、优质蛋白", feature:"缺铁背景下最高优先级。原切西冷、里脊、臀肉、腿肉都可以。"},
+  {id:"porkShoulder", category:"redMeat", name:"梅花肉", weeklyTarget:"300-500g", weeklyTimes:"2-3 次", score:5.0, nutrients:"B1、蛋白质、铁、锌", feature:"比鸡胸更容易长期吃，适合炒、煎、炖和分装备餐。"},
+  {id:"porkTenderloin", category:"redMeat", name:"小里脊/通脊", weeklyTarget:"300-500g", weeklyTimes:"2-3 次", score:4.8, nutrients:"B1、蛋白质、较低筋膜", feature:"口感稳定，适合日常备餐；不用刻意追极低脂。"},
+  {id:"lamb", category:"redMeat", name:"羊肉", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:4.3, nutrients:"铁、锌、B12、蛋白质", feature:"可作为红肉变化，但味道和价格决定频率。"},
+  {id:"liver", category:"redMeat", name:"猪肝/鸡肝", weeklyTarget:"50-100g", weeklyTimes:"0-1 次", score:4.6, nutrients:"铁、维 A、B12、叶酸", feature:"营养密度很高，但不适合天天吃；少量即可。"},
+
+  {id:"mackerel", category:"seafood", name:"鲭鱼", weeklyTarget:"300-500g", weeklyTimes:"2 次", score:5.0, nutrients:"Omega-3、维 D、蛋白质", feature:"鱼类性价比优先，补 Omega-3 不能靠牛猪替代。"},
+  {id:"salmon", category:"seafood", name:"三文鱼", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:4.8, nutrients:"Omega-3、维 D、蛋白质", feature:"营养好但贵；预算紧张时用鲭鱼替代。"},
+  {id:"sardine", category:"seafood", name:"沙丁鱼", weeklyTarget:"150-300g", weeklyTimes:"1 次", score:4.7, nutrients:"Omega-3、钙、维 D", feature:"小型鱼更适合常备，罐头看配料和钠含量。"},
+  {id:"cod", category:"seafood", name:"鳕鱼/巴沙鱼", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:3.8, nutrients:"蛋白质、低腥味", feature:"主要补蛋白，Omega-3 不如鲭鱼三文鱼。"},
+  {id:"shrimp", category:"seafood", name:"虾仁", weeklyTarget:"200-400g", weeklyTimes:"1-2 次", score:4.2, nutrients:"蛋白质、硒、碘", feature:"可选项。买 IQF 单冻、去虾线、配料短的。"},
+  {id:"squid", category:"seafood", name:"鱿鱼/墨鱼", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:3.9, nutrients:"蛋白质、硒、B12", feature:"作为海鲜变化可以，注意烹饪别太油太咸。"},
+  {id:"scallop", category:"seafood", name:"扇贝/贝柱", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:4.1, nutrients:"蛋白质、B12、锌", feature:"营养不错但价格波动大，适合偶尔替换虾仁。"},
+  {id:"tuna", category:"seafood", name:"金枪鱼", weeklyTarget:"0-200g", weeklyTimes:"0-1 次", score:3.7, nutrients:"蛋白质、Omega-3", feature:"罐头方便但注意钠；不要把它当主要鱼类来源。"},
+
+  {id:"chickenThigh", category:"whiteMeat", name:"鸡腿肉", weeklyTarget:"300-500g", weeklyTimes:"1-2 次", score:4.0, nutrients:"蛋白质、铁、B 族", feature:"比鸡胸更好吃，铁和 B 族略好；不是必需。"},
+  {id:"chickenBreast", category:"whiteMeat", name:"鸡胸肉", weeklyTarget:"0-400g", weeklyTimes:"0-2 次", score:3.6, nutrients:"蛋白质", feature:"只是方便蛋白，不要让它挤掉牛肉、猪肉和鱼。"},
+  {id:"chickenTender", category:"whiteMeat", name:"鸡小胸", weeklyTarget:"0-400g", weeklyTimes:"0-2 次", score:3.7, nutrients:"蛋白质、烟酸", feature:"小票里买过。方便、快熟，但营养优先级低于红肉和鱼。"},
+  {id:"turkey", category:"whiteMeat", name:"火鸡/鸡肉丸", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:3.2, nutrients:"蛋白质", feature:"调理品看配料表和钠含量，原切优先。"},
+  {id:"duck", category:"whiteMeat", name:"鸭肉", weeklyTarget:"0-300g", weeklyTimes:"0-1 次", score:3.8, nutrients:"蛋白质、铁、B 族", feature:"可做口味变化，脂肪不是负面，但注意整体盐和酱料。"},
+
+  {id:"egg", category:"eggDairySoy", name:"鸡蛋", weeklyTarget:"7-14 个", weeklyTimes:"每天", score:4.6, nutrients:"蛋白质、B12、胆碱、维 D", feature:"早餐核心，很便宜，长期稳定。"},
+  {id:"milk", category:"eggDairySoy", name:"牛奶", weeklyTarget:"2.5-3L", weeklyTimes:"每天", score:4.3, nutrients:"蛋白质、钙、B2", feature:"配料只有生牛乳。每天 300ml 左右。"},
+  {id:"greekYogurt", category:"eggDairySoy", name:"无糖希腊酸奶", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:4.4, nutrients:"蛋白质、钙、益生菌", feature:"可替代一部分牛奶，注意无糖和蛋白含量。"},
+  {id:"tofu", category:"eggDairySoy", name:"豆腐/豆干", weeklyTarget:"300-600g", weeklyTimes:"1-3 次", score:4.0, nutrients:"植物蛋白、钙、异黄酮", feature:"补充蛋白和口味变化，但缺铁目标下不替代红肉。"},
+  {id:"soyMilk", category:"eggDairySoy", name:"无糖豆浆", weeklyTarget:"0-1000ml", weeklyTimes:"0-3 次", score:3.8, nutrients:"植物蛋白", feature:"作为饮品变化可以，注意无糖。"},
+  {id:"edamame", category:"eggDairySoy", name:"毛豆米", weeklyTarget:"300-600g", weeklyTimes:"1-3 次", score:4.1, nutrients:"植物蛋白、叶酸、纤维", feature:"小票里买过。适合炒饭、拌菜、配肉，能提高蛋白和纤维。"},
+  {id:"cheese", category:"eggDairySoy", name:"奶酪", weeklyTarget:"0-150g", weeklyTimes:"0-3 次", score:3.6, nutrients:"钙、脂肪、蛋白质", feature:"可以帮能量摄入，但看钠和配料。"},
+
+  {id:"leafy", category:"vegetable", name:"深绿叶菜", weeklyTarget:"700-1000g", weeklyTimes:"5-7 次", score:4.7, nutrients:"叶酸、镁、钾、维 K、膳食纤维", feature:"和红肉搭配，支撑长期膳食质量。"},
+  {id:"broccoli", category:"vegetable", name:"西兰花/花菜", weeklyTarget:"700-1000g", weeklyTimes:"4-6 次", score:4.6, nutrients:"维 C、纤维、叶酸", feature:"冷冻版本很适合备餐，配料只有蔬菜即可。"},
+  {id:"cauliflower", category:"vegetable", name:"松花菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.2, nutrients:"维 C、纤维、钾", feature:"小票里买过。适合清炒、焯水冷藏、和肉一起炒。"},
+  {id:"mushroom", category:"vegetable", name:"蘑菇/香菇", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:4.0, nutrients:"多糖、钾、风味物质", feature:"增加鲜味，和肉一起做更容易吃够菜。"},
+  {id:"tomato", category:"vegetable", name:"番茄", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:4.0, nutrients:"番茄红素、维 C、钾", feature:"适合做牛肉番茄、鸡蛋番茄，增加酸味。"},
+  {id:"carrot", category:"vegetable", name:"胡萝卜", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:3.8, nutrients:"β-胡萝卜素、纤维", feature:"适合炖肉、炒饭和备餐配色。"},
+  {id:"pepper", category:"vegetable", name:"彩椒", weeklyTarget:"200-400g", weeklyTimes:"1-3 次", score:3.9, nutrients:"维 C、类胡萝卜素", feature:"补维 C 和颜色，适合快炒。"},
+  {id:"spinach", category:"vegetable", name:"菠菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"叶酸、镁、钾、非血红素铁", feature:"焯水更舒服；不能替代红肉补铁，但适合搭配。"},
+  {id:"pumpkin", category:"vegetable", name:"南瓜", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:3.8, nutrients:"β-胡萝卜素、碳水、纤维", feature:"介于蔬菜和主食之间，适合蒸烤备餐。"},
+
+  {id:"rice", category:"staple", name:"米饭/杂粮饭（熟重）", weeklyTarget:"1800-2200g", weeklyTimes:"每天", score:4.4, nutrients:"碳水、能量、少量 B 族", feature:"增重方向不压主食；熟重记录最直观。"},
+  {id:"sweetPotato", category:"staple", name:"红薯/土豆", weeklyTarget:"600-1000g", weeklyTimes:"2-4 次", score:4.0, nutrients:"碳水、钾、纤维", feature:"可替代部分米饭，冷冻备餐友好。"},
+  {id:"oats", category:"staple", name:"燕麦", weeklyTarget:"200-350g", weeklyTimes:"3-5 次", score:4.1, nutrients:"β-葡聚糖、碳水、镁", feature:"早餐很方便，搭配奶和蛋。"},
+  {id:"wholeWheatBread", category:"staple", name:"全麦面包", weeklyTarget:"1 袋", weeklyTimes:"3-5 次", score:3.8, nutrients:"碳水、纤维", feature:"看配料表，全麦粉位置越靠前越好。"},
+  {id:"noodle", category:"staple", name:"面/意面", weeklyTarget:"0-500g", weeklyTimes:"0-2 次", score:3.4, nutrients:"碳水、能量", feature:"变化主食用，别让蔬菜和蛋白被挤掉。"},
+  {id:"corn", category:"staple", name:"玉米", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:3.7, nutrients:"碳水、纤维、叶黄素", feature:"可以替代部分主食，适合冷冻常备。"},
+  {id:"quinoa", category:"staple", name:"藜麦/杂粮", weeklyTarget:"0-300g", weeklyTimes:"0-2 次", score:3.9, nutrients:"碳水、镁、少量蛋白", feature:"作为杂粮变化即可，不需要神化。"},
+
+  {id:"apple", category:"fruitNut", name:"苹果/梨", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:3.8, nutrients:"纤维、钾、多酚", feature:"耐放、便宜，适合常备。"},
+  {id:"orange", category:"fruitNut", name:"橙子/柑橘", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:4.2, nutrients:"维 C、钾", feature:"和补铁饮食搭配不错，帮助整体微量营养。"},
+  {id:"kiwi", category:"fruitNut", name:"猕猴桃", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.4, nutrients:"维 C、叶酸、纤维", feature:"维 C 密度高，适合缺铁背景下轮换。"},
+  {id:"banana", category:"fruitNut", name:"香蕉", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:3.8, nutrients:"碳水、钾", feature:"加餐和运动后方便，也能帮能量摄入。"},
+  {id:"berries", category:"fruitNut", name:"蓝莓/草莓", weeklyTarget:"200-400g", weeklyTimes:"1-3 次", score:4.0, nutrients:"多酚、维 C", feature:"贵就少买，作为水果变化。"},
+  {id:"nuts", category:"fruitNut", name:"坚果", weeklyTarget:"100-150g", weeklyTimes:"5-7 次", score:4.1, nutrients:"优质脂肪、镁、维 E", feature:"每天 15-20g，帮助提高能量摄入。"}
+];
+
+const purchases = [
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-01", date:"2026-07-17 21:13", foodId:"chickenTender", item:"精选冰鲜鸡小胸", amount:"638g", packageSpec:"称重 0.638kg", totalPrice:17.60, unitPrice:"27.60 元/kg（约 13.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 1"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-02", date:"2026-07-17 21:13", foodId:"porkShoulder", item:"精选梅花肉", amount:"368g", packageSpec:"称重 0.368kg", totalPrice:15.30, unitPrice:"41.60 元/kg（约 20.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 2"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-03", date:"2026-07-17 21:13", foodId:"edamame", item:"毛豆米", amount:"504g", packageSpec:"称重 0.504kg", totalPrice:14.01, unitPrice:"27.80 元/kg（约 13.90 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 3"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-04", date:"2026-07-17 21:13", foodId:"tomato", item:"西红柿", amount:"1440g", packageSpec:"称重 1.440kg", totalPrice:10.33, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 4"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-05", date:"2026-07-17 21:13", foodId:"cauliflower", item:"松花菜", amount:"672g", packageSpec:"称重 0.672kg", totalPrice:4.82, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 5"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-06", date:"2026-07-17 21:13", foodId:"carrot", item:"精品胡萝卜", amount:"748g", packageSpec:"称重 0.748kg", totalPrice:2.97, unitPrice:"3.98 元/kg（约 1.99 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 6"},
+  {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-07", date:"2026-07-17 21:13", foodId:"bag", item:"fudi 购物袋小", amount:"1 个", packageSpec:"1 个", totalPrice:0.70, unitPrice:"0.70 元/个", store:"fudi 超市五道口店", bought:true, note:"小票序号 7；应收合计 65.73"}
+];
+
+let activeFoodCategory = "redMeat";
+let consumed = load("nutriflow_consumed_v1", {});
+
+function clone(value){return JSON.parse(JSON.stringify(value))}
+function load(key, fallback){
+  try{return JSON.parse(localStorage.getItem(key)) || clone(fallback)}
+  catch{return clone(fallback)}
+}
+function saveConsumed(){
+  localStorage.setItem("nutriflow_consumed_v1", JSON.stringify(consumed));
+}
+function categoryById(id){return categories.find(category => category.id === id)}
+function foodById(id){return foods.find(food => food.id === id)}
+function iconForFood(foodId){
+  const icons = {
+    beef:"🥩",
+    porkShoulder:"🥩",
+    porkTenderloin:"🥩",
+    lamb:"🥩",
+    liver:"🥩",
+    mackerel:"🐟",
+    salmon:"🐟",
+    sardine:"🐟",
+    cod:"🐟",
+    shrimp:"🍤",
+    squid:"🦑",
+    scallop:"🦪",
+    tuna:"🐟",
+    chickenThigh:"🍗",
+    chickenBreast:"🍗",
+    chickenTender:"🍗",
+    turkey:"🍗",
+    duck:"🦆",
+    egg:"🥚",
+    milk:"🥛",
+    greekYogurt:"🥛",
+    tofu:"◻",
+    soyMilk:"🥛",
+    edamame:"🫘",
+    cheese:"🧀",
+    leafy:"🥬",
+    broccoli:"🥦",
+    cauliflower:"🥦",
+    mushroom:"🍄",
+    tomato:"🍅",
+    carrot:"🥕",
+    pepper:"🫑",
+    spinach:"🥬",
+    pumpkin:"🎃",
+    rice:"🍚",
+    sweetPotato:"🍠",
+    oats:"🥣",
+    wholeWheatBread:"🍞",
+    noodle:"🍜",
+    corn:"🌽",
+    quinoa:"🌾",
+    apple:"🍎",
+    orange:"🍊",
+    kiwi:"🥝",
+    banana:"🍌",
+    berries:"🫐",
+    nuts:"🥜",
+    bag:"🛍️"
+  };
+  return icons[foodId] || "🛒";
+}
+function parseTarget(target){
+  const text = String(target || "");
+  const match = text.match(/(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?/);
+  if (!match) return 1;
+  const value = Number(match[2] || match[1]);
+  if (/kg|公斤/.test(text)) return value * 1000;
+  if (/(^|[^m])L/.test(text)) return value * 1000;
+  if (/斤/.test(text)) return value * 500;
+  return value;
+}
+function parseAmount(amount){
+  const text = String(amount || "");
+  const match = text.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return 0;
+  const value = Number(match[1]);
+  if (/kg|公斤/.test(text)) return value * 1000;
+  if (/(^|[^m])L/.test(text)) return value * 1000;
+  if (/斤/.test(text)) return value * 500;
+  return value;
+}
+function sameWeek(dateText){
+  const date = new Date(dateText);
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  monday.setHours(0,0,0,0);
+  const next = new Date(monday);
+  next.setDate(monday.getDate() + 7);
+  return date >= monday && date < next;
+}
+function weeklyBought(food){
+  return purchases
+    .filter(purchase => purchase.bought && purchase.foodId === food.id && sameWeek(purchase.date))
+    .reduce((sum, purchase) => sum + parseAmount(purchase.amount), 0);
+}
+function render(){
+  const today = new Date();
+  document.getElementById("todayLabel").textContent = `${today.getMonth()+1}/${today.getDate()}`;
+  document.getElementById("homeCore").innerHTML = dailyTargets.slice(0,3).map(target => `
+    <div class="metric"><b>${target.amount}</b><span>${target.name}</span></div>
+  `).join("");
+  document.getElementById("dailyList").innerHTML = dailyTargets.map(target => `
+    <div class="target-row">
+      <div class="target-row-head"><strong>${target.name}</strong><b>${target.amount}</b></div>
+      <small>${target.note}</small>
+    </div>
+  `).join("");
+  document.getElementById("mealList").innerHTML = mealTargets.map(target => `
+    <div class="target-row">
+      <div class="target-row-head"><strong>${target.name}</strong><b>${target.amount}</b></div>
+      <small>${target.note}</small>
+    </div>
+  `).join("");
+  renderShopping();
+  renderFoods();
+}
+function renderShopping(){
+  const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
+  const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
+  const consumedItems = boughtItems.filter(purchase => consumed[purchase.id]);
+  const renderBoughtItem = (purchase, done) => {
+    const icon = iconForFood(purchase.foodId);
+    return `<label class="buy-row ${done ? "done" : ""}">
+      <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
+      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购买于 ${purchase.date.slice(0,10)}<br>${purchase.store}</small></div>
+      <span class="amount">${icon}</span>
+    </label>`;
+  };
+  document.getElementById("boughtFoods").innerHTML = activeItems.map(purchase => renderBoughtItem(purchase, false)).join("") || `<div class="note">当前没有正在吃的食品。</div>`;
+  document.getElementById("consumedFoods").innerHTML = consumedItems.map(purchase => renderBoughtItem(purchase, true)).join("") || `<div class="note">还没有吃完记录。</div>`;
+  document.getElementById("consumedMeta").textContent = `${consumedItems.length} 件`;
+  document.querySelectorAll("[data-consumed]").forEach(input => {
+    input.addEventListener("change", () => {
+      consumed[input.dataset.consumed] = input.checked;
+      saveConsumed();
+      renderShopping();
+    });
+  });
+
+  const total = purchases.reduce((sum, purchase) => sum + Number(purchase.totalPrice || 0), 0);
+  const receiptMap = purchases.reduce((map, purchase) => {
+    const key = purchase.receiptId || `${purchase.store || "未知地点"}-${purchase.date}`;
+    if (!map[key]) map[key] = {key, store: purchase.store || "未记录地点", date: purchase.date, items: []};
+    map[key].items.push(purchase);
+    return map;
+  }, {});
+  const receipts = Object.values(receiptMap).sort((a,b) => b.date.localeCompare(a.date));
+  document.getElementById("purchaseMeta").textContent = `${receipts.length} 次 · ${purchases.length} 件 · ¥${total.toFixed(2)}`;
+  document.getElementById("purchaseHistory").innerHTML = receipts.length ? receipts.map(receipt => {
+    const receiptTotal = receipt.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+    const boughtCount = receipt.items.filter(item => item.bought).length;
+    const lines = receipt.items.map(item => `
+      <div class="receipt-line">
+        <span class="icon">${iconForFood(item.foodId)}</span>
+        <div><strong>${item.item}</strong><small>${item.amount}${item.packageSpec ? ` · ${item.packageSpec}` : ""}${item.unitPrice ? `<br>${item.unitPrice}` : ""}</small></div>
+        <div class="price">${item.totalPrice ? `¥${Number(item.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</div>
+      </div>
+    `).join("");
+    return `<div class="receipt-card">
+      <div class="receipt-head">
+        <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件</small></div>
+        <div class="receipt-total">¥${receiptTotal.toFixed(2)}</div>
+      </div>
+      ${lines}
+    </div>`;
+  }).join("") : `<div class="note">暂无采购记录。</div>`;
+}
+function renderFoods(){
+  const summary = categories.map(category => {
+    const list = foods.filter(food => food.category === category.id);
+    const top = list
+      .slice()
+      .sort((a,b) => b.score - a.score)
+      .slice(0,6)
+      .map(food => food.name)
+      .join(" / ");
+    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周共买 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${top}<br>库内 ${list.length} 种食材可轮换</span></div>`;
+  }).join("");
+  document.getElementById("weeklySummary").innerHTML = summary;
+  const tabs = document.getElementById("foodTabs");
+  tabs.innerHTML = categories.map(category => `<button class="tab-chip ${category.id === activeFoodCategory ? "active" : ""}" data-food-cat="${category.id}">${category.icon} ${category.name}</button>`).join("");
+  tabs.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => {
+      activeFoodCategory = button.dataset.foodCat;
+      renderFoods();
+    });
+  });
+  const list = foods
+    .filter(food => food.category === activeFoodCategory)
+    .sort((a,b) => b.score - a.score || a.name.localeCompare(b.name, "zh-CN"));
+  document.getElementById("foodList").innerHTML = list.map(food => `
+    <div class="item tall">
+      <span class="icon">${iconForFood(food.id)}</span>
+      <div>
+        <strong>${food.name}</strong>
+        <small>${food.nutrients}<br>${food.feature}<br>每周目标 ${food.weeklyTarget} · 每周 ${food.weeklyTimes}</small>
+      </div>
+      <div class="amount">${food.score.toFixed(1)}<small>/5.0</small></div>
+    </div>
+  `).join("");
+}
+document.querySelectorAll(".nav-btn").forEach(button => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    document.getElementById(button.dataset.view).classList.add("active");
+    window.scrollTo({top:0, behavior:"smooth"});
+  });
+});
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+render();
+</script>
+</body>
+</html>
