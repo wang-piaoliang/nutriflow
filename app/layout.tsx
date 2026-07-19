@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "每日摄入、采购历史和食材营养库",
   icons: {
     icon: "/icons/icon-192.png",
-    apple: "/icons/icon-180.png",
+    apple: "/apple-touch-icon.png",
   },
   manifest: "/manifest.webmanifest",
 };
