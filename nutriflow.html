@@ -46,20 +46,34 @@
   }
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  scroll-behavior:smooth;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
 body{
   margin:0;
+  width:100%;
+  max-width:100%;
   min-height:100vh;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:15px;
+  line-height:1.4;
   background:var(--bg);
   color:var(--text);
+  overflow-x:hidden;
 }
 button{font:inherit;cursor:pointer}
 input{font:inherit}
 .app{
-  width:min(100%,540px);
+  width:100%;
+  max-width:540px;
   margin:0 auto;
-  padding:18px 16px calc(94px + env(safe-area-inset-bottom));
+  padding:16px 12px calc(88px + env(safe-area-inset-bottom));
+  overflow:hidden;
 }
 .topbar{
   display:flex;
@@ -90,8 +104,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   background:var(--surface);
   border:1px solid var(--line);
   border-radius:8px;
-  padding:16px;
+  padding:14px;
   box-shadow:var(--shadow);
+  overflow:hidden;
 }
 .hero{
   color:white;
@@ -101,7 +116,7 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   background-size:cover;
   background-position:center;
 }
-.hero h2{font-size:32px;color:white}
+.hero h2{font-size:28px;color:white}
 .hero p{margin:8px 0 0;opacity:.88;font-size:14px;line-height:1.5}
 .section-title{
   display:flex;
@@ -127,7 +142,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   white-space:nowrap;
 }
 .hero .pill{background:rgba(255,255,255,.18);color:white;border-color:rgba(255,255,255,.25)}
-.metrics,.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.metrics,.grid2{display:grid;grid-template-columns:1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .metric,.target{
   min-width:0;
@@ -144,19 +159,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   display:grid;
   grid-template-columns:auto 1fr auto;
   align-items:center;
-  gap:12px;
-  padding:12px;
+  gap:10px;
+  padding:11px;
   background:var(--surface-2);
   border-radius:8px;
+  min-width:0;
 }
+.item > div,.buy-row > div,.receipt-line > div{min-width:0}
 .item.slim{grid-template-columns:1fr}
 .item.tall{align-items:start}
 .target-row{
   display:grid;
   gap:6px;
-  padding:13px;
+  padding:12px;
   background:var(--surface-2);
   border-radius:8px;
+  min-width:0;
 }
 .target-row-head{
   display:flex;
@@ -166,11 +184,13 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 .target-row strong{font-size:16px}
 .target-row b{
-  font-size:18px;
+  font-size:17px;
   line-height:1.25;
   text-align:right;
+  min-width:0;
+  overflow-wrap:anywhere;
 }
-.target-row small{color:var(--muted);line-height:1.4}
+.target-row small{color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
 .buy-row{
   display:grid;
   grid-template-columns:auto 1fr auto;
@@ -184,25 +204,34 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .buy-row.done{opacity:.56}
 .buy-row.done strong{text-decoration:line-through}
 .icon{
-  width:38px;
-  height:38px;
+  width:34px;
+  height:34px;
   border-radius:8px;
   display:grid;
   place-items:center;
   background:rgba(255,255,255,.72);
   color:#111;
-  font-size:20px;
+  font-size:18px;
 }
-.item strong{display:block;font-size:16px}
-.item small{display:block;margin-top:4px;color:var(--muted);line-height:1.38}
+.item strong,.buy-row strong,.receipt-line strong{display:block;font-size:16px;line-height:1.25}
+.item small,.buy-row small,.receipt-line small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.38;
+  overflow-wrap:anywhere;
+}
 .amount{text-align:right;font-weight:740;white-space:nowrap}
 .amount small{text-align:right}
 .tabs{
   display:flex;
   gap:8px;
   overflow-x:auto;
+  max-width:100%;
   padding:2px 0 8px;
   scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
 }
 .tabs::-webkit-scrollbar{display:none}
 .tab-chip{
@@ -255,6 +284,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   grid-template-columns:auto 1fr auto;
   gap:10px;
   align-items:center;
+  min-width:0;
 }
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
@@ -272,7 +302,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   left:50%;
   bottom:0;
   transform:translateX(-50%);
-  width:min(100%,540px);
+  width:100%;
+  max-width:540px;
   display:grid;
   grid-template-columns:repeat(3,1fr);
   gap:4px;
@@ -295,11 +326,43 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .nav-btn b{font-size:20px;line-height:1}
 .nav-btn.active{background:var(--surface-2);color:var(--text)}
 @media (min-width:820px){
-  .app{width:min(100%,980px)}
+  .app{max-width:980px}
   .desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .desktop-span{grid-column:1/-1}
+  .grid2{grid-template-columns:repeat(2,1fr)}
   .item.slim{grid-template-columns:1fr}
-  .bottom-nav{width:min(100%,980px)}
+  .bottom-nav{max-width:980px}
+}
+@media (max-width:430px){
+  .app{padding-left:10px;padding-right:10px}
+  .topbar{padding:6px 0 12px}
+  h1{font-size:26px}
+  .brand span{font-size:12px}
+  .icon-btn{width:40px;height:40px}
+  .card{padding:12px}
+  .hero h2{font-size:24px}
+  .hero p{font-size:13px}
+  .grid3{gap:7px}
+  .metric{padding:10px 8px}
+  .metric b{font-size:19px}
+  .metric span{font-size:11px}
+  h2{font-size:17px}
+  .section-title{align-items:flex-start}
+  .subtle{font-size:12px}
+  .target-row-head{display:grid;gap:3px}
+  .target-row b{text-align:left;font-size:16px}
+  .target-row strong{font-size:15px}
+  .target-row small{font-size:13px}
+  .item{grid-template-columns:auto minmax(0,1fr);align-items:start}
+  .item .amount{grid-column:2;text-align:left;font-size:13px;color:var(--muted)}
+  .item .amount small{display:inline;text-align:left}
+  .tab-chip{padding:7px 10px;font-size:14px}
+  .receipt-head strong{font-size:16px}
+  .receipt-total{font-size:16px}
+  .nav-btn{height:50px}
+}
+@media (max-width:360px){
+  .grid3{grid-template-columns:1fr}
 }
 @media print{
   body{background:white;color:#111}
