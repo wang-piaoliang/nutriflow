@@ -162,6 +162,7 @@ python3 -m http.server 8000 -d public
 - 已在本机安装 GitHub CLI 并以 `wang-piaoliang` 登录；Git 凭据保存在系统钥匙串。
 - GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
 - 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages` 并请求 Pages 重建；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
+- 2026-07-20：`v15`（首页图标配色）已通过测试并提交到本机，但连续两次发布仍因本机无法连接 `github.com:443` 失败；网络恢复后优先运行 `npm run publish:pages`。
 - 2026-07-20：`v14` 已在本地通过测试并提交为 `55bb50c`，但两次发布均因本机无法连接 `github.com:443` 超时而未推送；网络恢复后优先运行 `npm run publish:pages`。
 - 2026-07-20 已发布并在线验证当前版本：页面包含四栏导航、扩充后的蔬果库、吃完日期、饮食记录入口和本机私密小票照片，离线缓存为 `nutriflow-pwa-v13`。
 - 部署约定：每次修改代码、页面文案、采购/饮食数据或 PWA 文件后，都要在同一个 Codex 任务内更新本文件、提交并直接运行 `npm run publish:pages`；不等待下一批修改。通常本地验证需几十秒，GitHub Pages 构建约 30 秒到 2 分钟；排队或网络波动时可能达到约 5 分钟。交付前要确认线上地址可打开。
