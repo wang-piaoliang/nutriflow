@@ -43,7 +43,7 @@ git diff --check
 npm run publish:pages
 ```
 
-该命令会验证项目，推送源码到 `main`，并将 `public/` 发布到 GitHub Pages 使用的 `gh-pages` 分支。
+该命令会验证项目，推送源码到 `main`，将 `public/` 发布到 GitHub Pages 使用的 `gh-pages` 分支，并请求 Pages 重建。
 
 公开仓库：<https://github.com/wang-piaoliang/nutriflow>
 

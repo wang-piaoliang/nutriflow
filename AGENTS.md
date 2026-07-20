@@ -27,7 +27,7 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 ## Publishing Policy
 
 - Use the `github` remote for the public NutriFlow repository. The legacy `origin` remote is retained only as history and is not the deployment target.
-- For all user-visible code, food data, PWA, layout, or behavior changes: run `npm run publish:pages` after committing. It validates the app, pushes source to `main`, then publishes `public/` to `gh-pages`.
+- For all user-visible code, food data, PWA, layout, or behavior changes: run `npm run publish:pages` after committing. It validates the app, pushes source to `main`, publishes `public/` to `gh-pages`, then requests a Pages rebuild.
 - Large changes must be published before handoff. This includes navigation, page layout, purchase or food data structure, offline behavior, installation behavior, and nutrition rules.
 - Small user-visible changes should normally be published in the same turn. Documentation-only changes may be committed without a deployment when they do not affect the site.
 - Record the publish result and any deployment issue in `NUTRIFLOW_PROJECT_CONTEXT.md`.

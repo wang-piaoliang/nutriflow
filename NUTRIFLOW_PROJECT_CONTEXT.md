@@ -149,7 +149,8 @@ python3 -m http.server 8000 -d public
 - 当前本地 `github` remote 指向公开仓库，`origin` 仍保留旧 ChatGPT Sites 源仓库作为历史，不作为发布目标。
 - 已在本机安装 GitHub CLI 并以 `wang-piaoliang` 登录；Git 凭据保存在系统钥匙串。
 - GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
-- 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages`；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
+- 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages` 并请求 Pages 重建；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
+- 2026-07-20 已完成首发并在线验证：页面包含“居民膳食宝塔”“鱼禽瘦肉”“已吃完历史”，离线缓存为 `nutriflow-pwa-v11`。
 - `.openai/hosting.json` 仍保留旧 Sites 项目配置。用户此前因该地址在手机和 Chrome 中不稳定，已决定迁移到 GitHub Pages；不要把旧 Sites 地址当作可靠的正式入口。
 
 ## 8. 已知限制与下一步
@@ -162,6 +163,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-20：完成 GitHub Pages 首发并在线验证；发布脚本会请求 Pages 重建，保证 `gh-pages` 更新后及时上线。
 - 2026-07-20：接通 GitHub CLI 和 `github` remote；新增 `npm run publish:pages`，将 `public/` 发布到 GitHub Pages 的 `gh-pages` 分支，并修正首次创建部署分支的完整 ref 路径。
 - 2026-07-20：建立持久项目上下文、私密上下文和强制更新规则；修正 README；同步离线缓存测试到 v11。
 - 2026-07-20：首页配色调整为与应用图标一致，离线缓存升至 v11。
