@@ -162,7 +162,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
-- 2026-07-20：接通 GitHub CLI 和 `github` remote；新增 `npm run publish:pages`，将 `public/` 发布到 GitHub Pages 的 `gh-pages` 分支。
+- 2026-07-20：接通 GitHub CLI 和 `github` remote；新增 `npm run publish:pages`，将 `public/` 发布到 GitHub Pages 的 `gh-pages` 分支，并修正首次创建部署分支的完整 ref 路径。
 - 2026-07-20：建立持久项目上下文、私密上下文和强制更新规则；修正 README；同步离线缓存测试到 v11。
 - 2026-07-20：首页配色调整为与应用图标一致，离线缓存升至 v11。
 - 2026-07-20：加入膳食宝塔每日参考图，缩小首页正文层级，离线缓存升至 v10。

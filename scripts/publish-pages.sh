@@ -6,4 +6,4 @@ npm test
 git push github main
 
 pages_commit="$(git subtree split --prefix=public HEAD)"
-git push github "${pages_commit}:gh-pages"
+git push github "${pages_commit}:refs/heads/gh-pages"
