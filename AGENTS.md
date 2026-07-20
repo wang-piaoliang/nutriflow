@@ -24,6 +24,14 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 4. Update `.nutriflow-private-context.md` only when private health or personalization facts change.
 5. Commit the context update together with the implementation. Do not put a self-referential commit hash in the context; a new task should read `git log` for the exact current commit.
 
+## Publishing Policy
+
+- Use the `github` remote for the public NutriFlow repository. The legacy `origin` remote is retained only as history and is not the deployment target.
+- For all user-visible code, food data, PWA, layout, or behavior changes: run `npm run publish:pages` after committing. It validates the app, pushes source to `main`, then publishes `public/` to `gh-pages`.
+- Large changes must be published before handoff. This includes navigation, page layout, purchase or food data structure, offline behavior, installation behavior, and nutrition rules.
+- Small user-visible changes should normally be published in the same turn. Documentation-only changes may be committed without a deployment when they do not affect the site.
+- Record the publish result and any deployment issue in `NUTRIFLOW_PROJECT_CONTEXT.md`.
+
 ## Data Intake
 
 - Treat a pasted `NutriFlow 同步包` as structured input from the user's separate mobile ChatGPT conversation.
@@ -41,4 +49,3 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 - When the app shell changes, bump the service-worker cache name and update its test assertion.
 - Run `npm test` and `git diff --check` after relevant changes. For layout changes, also verify at a narrow mobile viewport and a desktop viewport.
 - Never revert unrelated user changes.
-

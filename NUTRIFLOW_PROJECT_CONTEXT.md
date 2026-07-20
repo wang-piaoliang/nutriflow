@@ -146,8 +146,10 @@ python3 -m http.server 8000 -d public
 
 - 计划使用的公开 GitHub 仓库：<https://github.com/wang-piaoliang/nutriflow>
 - 计划使用的 GitHub Pages 地址：<https://wang-piaoliang.github.io/nutriflow/>
-- 当前本地 `origin` 仍指向旧 ChatGPT Sites 源仓库，并未改成 GitHub。
-- 当前环境读取 GitHub 正常，但自动写入 GitHub 曾返回 403；发布前要再次检查授权或使用本机 GitHub 凭据。
+- 当前本地 `github` remote 指向公开仓库，`origin` 仍保留旧 ChatGPT Sites 源仓库作为历史，不作为发布目标。
+- 已在本机安装 GitHub CLI 并以 `wang-piaoliang` 登录；Git 凭据保存在系统钥匙串。
+- GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
+- 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages`；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
 - `.openai/hosting.json` 仍保留旧 Sites 项目配置。用户此前因该地址在手机和 Chrome 中不稳定，已决定迁移到 GitHub Pages；不要把旧 Sites 地址当作可靠的正式入口。
 
 ## 8. 已知限制与下一步
@@ -155,11 +157,12 @@ python3 -m http.server 8000 -d public
 1. 把硬编码数据拆到独立 JSON，降低每次新增记录时改大段 HTML 的风险。
 2. 为每日饮食增加正式数据结构和按日历史；当前页面主要展示目标，还没有持久的饮食日志。
 3. “已吃完”只存在设备本地。若要跨设备同步，需要把状态进入版本化数据或增加后端存储。
-4. 完成并验证 GitHub Pages 自动发布链路，确保手机 Safari、主屏 PWA、电脑 Safari 和 Chrome 使用同一稳定地址。
+4. 每次大修改后运行 `npm run publish:pages`，并确保手机 Safari、主屏 PWA、电脑 Safari 和 Chrome 使用同一稳定地址。
 5. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
 
+- 2026-07-20：接通 GitHub CLI 和 `github` remote；新增 `npm run publish:pages`，将 `public/` 发布到 GitHub Pages 的 `gh-pages` 分支。
 - 2026-07-20：建立持久项目上下文、私密上下文和强制更新规则；修正 README；同步离线缓存测试到 v11。
 - 2026-07-20：首页配色调整为与应用图标一致，离线缓存升至 v11。
 - 2026-07-20：加入膳食宝塔每日参考图，缩小首页正文层级，离线缓存升至 v10。
