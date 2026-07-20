@@ -21,7 +21,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v13`
+- 当前离线缓存：`nutriflow-pwa-v14`
 - 底部导航顺序：`首页`、`饮食`、`食材`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
@@ -162,7 +162,8 @@ python3 -m http.server 8000 -d public
 - 已在本机安装 GitHub CLI 并以 `wang-piaoliang` 登录；Git 凭据保存在系统钥匙串。
 - GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
 - 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages` 并请求 Pages 重建；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
-- 2026-07-20 已完成首发并在线验证：页面包含“居民膳食宝塔”“鱼禽瘦肉”“已吃完历史”，离线缓存为 `nutriflow-pwa-v11`。
+- 2026-07-20：`v14` 已在本地通过测试并提交为 `55bb50c`，但两次发布均因本机无法连接 `github.com:443` 超时而未推送；网络恢复后优先运行 `npm run publish:pages`。
+- 2026-07-20 已发布并在线验证当前版本：页面包含四栏导航、扩充后的蔬果库、吃完日期、饮食记录入口和本机私密小票照片，离线缓存为 `nutriflow-pwa-v13`。
 - 部署约定：每次修改代码、页面文案、采购/饮食数据或 PWA 文件后，都要在同一个 Codex 任务内更新本文件、提交并直接运行 `npm run publish:pages`；不等待下一批修改。通常本地验证需几十秒，GitHub Pages 构建约 30 秒到 2 分钟；排队或网络波动时可能达到约 5 分钟。交付前要确认线上地址可打开。
 - `.openai/hosting.json` 仍保留旧 Sites 项目配置。用户此前因该地址在手机和 Chrome 中不稳定，已决定迁移到 GitHub Pages；不要把旧 Sites 地址当作可靠的正式入口。
 
@@ -177,7 +178,9 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-20：当前完整版本已通过测试及手机/桌面布局检查，并发布到 GitHub Pages；线上 `gh-pages` 已核对包含饮食页、苹果/梨新评分和本机私密照片能力。
 - 2026-07-20：首页改为暖白低饱和配色；谨慎重校食材参考分并扩充常见蔬菜和水果；已吃完历史增加日期；新增四栏导航中的饮食页。
+- 2026-07-20：主屏 PWA 的应用壳改为联网优先、离线回退缓存，并在打开时主动检查 Service Worker 更新；离线缓存升至 v14，降低网页已更新而桌面快捷方式仍停在旧版的概率。
 - 2026-07-20：采购历史加入本机私密照片附件。照片只存当前设备浏览器的 IndexedDB，不上传 GitHub；离线缓存升至 v13，并将导航上下文同步为首页、饮食、食材、采购。
 - 2026-07-20：新增饮食页和餐食记录数据结构；离线缓存曾升至 v12。
 - 2026-07-20：完成 GitHub Pages 首发并在线验证；发布脚本会请求 Pages 重建，保证 `gh-pages` 更新后及时上线。
