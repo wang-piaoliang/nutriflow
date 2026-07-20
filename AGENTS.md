@@ -1,0 +1,44 @@
+# NutriFlow Repository Rules
+
+## Start Every Task Here
+
+1. Read `NUTRIFLOW_PROJECT_CONTEXT.md` before inspecting or changing code.
+2. If `.nutriflow-private-context.md` exists locally, read it for personalization constraints. Never quote, publish, stage, or commit that file.
+3. Run `git status --short` and `git log -5 --oneline` so current work and recent user changes are preserved.
+
+## Source Of Truth
+
+- The current product is the mobile-first PWA in `public/nutriflow.html`.
+- PWA metadata and offline behavior live in `public/manifest.webmanifest` and `public/sw.js`.
+- `app/page.tsx` and `public/index.html` redirect the root route to `/nutriflow.html`.
+- Purchase and food data are currently hardcoded in `public/nutriflow.html`.
+- The consumed checkbox state is device-local in `localStorage` under `nutriflow_consumed_v1`.
+
+## Required Context Update
+
+After every code, content, nutrition-rule, purchase-data, or deployment change:
+
+1. Update `NUTRIFLOW_PROJECT_CONTEXT.md` in the same change.
+2. Refresh its date, current behavior, recent changes, known issues, deployment status, and next steps as applicable.
+3. Keep the changelog concise and newest first.
+4. Update `.nutriflow-private-context.md` only when private health or personalization facts change.
+5. Commit the context update together with the implementation. Do not put a self-referential commit hash in the context; a new task should read `git log` for the exact current commit.
+
+## Data Intake
+
+- Treat a pasted `NutriFlow 同步包` as structured input from the user's separate mobile ChatGPT conversation.
+- Deduplicate purchases by stable record ID when present; otherwise compare receipt date, store, item, amount, and price.
+- Keep one receipt-level store/date/total summary and place individual products beneath it.
+- Preserve raw uncertainty. Mark unreadable receipt fields as `待确认`; do not invent values.
+- Meal records and purchase records may be public because the user explicitly approved this. Do not publish payment details, phone numbers, membership IDs, exact home addresses, barcodes, medical documents, or private health measurements.
+
+## Product And Quality Rules
+
+- Design for iPhone first. There must be no horizontal page scrolling at mobile widths.
+- Keep body text smaller than section titles and make long nutrition text wrap vertically.
+- Preserve the three-tab order: `首页`, `食材`, `采购`.
+- Use authoritative nutrition guidance and clearly label personalized priority scores as guidance, not medical diagnosis.
+- When the app shell changes, bump the service-worker cache name and update its test assertion.
+- Run `npm test` and `git diff --check` after relevant changes. For layout changes, also verify at a narrow mobile viewport and a desktop viewport.
+- Never revert unrelated user changes.
+

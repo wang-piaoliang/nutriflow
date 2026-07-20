@@ -42,6 +42,6 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v9"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v11"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
 });

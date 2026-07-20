@@ -40,3 +40,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local personalization context; never publish health details
+/.nutriflow-private-context.md
