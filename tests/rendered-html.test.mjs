@@ -34,6 +34,8 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /<details class="history-details">/);
   assert.match(html, /<details class="receipt-card">/);
   assert.match(html, /summarizeReceipt/);
+  assert.match(html, /indexedDB/);
+  assert.match(html, /仅保存在这台设备，不上传 GitHub/);
 });
 
 test("bumps the offline cache when the app shell changes", async () => {
@@ -42,6 +44,6 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v11"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v13"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
 });

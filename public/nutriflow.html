@@ -360,6 +360,30 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
+.receipt-photo-tools{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.private-note{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.photo-add,.photo-remove{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  display:grid;
+  place-items:center;
+}
+.photo-add{flex:0 0 36px;width:36px;height:36px;font-size:18px}
+.receipt-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:10px}
+.photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
+.photo-tile img{display:block;width:100%;height:100%;object-fit:cover}
+.photo-remove{position:absolute;top:4px;right:4px;width:28px;height:28px;font-size:16px;line-height:1;background:color-mix(in srgb,var(--surface) 90%,transparent)}
 .note{
   margin-top:10px;
   padding:12px;
@@ -677,6 +701,11 @@ const purchases = [
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
 const dietRecords = [];
 
+const PHOTO_DB_NAME = "nutriflow_private_photos_v1";
+const PHOTO_STORE_NAME = "receiptPhotos";
+let photoDatabase;
+let activePhotoUrls = [];
+let shoppingRenderVersion = 0;
 let activeFoodCategory = "animalProtein";
 let consumed = load("nutriflow_consumed_v1", {});
 
@@ -687,6 +716,55 @@ function load(key, fallback){
 }
 function saveConsumed(){
   localStorage.setItem("nutriflow_consumed_v1", JSON.stringify(consumed));
+}
+function openPhotoDatabase(){
+  if (photoDatabase) return photoDatabase;
+  if (!("indexedDB" in window)) return Promise.reject(new Error("此浏览器不支持本机照片存储"));
+  photoDatabase = new Promise((resolve, reject) => {
+    const request = indexedDB.open(PHOTO_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const store = request.result.createObjectStore(PHOTO_STORE_NAME, {keyPath:"id"});
+      store.createIndex("receiptId", "receiptId", {unique:false});
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("无法打开本机照片存储"));
+  });
+  return photoDatabase;
+}
+async function listReceiptPhotos(){
+  const database = await openPhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(PHOTO_STORE_NAME, "readonly").objectStore(PHOTO_STORE_NAME).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error || new Error("无法读取本机照片"));
+  });
+}
+async function saveReceiptPhoto(receiptId, file){
+  const database = await openPhotoDatabase();
+  const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const record = {id, receiptId, blob:file, createdAt:new Date().toISOString()};
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).add(record);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("无法保存本机照片"));
+  });
+}
+async function removeReceiptPhoto(id){
+  const database = await openPhotoDatabase();
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("无法删除本机照片"));
+  });
+}
+function resetPhotoUrls(){
+  activePhotoUrls.forEach(url => URL.revokeObjectURL(url));
+  activePhotoUrls = [];
+}
+function photoUrl(blob){
+  const url = URL.createObjectURL(blob);
+  activePhotoUrls.push(url);
+  return url;
 }
 function categoryById(id){return categories.find(category => category.id === id)}
 function foodById(id){return foods.find(food => food.id === id)}
@@ -846,11 +924,24 @@ function render(){
       <small>${target.note}</small>
     </div>
   `).join("");
-  renderShopping();
+  void renderShopping();
   renderFoods();
   renderDietLog();
 }
-function renderShopping(){
+async function renderShopping(){
+  const renderVersion = ++shoppingRenderVersion;
+  let receiptPhotos = [];
+  try{
+    receiptPhotos = await listReceiptPhotos();
+  }catch(error){
+    console.warn("NutriFlow private photo storage is unavailable", error);
+  }
+  if (renderVersion !== shoppingRenderVersion) return;
+  resetPhotoUrls();
+  const photosByReceipt = receiptPhotos.reduce((groups, photo) => {
+    (groups[photo.receiptId] ||= []).push(photo);
+    return groups;
+  }, {});
   const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
   const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
   const consumedItems = boughtItems
@@ -876,7 +967,7 @@ function renderShopping(){
     input.addEventListener("change", () => {
       consumed[input.dataset.consumed] = input.checked ? new Date().toISOString() : false;
       saveConsumed();
-      renderShopping();
+      void renderShopping();
     });
   });
 
@@ -893,6 +984,7 @@ function renderShopping(){
     const receiptTotal = receipt.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
     const boughtCount = receipt.items.filter(item => item.bought).length;
     const categorySummary = summarizeReceipt(receipt.items);
+    const attachedPhotos = photosByReceipt[receipt.key] || [];
     const lines = receipt.items.map(item => `
       <div class="receipt-line">
         <span class="icon">${iconForFood(item.foodId)}</span>
@@ -900,14 +992,49 @@ function renderShopping(){
         <div class="price">${item.totalPrice ? `¥${Number(item.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</div>
       </div>
     `).join("");
+    const photoTiles = attachedPhotos.map(photo => {
+      const url = photoUrl(photo.blob);
+      return `<div class="photo-tile"><img src="${url}" alt="${receipt.store} 小票照片"><button class="photo-remove" type="button" data-delete-receipt-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
+    }).join("");
     return `<details class="receipt-card">
       <summary class="receipt-head">
         <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件${categorySummary ? ` · ${categorySummary}` : ""}</small></div>
-        <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>展开</small></div>
+        <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length} · ` : ""}展开</small></div>
       </summary>
       <div class="receipt-lines">${lines}</div>
+      <div class="receipt-photo-tools">
+        <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub。</p>
+        <label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-receipt-photo="${receipt.key}"></label>
+      </div>
+      ${photoTiles ? `<div class="receipt-photos">${photoTiles}</div>` : ""}
     </details>`;
   }).join("") : `<div class="note">暂无采购记录。</div>`;
+  document.querySelectorAll("[data-receipt-photo]").forEach(input => {
+    input.addEventListener("change", async () => {
+      const files = Array.from(input.files || []).filter(file => file.type.startsWith("image/"));
+      input.value = "";
+      if (!files.length) return;
+      try{
+        await Promise.all(files.map(file => saveReceiptPhoto(input.dataset.receiptPhoto, file)));
+        void renderShopping();
+      }catch(error){
+        console.error(error);
+        window.alert("照片未能保存到这台设备。请检查 Safari 的网站数据权限后重试。");
+      }
+    });
+  });
+  document.querySelectorAll("[data-delete-receipt-photo]").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!window.confirm("删除这张仅保存在本机的照片？")) return;
+      try{
+        await removeReceiptPhoto(button.dataset.deleteReceiptPhoto);
+        void renderShopping();
+      }catch(error){
+        console.error(error);
+        window.alert("照片未能删除，请重试。");
+      }
+    });
+  });
 }
 function renderDietLog(){
   const list = document.getElementById("dietLogList");

@@ -45,7 +45,7 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 
 - Design for iPhone first. There must be no horizontal page scrolling at mobile widths.
 - Keep body text smaller than section titles and make long nutrition text wrap vertically.
-- Preserve the three-tab order: `首页`, `食材`, `采购`.
+- Preserve the four-tab order: `首页`, `饮食`, `食材`, `采购`.
 - Use authoritative nutrition guidance and clearly label personalized priority scores as guidance, not medical diagnosis.
 - When the app shell changes, bump the service-worker cache name and update its test assertion.
 - Run `npm test` and `git diff --check` after relevant changes. For layout changes, also verify at a narrow mobile viewport and a desktop viewport.
