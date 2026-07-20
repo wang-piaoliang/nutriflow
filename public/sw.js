@@ -1,9 +1,10 @@
-const CACHE_NAME = "nutriflow-pwa-v9";
+const CACHE_NAME = "nutriflow-pwa-v10";
 const APP_SHELL = [
   "./",
   "./nutriflow.html",
   "./manifest.webmanifest",
   "./offline.html",
+  "./balanced-diet-pagoda-2022.png",
   "./apple-touch-icon.png",
   "./apple-touch-icon-precomposed.png",
   "./icon-180.png",
