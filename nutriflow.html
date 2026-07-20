@@ -118,6 +118,34 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 }
 .hero h2{font-size:28px;color:white}
 .hero p{margin:8px 0 0;opacity:.88;font-size:14px;line-height:1.5}
+#home h2{font-size:16px}
+#home .hero h2{font-size:20px}
+#home .hero p{font-size:12px}
+#home .metric b{font-size:18px}
+#home .metric span{font-size:11px}
+#home .target-row{padding:10px}
+#home .target-row strong{font-size:13px}
+#home .target-row b{font-size:14px}
+#home .target-row small{font-size:12px}
+.reference-figure{margin:0}
+.reference-figure a{
+  display:block;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+}
+.reference-figure img{
+  display:block;
+  width:100%;
+  height:auto;
+}
+.reference-figure figcaption{
+  margin-top:10px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.55;
+}
 .section-title{
   display:flex;
   align-items:center;
@@ -438,6 +466,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle">全天总量</span>
         </div>
         <div class="list" id="dailyList"></div>
+      </article>
+
+      <article class="card desktop-span">
+        <div class="section-title">
+          <h2>居民膳食宝塔</h2>
+          <span class="pill">每日参考</span>
+        </div>
+        <figure class="reference-figure">
+          <a href="./balanced-diet-pagoda-2022.png" target="_blank" rel="noopener" aria-label="打开高清版中国居民平衡膳食宝塔">
+            <img src="./balanced-diet-pagoda-2022.png" alt="中国居民平衡膳食宝塔（2022），展示每日各类食物建议摄入量" loading="lazy" decoding="async">
+          </a>
+          <figcaption>图中的克数和毫升数均为每天的建议量；“每周至少 2 次水产品”是频率建议。点击图片可查看高清版。</figcaption>
+        </figure>
       </article>
     </div>
   </section>
