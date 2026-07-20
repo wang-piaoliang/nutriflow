@@ -21,7 +21,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v14`
+- 当前离线缓存：`nutriflow-pwa-v15`
 - 底部导航顺序：`首页`、`饮食`、`食材`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
@@ -178,6 +178,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-20：首页“今天吃到这些”改为与应用图标一致的绿色主卡、黄色边线和浅色数据块；离线缓存升至 v15。
 - 2026-07-20：当前完整版本已通过测试及手机/桌面布局检查，并发布到 GitHub Pages；线上 `gh-pages` 已核对包含饮食页、苹果/梨新评分和本机私密照片能力。
 - 2026-07-20：首页改为暖白低饱和配色；谨慎重校食材参考分并扩充常见蔬菜和水果；已吃完历史增加日期；新增四栏导航中的饮食页。
 - 2026-07-20：主屏 PWA 的应用壳改为联网优先、离线回退缓存，并在打开时主动检查 Service Worker 更新；离线缓存升至 v14，降低网页已更新而桌面快捷方式仍停在旧版的概率。
