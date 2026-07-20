@@ -109,15 +109,12 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   overflow:hidden;
 }
 .hero{
-  color:white;
-  background:
-    linear-gradient(135deg,rgba(25,95,66,.98),rgba(37,88,130,.92)),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='210' viewBox='0 0 360 210'%3E%3Crect width='360' height='210' fill='%231f7a4d'/%3E%3Ccircle cx='286' cy='52' r='48' fill='%23f0b45b' opacity='.9'/%3E%3Cpath d='M0 166c54-28 92-28 144 0s96 28 216-20v64H0z' fill='%23fff' opacity='.18'/%3E%3Cpath d='M42 66c34-22 60-22 84 0 23 20 47 18 70-7' stroke='%23fff' stroke-width='10' fill='none' opacity='.24' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-size:cover;
-  background-position:center;
+  color:var(--text);
+  background:var(--surface-3);
+  border-color:color-mix(in srgb,#238153 42%,var(--line));
 }
-.hero h2{font-size:28px;color:white}
-.hero p{margin:8px 0 0;opacity:.88;font-size:14px;line-height:1.5}
+.hero h2{font-size:28px;color:var(--text)}
+.hero p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
 #home h2{font-size:16px}
 #home .hero h2{font-size:20px}
 #home .hero p{font-size:12px}
@@ -169,7 +166,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:13px;
   white-space:nowrap;
 }
-.hero .pill{background:rgba(255,255,255,.18);color:white;border-color:rgba(255,255,255,.25)}
+.hero .pill{background:#238153;color:white;border-color:#238153}
 .metrics,.grid2{display:grid;grid-template-columns:1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .metric,.target{
@@ -178,13 +175,15 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-radius:8px;
   background:var(--surface-2);
 }
-.hero .metric{background:rgba(255,255,255,.16)}
+.hero .metric{background:#bc3d50;color:white}
+.hero .metric:nth-child(2){background:#238153}
+.hero .metric:nth-child(3){background:#3073bd}
 .metric b{display:block;font-size:22px;line-height:1.1}
 .metric span{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.35}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
-.hero .metric span{color:rgba(255,255,255,.78)}
+.hero .metric span{color:rgba(255,255,255,.84)}
 .list{display:grid;gap:10px}
 .item{
   display:grid;
