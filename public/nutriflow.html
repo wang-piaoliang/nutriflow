@@ -27,6 +27,11 @@
   --red:#b23a48;
   --blue:#276cbb;
   --amber:#a76512;
+  --hero-bg:linear-gradient(145deg,#fffdfa,#f2f1ea);
+  --hero-line:#ded9c9;
+  --hero-accent:#bd984d;
+  --hero-tile:#fff;
+  --hero-value:#315f4c;
   --shadow:0 12px 35px rgba(31,37,45,.09);
 }
 @media (prefers-color-scheme:dark){
@@ -42,6 +47,11 @@
     --red:#ff7f8c;
     --blue:#8cbcff;
     --amber:#f0b45b;
+    --hero-bg:linear-gradient(145deg,#20231f,#252722);
+    --hero-line:#41443c;
+    --hero-accent:#d5b56f;
+    --hero-tile:#2c302a;
+    --hero-value:#9fd2b6;
     --shadow:0 16px 40px rgba(0,0,0,.35);
   }
 }
@@ -109,9 +119,17 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   overflow:hidden;
 }
 .hero{
+  position:relative;
   color:var(--text);
-  background:var(--surface-3);
-  border-color:color-mix(in srgb,#238153 42%,var(--line));
+  background:var(--hero-bg);
+  border-color:var(--hero-line);
+}
+.hero::before{
+  content:"";
+  position:absolute;
+  inset:0 auto 0 0;
+  width:4px;
+  background:var(--hero-accent);
 }
 .hero h2{font-size:28px;color:var(--text)}
 .hero p{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
@@ -166,7 +184,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:13px;
   white-space:nowrap;
 }
-.hero .pill{background:#238153;color:white;border-color:#238153}
+.hero .pill{background:color-mix(in srgb,var(--hero-accent) 18%,var(--hero-tile));color:var(--text);border-color:var(--hero-line)}
 .metrics,.grid2{display:grid;grid-template-columns:1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .metric,.target{
@@ -175,15 +193,14 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-radius:8px;
   background:var(--surface-2);
 }
-.hero .metric{background:#bc3d50;color:white}
-.hero .metric:nth-child(2){background:#238153}
-.hero .metric:nth-child(3){background:#3073bd}
+.hero .metric{background:var(--hero-tile);color:var(--text);border:1px solid var(--hero-line)}
+.hero .metric b{color:var(--hero-value)}
 .metric b{display:block;font-size:22px;line-height:1.1}
 .metric span{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.35}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
-.hero .metric span{color:rgba(255,255,255,.84)}
+.hero .metric span{color:var(--muted)}
 .list{display:grid;gap:10px}
 .item{
   display:grid;
@@ -352,6 +369,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:13px;
   line-height:1.45;
 }
+.diet-day{
+  padding:13px;
+  border-radius:8px;
+  background:var(--surface-2);
+}
+.diet-day + .diet-day{margin-top:10px}
+#dietLogList{margin-top:12px}
+.diet-day-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.diet-day-head strong{font-size:16px}
+.diet-day-head span{color:var(--muted);font-size:12px}
+.meal-entry{padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
+.meal-entry b{display:block;font-size:14px}
+.meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5}
 .bottom-nav{
   position:fixed;
   left:50%;
@@ -360,7 +390,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   width:100%;
   max-width:540px;
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(4,1fr);
   gap:4px;
   padding:8px 10px calc(8px + env(safe-area-inset-bottom));
   background:color-mix(in srgb,var(--surface) 88%,transparent);
@@ -509,6 +539,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
+  <section class="view" id="dietLog">
+    <div class="stack">
+      <article class="card">
+        <div class="section-title">
+          <h2>每天实际吃了什么</h2>
+          <span class="subtle" id="dietLogMeta">0 天</span>
+        </div>
+        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片只能帮助估算，重量不明确时会标注“约”。</div>
+        <div id="dietLogList"></div>
+      </article>
+    </div>
+  </section>
+
   <section class="view" id="foods">
     <div class="stack">
       <article class="card">
@@ -522,9 +565,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
       <article class="card">
         <div class="section-title">
           <h2>食材营养价值</h2>
-          <span class="subtle">个人优先级 · 满分 5.0</span>
+          <span class="subtle">保守参考 · 满分 5.0</span>
         </div>
-        <div class="note">综合营养密度、缺铁恢复、适度增重、胆囊结石与结直肠癌家族史排序；分数用于采购选择，不代表治疗效果。</div>
+        <div class="note">权威指南不会给单个食材逐一排名。本页仅按指南契合度、营养密度、轮换价值和个人目标做保守参考；相差 0.1–0.2 分不代表明显优劣。新鲜蔬果整体都值得常吃，重点是每天达量和经常换种类。</div>
         <div class="tabs" id="foodTabs"></div>
         <div class="list" id="foodList"></div>
       </article>
@@ -534,6 +577,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-btn active" data-view="home"><b>◎</b><span>首页</span></button>
+  <button class="nav-btn" data-view="dietLog"><b>▤</b><span>饮食</span></button>
   <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
   <button class="nav-btn" data-view="shopping"><b>＋</b><span>采购</span></button>
 </nav>
@@ -542,9 +586,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 const categories = [
   {id:"animalProtein", name:"鱼禽瘦肉", icon:"🐟", weeklyAmount:"鱼 300-500g + 畜禽肉合计 300-500g", weeklyVariety:"3-5 种", note:"鱼约 2 次；红肉和禽肉共享畜禽肉额度，不分别叠加。"},
   {id:"eggDairySoy", name:"蛋奶豆", icon:"🥛", weeklyAmount:"鸡蛋约 7 个 + 奶 2.1-3.5L + 大豆及制品适量", weeklyVariety:"3-5 种"},
-  {id:"vegetable", name:"蔬菜", icon:"🥦", weeklyAmount:"2.5-3.5kg", weeklyVariety:"5-8 种"},
+  {id:"vegetable", name:"蔬菜", icon:"🥦", weeklyAmount:"2.1-3.5kg", weeklyVariety:"7-10 种", note:"每天尽量安排 3-5 种，深色蔬菜约占一半。"},
   {id:"staple", name:"主食", icon:"🍚", weeklyAmount:"干粮 0.7-1.0kg + 薯类 0.6-1.0kg", weeklyVariety:"3-5 种"},
-  {id:"fruitNut", name:"水果坚果", icon:"🍎", weeklyAmount:"水果 2.0-2.5kg + 坚果 0.1-0.15kg", weeklyVariety:"4-6 种"}
+  {id:"fruitNut", name:"水果坚果", icon:"🍎", weeklyAmount:"水果 1.4-2.5kg + 坚果约 70g", weeklyVariety:"4-7 种", note:"每天水果 1-2 种，完整水果优先，不用果汁替代。"}
 ];
 
 const dailyTargets = [
@@ -583,15 +627,21 @@ const foods = [
   {id:"edamame", category:"eggDairySoy", name:"毛豆米", weeklyTarget:"300-600g", weeklyTimes:"1-3 次", score:4.1, nutrients:"植物蛋白、叶酸、纤维", feature:"小票里买过。适合炒饭、拌菜、配肉，能提高蛋白和纤维。"},
   {id:"cheese", category:"eggDairySoy", name:"奶酪", weeklyTarget:"0-150g", weeklyTimes:"0-3 次", score:3.6, nutrients:"钙、脂肪、蛋白质", feature:"可以帮能量摄入，但看钠和配料。"},
 
-  {id:"leafy", category:"vegetable", name:"深绿叶菜", weeklyTarget:"700-1000g", weeklyTimes:"5-7 次", score:4.7, nutrients:"叶酸、镁、钾、维 K、膳食纤维", feature:"和红肉搭配，支撑长期膳食质量。"},
-  {id:"broccoli", category:"vegetable", name:"西兰花/花菜", weeklyTarget:"700-1000g", weeklyTimes:"4-6 次", score:4.6, nutrients:"维 C、纤维、叶酸", feature:"冷冻版本很适合备餐，配料只有蔬菜即可。"},
-  {id:"cauliflower", category:"vegetable", name:"松花菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.2, nutrients:"维 C、纤维、钾", feature:"小票里买过。适合清炒、焯水冷藏、和肉一起炒。"},
-  {id:"mushroom", category:"vegetable", name:"蘑菇/香菇", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:4.0, nutrients:"多糖、钾、风味物质", feature:"增加鲜味，和肉一起做更容易吃够菜。"},
-  {id:"tomato", category:"vegetable", name:"番茄", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:4.0, nutrients:"番茄红素、维 C、钾", feature:"适合做牛肉番茄、鸡蛋番茄，增加酸味。"},
-  {id:"carrot", category:"vegetable", name:"胡萝卜", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:3.8, nutrients:"β-胡萝卜素、纤维", feature:"适合炖肉、炒饭和备餐配色。"},
-  {id:"pepper", category:"vegetable", name:"彩椒", weeklyTarget:"200-400g", weeklyTimes:"1-3 次", score:3.9, nutrients:"维 C、类胡萝卜素", feature:"补维 C 和颜色，适合快炒。"},
-  {id:"spinach", category:"vegetable", name:"菠菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"叶酸、镁、钾、非血红素铁", feature:"焯水更舒服；不能替代红肉补铁，但适合搭配。"},
-  {id:"pumpkin", category:"vegetable", name:"南瓜", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:3.8, nutrients:"β-胡萝卜素、碳水、纤维", feature:"介于蔬菜和主食之间，适合蒸烤备餐。"},
+  {id:"leafy", category:"vegetable", name:"深绿叶菜", variants:"油麦菜 / 空心菜 / 芥蓝 / 茼蒿", weeklyTarget:"700-1000g", weeklyTimes:"5-7 次", score:4.7, nutrients:"叶酸、镁、钾、维 K、膳食纤维", feature:"深色蔬菜应占每日蔬菜的一半左右；同类经常轮换比固定只吃一种更重要。"},
+  {id:"broccoli", category:"vegetable", name:"西兰花 / 花椰菜", weeklyTarget:"500-800g", weeklyTimes:"3-5 次", score:4.6, nutrients:"维 C、膳食纤维、叶酸", feature:"新鲜或配料单一的冷冻版本都可以，适合蒸、焯或快炒。"},
+  {id:"spinach", category:"vegetable", name:"菠菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.5, nutrients:"叶酸、镁、钾、类胡萝卜素", feature:"属于深色叶菜，焯水后更适合日常搭配；不能替代红肉治疗缺铁。"},
+  {id:"pepper", category:"vegetable", name:"彩椒 / 青椒", weeklyTarget:"200-500g", weeklyTimes:"2-4 次", score:4.5, nutrients:"维 C、类胡萝卜素", feature:"颜色丰富、烹调方便，适合和肉类或豆制品一起快炒。"},
+  {id:"cabbage", category:"vegetable", name:"白菜类", variants:"大白菜 / 圆白菜 / 娃娃菜", weeklyTarget:"400-800g", weeklyTimes:"2-4 次", score:4.4, nutrients:"维 C、维 K、膳食纤维", feature:"便宜、耐放、用途广，适合和深色叶菜轮换。"},
+  {id:"carrot", category:"vegetable", name:"胡萝卜", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:4.4, nutrients:"β-胡萝卜素、膳食纤维", feature:"适合炖肉、炒饭和备餐配色；少量油烹调有利于类胡萝卜素利用。"},
+  {id:"greenBeans", category:"vegetable", name:"鲜豆类", variants:"豆角 / 四季豆 / 荷兰豆", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"膳食纤维、叶酸、维 C", feature:"能增加蔬菜口感和种类；四季豆和豆角需彻底熟透。"},
+  {id:"tomato", category:"vegetable", name:"番茄", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:4.3, nutrients:"番茄红素、维 C、钾", feature:"生熟都可以，适合搭配鸡蛋、牛肉或豆腐。"},
+  {id:"cauliflower", category:"vegetable", name:"松花菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"维 C、膳食纤维、钾", feature:"适合清炒、焯水冷藏或和肉一起炒。"},
+  {id:"bokChoy", category:"vegetable", name:"小青菜类", variants:"小白菜 / 上海青 / 油菜 / 生菜", weeklyTarget:"400-800g", weeklyTimes:"3-5 次", score:4.3, nutrients:"叶酸、维 C、维 K、膳食纤维", feature:"容易买到、烹调快，可作为每日叶菜的常用轮换。"},
+  {id:"mushroom", category:"vegetable", name:"菌菇类", variants:"香菇 / 口蘑 / 平菇 / 金针菇", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:4.2, nutrients:"膳食纤维、钾、风味物质", feature:"有助于增加鲜味和食物多样性，但不需要把某一种菌菇神化。"},
+  {id:"pumpkin", category:"vegetable", name:"南瓜", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.2, nutrients:"β-胡萝卜素、碳水、膳食纤维", feature:"介于蔬菜和薯类之间，适合蒸烤备餐；吃得多时相应调整主食。"},
+  {id:"allium", category:"vegetable", name:"葱蒜类", variants:"洋葱 / 韭菜 / 蒜苗 / 大葱", weeklyTarget:"200-500g", weeklyTimes:"2-4 次", score:4.1, nutrients:"含硫化合物、膳食纤维、维 C", feature:"主要价值是增加风味和品种，不必追求大份量。"},
+  {id:"eggplant", category:"vegetable", name:"茄子", weeklyTarget:"300-600g", weeklyTimes:"1-3 次", score:4.1, nutrients:"膳食纤维、钾、多酚", feature:"本身吸油能力强，少油蒸、炖或烤更适合日常。"},
+  {id:"gourd", category:"vegetable", name:"瓜类蔬菜", variants:"黄瓜 / 冬瓜 / 丝瓜 / 西葫芦", weeklyTarget:"400-800g", weeklyTimes:"2-4 次", score:4.1, nutrients:"水分、钾、少量维 C、膳食纤维", feature:"清爽易吃，适合补足蔬菜总量，但也要搭配深色蔬菜。"},
 
   {id:"rice", category:"staple", name:"米饭/杂粮饭（熟重）", weeklyTarget:"1800-2200g", weeklyTimes:"每天", score:4.4, nutrients:"碳水、能量、少量 B 族", feature:"增重方向不压主食；熟重记录最直观。"},
   {id:"sweetPotato", category:"staple", name:"红薯/土豆", weeklyTarget:"600-1000g", weeklyTimes:"2-4 次", score:4.0, nutrients:"碳水、钾、纤维", feature:"可替代部分米饭，冷冻备餐友好。"},
@@ -601,12 +651,17 @@ const foods = [
   {id:"corn", category:"staple", name:"玉米", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:3.7, nutrients:"碳水、纤维、叶黄素", feature:"可以替代部分主食，适合冷冻常备。"},
   {id:"quinoa", category:"staple", name:"藜麦/杂粮", weeklyTarget:"0-300g", weeklyTimes:"0-2 次", score:3.9, nutrients:"碳水、镁、少量蛋白", feature:"作为杂粮变化即可，不需要神化。"},
 
-  {id:"apple", category:"fruitNut", name:"苹果/梨", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:3.8, nutrients:"纤维、钾、多酚", feature:"耐放、便宜，适合常备。"},
-  {id:"orange", category:"fruitNut", name:"橙子/柑橘", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:4.2, nutrients:"维 C、钾", feature:"和补铁饮食搭配不错，帮助整体微量营养。"},
-  {id:"kiwi", category:"fruitNut", name:"猕猴桃", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.4, nutrients:"维 C、叶酸、纤维", feature:"维 C 密度高，适合缺铁背景下轮换。"},
-  {id:"banana", category:"fruitNut", name:"香蕉", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:3.8, nutrients:"碳水、钾", feature:"加餐和运动后方便，也能帮能量摄入。"},
-  {id:"berries", category:"fruitNut", name:"蓝莓/草莓", weeklyTarget:"200-400g", weeklyTimes:"1-3 次", score:4.0, nutrients:"多酚、维 C", feature:"贵就少买，作为水果变化。"},
-  {id:"nuts", category:"fruitNut", name:"坚果", weeklyTarget:"100-150g", weeklyTimes:"5-7 次", score:4.1, nutrients:"优质脂肪、镁、维 E", feature:"每天 15-20g，帮助提高能量摄入。"}
+  {id:"kiwi", category:"fruitNut", name:"猕猴桃", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.6, nutrients:"维 C、叶酸、膳食纤维", feature:"维 C 含量突出，适合和其他应季水果轮换；不是必须每天吃。"},
+  {id:"orange", category:"fruitNut", name:"柑橘类", variants:"橙子 / 柚子 / 橘子", weeklyTarget:"700-1000g", weeklyTimes:"3-5 次", score:4.5, nutrients:"维 C、钾、类黄酮", feature:"常见、方便，和含铁餐搭配可增加维 C 摄入。"},
+  {id:"berries", category:"fruitNut", name:"浆果类", variants:"草莓 / 蓝莓 / 桑葚 / 树莓", weeklyTarget:"200-500g", weeklyTimes:"1-3 次", score:4.5, nutrients:"维 C、花青素等多酚、膳食纤维", feature:"营养和风味有特点，但价格高时不必勉强，可用其他新鲜水果轮换。"},
+  {id:"nuts", category:"fruitNut", name:"坚果", variants:"核桃 / 巴旦木 / 腰果 / 花生", weeklyTarget:"70-140g", weeklyTimes:"5-7 次", score:4.5, nutrients:"不饱和脂肪、镁、维 E、蛋白质", feature:"每天少量有助于补充能量；优先原味，避免一次吃太多。"},
+  {id:"apple", category:"fruitNut", name:"苹果 / 梨", weeklyTarget:"700-1200g", weeklyTimes:"3-7 次", score:4.4, nutrients:"膳食纤维、钾、多酚", feature:"耐放、便宜、容易长期坚持，是很好的常备水果，不应因维 C 不突出就被低估。"},
+  {id:"banana", category:"fruitNut", name:"香蕉", weeklyTarget:"400-900g", weeklyTimes:"2-5 次", score:4.4, nutrients:"碳水、钾、维 B6、膳食纤维", feature:"方便加餐，也有助于适度增加能量摄入；完整水果不等同于含糖饮料。"},
+  {id:"tropical", category:"fruitNut", name:"热带水果", variants:"芒果 / 木瓜 / 菠萝", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.4, nutrients:"维 C、类胡萝卜素、膳食纤维", feature:"适合丰富颜色和风味，按应季与耐受情况轮换。"},
+  {id:"stoneFruit", category:"fruitNut", name:"桃李杏类", variants:"桃 / 油桃 / 李子 / 杏", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.3, nutrients:"维 C、钾、多酚、膳食纤维", feature:"应季时新鲜、好吃，营养价值不需要和苹果或浆果分高下。"},
+  {id:"grape", category:"fruitNut", name:"葡萄 / 提子", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.2, nutrients:"多酚、钾、碳水", feature:"可以正常吃，按一份水果控制总量即可，不必因甜味完全回避。"},
+  {id:"melon", category:"fruitNut", name:"瓜果类", variants:"西瓜 / 甜瓜 / 哈密瓜", weeklyTarget:"400-1000g", weeklyTimes:"1-3 次", score:4.2, nutrients:"水分、钾、维 C、类胡萝卜素", feature:"适合夏季补充水果种类；水分多不代表可以替代饮水。"},
+  {id:"pomegranate", category:"fruitNut", name:"其他应季水果", variants:"石榴 / 柿子 / 鲜枣 / 火龙果", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.2, nutrients:"维 C、钾、多酚或膳食纤维", feature:"不同品种各有特点，选择新鲜、完整、应季且自己愿意长期吃的即可。"}
 ];
 
 const purchases = [
@@ -618,6 +673,9 @@ const purchases = [
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-06", date:"2026-07-17 21:13", foodId:"carrot", item:"精品胡萝卜", amount:"748g", packageSpec:"称重 0.748kg", totalPrice:2.97, unitPrice:"3.98 元/kg（约 1.99 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 6"},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-07", date:"2026-07-17 21:13", foodId:"bag", item:"fudi 购物袋小", amount:"1 个", packageSpec:"1 个", totalPrice:0.70, unitPrice:"0.70 元/个", store:"fudi 超市五道口店", bought:true, note:"小票序号 7；应收合计 65.73"}
 ];
+
+// 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
+const dietRecords = [];
 
 let activeFoodCategory = "animalProtein";
 let consumed = load("nutriflow_consumed_v1", {});
@@ -673,6 +731,12 @@ function iconForFood(foodId){
     pepper:"🫑",
     spinach:"🥬",
     pumpkin:"🎃",
+    cabbage:"🥬",
+    greenBeans:"🫛",
+    bokChoy:"🥬",
+    allium:"🧅",
+    eggplant:"🍆",
+    gourd:"🥒",
     rice:"🍚",
     sweetPotato:"🍠",
     oats:"🥣",
@@ -685,6 +749,11 @@ function iconForFood(foodId){
     kiwi:"🥝",
     banana:"🍌",
     berries:"🫐",
+    tropical:"🥭",
+    stoneFruit:"🍑",
+    grape:"🍇",
+    melon:"🍉",
+    pomegranate:"🍎",
     nuts:"🥜",
     bag:"🛍️"
   };
@@ -693,10 +762,10 @@ function iconForFood(foodId){
 const purchaseGroupRules = [
   {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
-  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","pepper","spinach","pumpkin"]},
+  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
   {name:"豆类", ids:["tofu","soyMilk","edamame"]},
   {name:"主食", ids:["rice","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
-  {name:"水果坚果", ids:["apple","orange","kiwi","banana","berries","nuts"]}
+  {name:"水果坚果", ids:["apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
 ];
 function parseTarget(target){
   const text = String(target || "");
@@ -729,6 +798,20 @@ function summarizeReceipt(items){
       .reduce((sum, item) => sum + parseAmount(item.amount), 0);
     return grams ? `${group.name} ${formatWeight(grams)}` : "";
   }).filter(Boolean).join(" · ");
+}
+function consumedTimestamp(value){
+  if (typeof value !== "string") return 0;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+function formatConsumedDate(value){
+  const timestamp = consumedTimestamp(value);
+  if (!timestamp) return "日期未记录（旧记录）";
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2,"0");
+  const day = String(date.getDate()).padStart(2,"0");
+  return `${year}-${month}-${day}`;
 }
 function sameWeek(dateText){
   const date = new Date(dateText);
@@ -765,18 +848,19 @@ function render(){
   `).join("");
   renderShopping();
   renderFoods();
+  renderDietLog();
 }
 function renderShopping(){
   const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
   const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
   const consumedItems = boughtItems
     .filter(purchase => consumed[purchase.id])
-    .sort((a,b) => String(consumed[b.id]).localeCompare(String(consumed[a.id])) || b.date.localeCompare(a.date));
+    .sort((a,b) => consumedTimestamp(consumed[b.id]) - consumedTimestamp(consumed[a.id]) || b.date.localeCompare(a.date));
   const renderBoughtItem = (purchase, done) => {
     const icon = iconForFood(purchase.foodId);
     return `<label class="buy-row ${done ? "done" : ""}">
       <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
-      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购买于 ${purchase.date.slice(0,10)}<br>${purchase.store}</small></div>
+      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购买于 ${purchase.date.slice(0,10)}<br>${purchase.store}${done ? `<br>吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
       <span class="amount">${icon}</span>
     </label>`;
   };
@@ -825,6 +909,19 @@ function renderShopping(){
     </details>`;
   }).join("") : `<div class="note">暂无采购记录。</div>`;
 }
+function renderDietLog(){
+  const list = document.getElementById("dietLogList");
+  const records = dietRecords.slice().sort((a,b) => b.date.localeCompare(a.date));
+  document.getElementById("dietLogMeta").textContent = `${records.length} 天`;
+  if (!records.length){
+    list.innerHTML = `<div class="note">还没有实际饮食记录。下次把餐食照片发给我后，会从当天开始按日期积累。</div>`;
+    return;
+  }
+  list.innerHTML = records.map(record => {
+    const meals = record.meals.map(meal => `<div class="meal-entry"><b>${meal.name}</b><small>${meal.items.join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small></div>`).join("");
+    return `<div class="diet-day"><div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`}</span></div>${meals}</div>`;
+  }).join("");
+}
 function renderFoods(){
   const summary = categories.map(category => {
     const list = foods.filter(food => food.category === category.id);
@@ -853,9 +950,9 @@ function renderFoods(){
       <span class="icon">${iconForFood(food.id)}</span>
       <div>
         <strong>${food.name}</strong>
-        <small>${food.variants ? `${food.variants}<br>` : ""}${food.nutrients}<br>${food.feature}<br>建议份额 ${food.weeklyTarget} · ${food.weeklyTimes}</small>
+        <small>${food.variants ? `${food.variants}<br>` : ""}${food.nutrients}<br>${food.feature}<br>建议频率：${food.weeklyTimes}</small>
       </div>
-      <div class="amount">${food.score.toFixed(1)}<small>个人优先级</small></div>
+      <div class="amount">${food.score.toFixed(1)}<small>参考分</small></div>
     </div>
   `).join("");
 }
