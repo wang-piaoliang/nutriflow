@@ -375,16 +375,16 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
-.receipt-photo-tools{
+.photo-tools{
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:flex-end;
   gap:10px;
   margin-top:12px;
   padding-top:10px;
   border-top:1px solid var(--line);
 }
-.private-note{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .photo-add,.photo-remove{
   border:1px solid var(--line);
@@ -395,10 +395,21 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   place-items:center;
 }
 .photo-add{flex:0 0 36px;width:36px;height:36px;font-size:18px}
-.receipt-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:10px}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:10px}
 .photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
 .photo-open{width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
-.photo-tile img{display:block;width:100%;height:100%;object-fit:cover}
+/* 餐食照片多是白盘子白米饭，直出会比暖白低饱和的界面亮出一大截，喧宾夺主。
+   缩略图统一压一点亮度和饱和度并叠一层薄纱，让它融进卡片；大图查看器不做处理，看原样。 */
+.photo-tile img{display:block;width:100%;height:100%;object-fit:cover;filter:brightness(.94) saturate(.88)}
+.photo-tile::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:color-mix(in srgb,var(--surface-2) 16%,transparent);
+  box-shadow:inset 0 0 0 1px rgba(20,20,20,.05);
+  pointer-events:none;
+}
 .photo-remove{position:absolute;top:4px;right:4px;width:28px;height:28px;font-size:16px;line-height:1;background:color-mix(in srgb,var(--surface) 90%,transparent)}
 .photo-viewer{
   position:fixed;
@@ -586,6 +597,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>采购历史</h2>
           <span class="subtle" id="purchaseMeta">0 条</span>
         </div>
+        <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub。</p>
         <div id="purchaseHistory"></div>
       </article>
     </div>
@@ -598,7 +610,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>每天实际吃了什么</h2>
           <span class="subtle" id="dietLogMeta">0 天</span>
         </div>
-        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片只能帮助估算，重量不明确时会标注“约”。</div>
+        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -858,8 +870,8 @@ async function loadPhotosByOwner(){
   }, {});
 }
 function photoToolsMarkup(ownerId){
-  return `<div class="receipt-photo-tools">
-    <p class="private-note">照片仅保存在这台设备，不上传 GitHub。</p>
+  // 隐私说明在每个板块顶部统一写一次，不在每条记录下重复。
+  return `<div class="photo-tools">
     <label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label>
   </div>`;
 }
@@ -869,7 +881,7 @@ function photoGridMarkup(scope, photos, label){
     const url = photoUrl(scope, photo.blob);
     return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-photo-alt="${label}照片" aria-label="打开${label}照片"><img src="${url}" alt="${label}照片"></button><button class="photo-remove" type="button" data-delete-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
   }).join("");
-  return `<div class="receipt-photos">${tiles}</div>`;
+  return `<div class="photo-grid">${tiles}</div>`;
 }
 function bindPhotoControls(container, rerender){
   container.querySelectorAll("[data-photo-owner]").forEach(input => {
