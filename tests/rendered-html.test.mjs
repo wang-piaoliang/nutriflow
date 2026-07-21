@@ -26,8 +26,9 @@ test("ships the personalized nutrition and purchase views", async () => {
     "utf8",
   );
 
-  assert.match(html, /鱼 300-500g \+ 畜禽肉合计 300-500g/);
+  assert.match(html, /鱼禽肉合计 600-1000g（其中水产 300-500g）/);
   assert.match(html, /鱼禽肉蛋", amount:"120-200g/);
+  assert.match(html, /每周 1 次（占水产 2 次中的 1 次）/);
   assert.match(html, /name:"牛肉"[\s\S]*name:"瘦猪肉"/);
   assert.match(html, /name:"鸡肉"/);
   assert.doesNotMatch(html, /name:"火鸡/);
@@ -36,6 +37,9 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /summarizeReceipt/);
   assert.match(html, /indexedDB/);
   assert.match(html, /仅保存在这台设备，不上传 GitHub/);
+  assert.match(html, /data-open-receipt-photo/);
+  assert.match(html, /id="photoViewer"/);
+  assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="dietLog"'));
 });
 
 test("bumps the offline cache when the app shell changes", async () => {
@@ -44,7 +48,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v15"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v16"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
