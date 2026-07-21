@@ -114,8 +114,10 @@ test("groups purchases into one card per receipt at runtime", async () => {
   assert.match(history, /盒马鲜生/);
   assert.doesNotMatch(history, /undefined/);
 
-  // The Hema receipt has no confirmed order total, so it stays marked as 已记.
-  assert.match(history, /已记 ¥24\.90/);
+  // Receipt totals are shown as a plain amount, with no 已记 prefix.
+  assert.match(history, /¥24\.90/);
+  assert.doesNotMatch(history, /已记/);
+  assert.doesNotMatch(meta, /已记/);
 
   // The privacy sentence sits once above the list, not inside every receipt.
   assert.equal(history.match(/data-photo-owner=/g).length, 2);
@@ -172,21 +174,51 @@ test("orders meal items by food category", async () => {
   assert.deepEqual(sort(["胡萝卜", "菠菜"]), ["胡萝卜", "菠菜"]);
 });
 
-test("keeps the receipt total-unknown flag per receipt, not per first item", async () => {
+test("folds receipt-level fields across every line item", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
-  // A receipt whose 待确认 marker sits on a later line item must still be
-  // reported as unknown; reading only the first item would miss it.
+  // A receipt note attached to a later line item must still reach the receipt
+  // header; reading only the first item would miss it.
   evaluate("purchases").push(
     { receiptId: "test-receipt", date: "2026-07-19 10:00", store: "测试店", item: "甲", amount: "100g", totalPrice: 1, bought: true },
-    { receiptId: "test-receipt", date: "2026-07-19 10:00", store: "测试店", item: "乙", amount: "100g", totalPrice: 2, bought: true, receiptTotalKnown: false, receiptNote: "总价待确认" },
+    { receiptId: "test-receipt", date: "2026-07-19 10:00", store: "测试店", item: "乙", amount: "100g", totalPrice: 2, bought: true, receiptNote: "总价待确认" },
   );
   await context.renderShopping();
 
   const history = elements.get("purchaseHistory").innerHTML;
   assert.equal(history.match(/<details class="receipt-card">/g).length, 3);
-  assert.match(history, /已记 ¥3\.00/);
+  assert.match(history, /¥3\.00/);
   assert.match(history, /总价待确认/);
+});
+
+test("compares unit prices per food", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+
+  const compare = elements.get("priceCompare").innerHTML;
+
+  // Seven weighed items. The shopping bag is sold per piece, so converting it
+  // to 元/kg would be meaningless and it must stay out.
+  assert.equal(elements.get("priceMeta").textContent, "7 种");
+  assert.doesNotMatch(compare, /购物袋/);
+
+  // 24.90 for 400g is 62.2 元/kg, the dearest, so that food leads the list.
+  assert.match(compare, /62\.2 元\/kg/);
+  assert.ok(compare.indexOf("牛腱肉") < compare.indexOf("胡萝卜"));
+
+  // The printed 元/kg tracks the unit price on the receipt itself.
+  assert.match(compare, /27\.6 元\/kg/);
+  assert.match(compare, /4\.0 元\/kg/);
+
+  // Buying the same food again groups both purchases and spans their range.
+  evaluate("purchases").push(
+    { receiptId: "cheaper", date: "2026-07-22 10:00", store: "便宜店", foodId: "beef", item: "牛腱肉", amount: "500g", totalPrice: 20, bought: true },
+  );
+  context.renderPriceComparison();
+
+  const regrouped = elements.get("priceCompare").innerHTML;
+  assert.equal(elements.get("priceMeta").textContent, "7 种");
+  assert.match(regrouped, /2 次 · 40\.0–62\.2/);
+  assert.match(regrouped, /class="fill hot"/);
 });
 
 test("bumps the offline cache when the app shell changes", async () => {
@@ -195,7 +227,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v25"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v26"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
