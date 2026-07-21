@@ -165,19 +165,18 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  assert.match(summary, /🥩 鱼禽瘦肉<\/strong><b>5 种/);
-  // Names appear in the order first seen, walking the records newest day first.
-  assert.match(summary, /虾 · 肉丸 · 鸡肉 · 猪肉 · 牛肉/);
-  assert.match(summary, /🥦 蔬菜<\/strong><b>3 种/);
-  assert.match(summary, /🍚 主食<\/strong><b>1 种/);
-
-  // A category with nothing eaten still shows up, so the gap is visible.
-  assert.match(summary, /🍎 水果坚果<\/strong><b>0 种/);
-  assert.match(summary, /本周还没吃到/);
-  assert.match(summary, /target-row-empty/);
-
+  // One compact line, not a row per category: 5 + 1 + 3 + 1 distinct foods.
   // 藜麦米饭 eaten at three meals counts once, not three times.
-  assert.equal((summary.match(/藜麦米饭/g) || []).length, 1);
+  assert.match(summary, /共 10 种食物/);
+  assert.match(summary, /🥩 鱼禽瘦肉 5/);
+  assert.match(summary, /🥛 蛋奶豆 1/);
+  assert.match(summary, /🥦 蔬菜 3/);
+  assert.match(summary, /🍚 主食 1/);
+
+  // The week is still running, so an untouched category is simply left out
+  // rather than called out as missing.
+  assert.doesNotMatch(summary, /水果坚果/);
+  assert.doesNotMatch(summary, /本周还没吃到/);
   assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 2 天有记录/);
 
   // Local parsing: a Monday record must not fall into the previous week.
@@ -262,7 +261,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v28"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v29"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
