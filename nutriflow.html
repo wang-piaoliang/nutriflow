@@ -738,18 +738,40 @@ const dietRecords = [
     date:"2026-07-21",
     summary:"1 餐 · 未提供估算量",
     meals:[
-      {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆"]}
+      {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆","藜麦米饭"]}
     ]
   },
   {
     date:"2026-07-20",
     summary:"2 餐 · 未提供估算量",
     meals:[
-      {name:"午餐", items:["虾","猪肉","牛肉","花菜","胡萝卜","毛豆"]},
-      {name:"晚餐", items:["牛肉","虾","花菜","胡萝卜","毛豆"]}
+      {name:"午餐", items:["虾","猪肉","牛肉","花菜","胡萝卜","毛豆","藜麦米饭"]},
+      {name:"晚餐", items:["牛肉","虾","花菜","胡萝卜","毛豆","藜麦米饭"]}
     ]
   }
 ];
+
+// 餐次里的食物按分类显示，顺序与「食材」页的分类一致：
+// 鱼禽瘦肉 → 蛋奶豆 → 蔬菜 → 主食 → 水果坚果。
+// 只影响显示，`dietRecords` 保持同步包上报的原始顺序。
+// 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果。
+const dietItemCategoryRules = [
+  {name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
+  {name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆浆","毛豆","腐竹"]},
+  {name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
+  {name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
+  {name:"水果坚果", keywords:["果","橙","橘","柚","蕉","莓","桃","李","杏","梨","葡萄","提子","瓜","枣","柿","石榴","核桃","腰果","花生"]}
+];
+function dietItemRank(name){
+  const index = dietItemCategoryRules.findIndex(rule => rule.keywords.some(keyword => name.includes(keyword)));
+  return index < 0 ? dietItemCategoryRules.length : index;
+}
+function sortMealItems(items){
+  return items
+    .map((name, index) => ({name, index, rank:dietItemRank(name)}))
+    .sort((a,b) => a.rank - b.rank || a.index - b.index)
+    .map(entry => entry.name);
+}
 
 const PHOTO_DB_NAME = "nutriflow_private_photos_v1";
 const PHOTO_STORE_NAME = "receiptPhotos";
@@ -1134,7 +1156,7 @@ async function renderDietLog(){
     return;
   }
   list.innerHTML = records.map(record => {
-    const meals = record.meals.map(meal => `<div class="meal-entry"><b>${meal.name}</b><small>${meal.items.join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small></div>`).join("");
+    const meals = record.meals.map(meal => `<div class="meal-entry"><b>${meal.name}</b><small>${sortMealItems(meal.items).join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small></div>`).join("");
     const owner = dietPhotoOwner(record.date);
     const attachedPhotos = photosByOwner[owner] || [];
     return `<div class="diet-day">
