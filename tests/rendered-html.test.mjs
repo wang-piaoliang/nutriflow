@@ -47,9 +47,10 @@ async function runAppScript() {
   vm.createContext(context);
   vm.runInContext(source, context);
 
-  // `render()` already fired this without awaiting; await it so a rejection
+  // `render()` already fired these without awaiting; await them so a rejection
   // fails the test instead of disappearing.
   await context.renderShopping();
+  await context.renderDietLog();
 
   // Top-level `const` stays in the context's lexical scope rather than becoming
   // a property of `context`, so reach the data through an expression.
@@ -93,7 +94,7 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /国产谷饲黄牛牛腱肉/);
   assert.match(html, /indexedDB/);
   assert.match(html, /仅保存在这台设备，不上传 GitHub/);
-  assert.match(html, /data-open-receipt-photo/);
+  assert.match(html, /data-open-photo/);
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
   assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="dietLog"'));
@@ -134,6 +135,10 @@ test("renders the confirmed diet log by day", async () => {
   // The sync package carried no gram estimates, so none may be invented.
   assert.match(list, /未提供估算量/);
   assert.doesNotMatch(list, /还没有实际饮食记录/);
+
+  // Each day offers the same device-local photo controls the receipts have.
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01]"/g).length, 2);
+  assert.match(list, /照片仅保存在这台设备，不上传 GitHub/);
 });
 
 test("keeps the receipt total-unknown flag per receipt, not per first item", async () => {
@@ -159,7 +164,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v22"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v23"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
