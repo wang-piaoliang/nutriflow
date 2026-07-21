@@ -38,6 +38,7 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 
 - Treat a pasted `NutriFlow 同步包` as structured input from the user's separate mobile ChatGPT conversation.
 - Deduplicate purchases by stable record ID when present; otherwise compare receipt date, store, item, amount, and price.
+- Current intake scope: record cooking ingredients, including meat, seafood, vegetables and other fresh ingredients meant to be eaten. Skip duplicates, bottled or coconut water, seasonings, milk, cooking oil and rice/staple purchases unless the user explicitly changes this rule.
 - Keep one receipt-level store/date/total summary and place individual products beneath it.
 - Preserve raw uncertainty. Mark unreadable receipt fields as `待确认`; do not invent values.
 - Meal records and purchase records may be public because the user explicitly approved this. Do not publish payment details, phone numbers, membership IDs, exact home addresses, barcodes, medical documents, or private health measurements.
