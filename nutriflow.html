@@ -144,7 +144,7 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 #home .target-row strong{font-size:13px}
 #home .target-row b{font-size:14px}
 #home .target-row small{font-size:12px}
-.reference-figure{margin:0}
+.reference-figure{margin:14px 0 0}
 .reference-figure a{
   display:block;
   overflow:hidden;
@@ -202,6 +202,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
+.target-inside{font-size:13px;font-weight:650;color:var(--text)}
+.target-row-empty{opacity:.62}
 .hero .metric span{color:#5f6e63}
 .list{display:grid;gap:10px}
 .item{
@@ -387,18 +389,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
-.photo-tools{
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:10px;
-  margin-top:12px;
-  padding-top:10px;
-  border-top:1px solid var(--line);
-}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.photo-add,.photo-remove{
+.photo-remove{
   border:1px solid var(--line);
   border-radius:8px;
   background:var(--surface);
@@ -406,8 +399,27 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   display:grid;
   place-items:center;
 }
-.photo-add{flex:0 0 36px;width:36px;height:36px;font-size:18px}
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:10px}
+/* 添加按钮就是网格里的一格，和缩略图并排。
+   之前它独占一整行、右对齐，左边整片空白，照片上方看着很空。 */
+.photo-add{
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  border:1px dashed var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:20px;
+  cursor:pointer;
+}
+.photo-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(86px,1fr));
+  gap:8px;
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
 .photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
 .photo-open{width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
 /* 餐食照片多是白盘子白米饭，直出会比暖白低饱和的界面亮出一大截，喧宾夺主。
@@ -506,6 +518,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   .metric{padding:10px 8px}
   .metric b{font-size:19px}
   .metric span{font-size:11px}
+  /* 每格约 104px 宽，"350-500g" 在 18px 下会断成两行，压到 16px 才放得下一行。 */
+  #home .metric b{font-size:16px}
   h2{font-size:17px}
   .section-title{align-items:flex-start}
   .subtle{font-size:12px}
@@ -553,7 +567,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="pill" id="todayLabel">今天</span>
         </div>
         <div class="grid3" id="homeCore"></div>
-        <p>按全天总量判断，不要求每顿完全平均；目标是长期营养、补铁和适度增重。</p>
+        <p>全天总量，目标是长期营养、补铁和适度增重。</p>
       </article>
 
       <article class="card">
@@ -570,18 +584,11 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle">全天总量</span>
         </div>
         <div class="list" id="dailyList"></div>
-      </article>
-
-      <article class="card desktop-span">
-        <div class="section-title">
-          <h2>居民膳食宝塔</h2>
-          <span class="pill">每日参考</span>
-        </div>
         <figure class="reference-figure">
           <a href="./balanced-diet-pagoda-2022.png" target="_blank" rel="noopener" aria-label="打开高清版中国居民平衡膳食宝塔">
             <img src="./balanced-diet-pagoda-2022.png" alt="中国居民平衡膳食宝塔（2022），展示每日各类食物建议摄入量" loading="lazy" decoding="async">
           </a>
-          <figcaption>图中的克数和毫升数均为每天的建议量；“每周至少 2 次水产品”是频率建议。点击图片可查看高清版。</figcaption>
+          <figcaption>《中国居民平衡膳食宝塔（2022）》。图中克数和毫升数都是每天的建议量，“每周至少 2 次水产品”是频率建议。点击图片看高清版。</figcaption>
         </figure>
       </article>
     </div>
@@ -628,7 +635,15 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     <div class="stack">
       <article class="card">
         <div class="section-title">
-          <h2>每天实际吃了什么</h2>
+          <h2>本周吃到</h2>
+          <span class="subtle" id="weekMeta"></span>
+        </div>
+        <div class="list" id="weekSummary"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>每天吃了什么</h2>
           <span class="subtle" id="dietLogMeta">0 天</span>
         </div>
         <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub。</div>
@@ -682,12 +697,11 @@ const categories = [
 ];
 
 const dailyTargets = [
-  {name:"鱼禽肉蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
-  {name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
-  {name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
-  {name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
-  {name:"奶/酸奶", amount:"300-500ml", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。"},
-  {name:"其中鸡蛋", amount:"1 个", note:"计入上面的鱼禽肉蛋总量；保留蛋黄。"}
+  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", inside:"🥚 其中鸡蛋 1 个", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。鸡蛋计入本项总量，保留蛋黄。"},
+  {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
+  {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
+  {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
+  {icon:"🥛", name:"奶/酸奶", amount:"300-500ml", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。"}
 ];
 
 const mealTargets = [
@@ -769,14 +783,12 @@ const purchases = [
 const dietRecords = [
   {
     date:"2026-07-21",
-    summary:"1 餐 · 未提供估算量",
     meals:[
       {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆","藜麦米饭"]}
     ]
   },
   {
     date:"2026-07-20",
-    summary:"2 餐 · 未提供估算量",
     meals:[
       {name:"午餐", items:["虾","猪肉","牛肉","花菜","胡萝卜","毛豆","藜麦米饭"]},
       {name:"晚餐", items:["牛肉","虾","花菜","胡萝卜","毛豆","藜麦米饭"]}
@@ -789,11 +801,11 @@ const dietRecords = [
 // 只影响显示，`dietRecords` 保持同步包上报的原始顺序。
 // 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果。
 const dietItemCategoryRules = [
-  {name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
-  {name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆浆","毛豆","腐竹"]},
-  {name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
-  {name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
-  {name:"水果坚果", keywords:["果","橙","橘","柚","蕉","莓","桃","李","杏","梨","葡萄","提子","瓜","枣","柿","石榴","核桃","腰果","花生"]}
+  {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
+  {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆浆","毛豆","腐竹"]},
+  {icon:"🥦", name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
+  {icon:"🍚", name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
+  {icon:"🍎", name:"水果坚果", keywords:["果","橙","橘","柚","蕉","莓","桃","李","杏","梨","葡萄","提子","瓜","枣","柿","石榴","核桃","腰果","花生"]}
 ];
 function dietItemRank(name){
   const index = dietItemCategoryRules.findIndex(rule => rule.keywords.some(keyword => name.includes(keyword)));
@@ -890,19 +902,14 @@ async function loadPhotosByOwner(){
     return groups;
   }, {});
 }
-function photoToolsMarkup(ownerId){
+function photoSectionMarkup(scope, ownerId, photos, label){
   // 隐私说明在每个板块顶部统一写一次，不在每条记录下重复。
-  return `<div class="photo-tools">
-    <label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label>
-  </div>`;
-}
-function photoGridMarkup(scope, photos, label){
-  if (!photos.length) return "";
+  // 添加按钮排在缩略图之后，作为网格的最后一格。
   const tiles = photos.map(photo => {
     const url = photoUrl(scope, photo.blob);
     return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-photo-alt="${label}照片" aria-label="打开${label}照片"><img src="${url}" alt="${label}照片"></button><button class="photo-remove" type="button" data-delete-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
   }).join("");
-  return `<div class="photo-grid">${tiles}</div>`;
+  return `<div class="photo-grid">${tiles}<label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>`;
 }
 function bindPhotoControls(container, rerender){
   container.querySelectorAll("[data-photo-owner]").forEach(input => {
@@ -1108,14 +1115,24 @@ function formatConsumedDate(value){
   const day = String(date.getDate()).padStart(2,"0");
   return `${year}-${month}-${day}`;
 }
-function sameWeek(dateText){
-  const date = new Date(dateText);
+// "2026-07-20" 交给 new Date() 会按 UTC 午夜解析，在负时区会落到前一天，
+// 于是周一那天的记录会被算进上一周。这里按本地日期构造，避免这个偏移。
+function localDate(text){
+  const [year, month, day] = String(text).slice(0,10).split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+function currentWeek(){
   const now = new Date();
   const monday = new Date(now);
   monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   monday.setHours(0,0,0,0);
   const next = new Date(monday);
   next.setDate(monday.getDate() + 7);
+  return {monday, next};
+}
+function sameWeek(dateText){
+  const {monday, next} = currentWeek();
+  const date = localDate(dateText);
   return date >= monday && date < next;
 }
 function weeklyBought(food){
@@ -1127,11 +1144,12 @@ function render(){
   const today = new Date();
   document.getElementById("todayLabel").textContent = `${today.getMonth()+1}/${today.getDate()}`;
   document.getElementById("homeCore").innerHTML = dailyTargets.slice(0,3).map(target => `
-    <div class="metric"><b>${target.amount}</b><span>${target.name}</span></div>
+    <div class="metric"><b>${target.amount}</b><span>${target.icon} ${target.name}</span></div>
   `).join("");
   document.getElementById("dailyList").innerHTML = dailyTargets.map(target => `
     <div class="target-row">
-      <div class="target-row-head"><strong>${target.name}</strong><b>${target.amount}</b></div>
+      <div class="target-row-head"><strong>${target.icon} ${target.name}</strong><b>${target.amount}</b></div>
+      ${target.inside ? `<span class="target-inside">${target.inside}</span>` : ""}
       <small>${target.note}</small>
     </div>
   `).join("");
@@ -1144,7 +1162,32 @@ function render(){
   void renderShopping();
   renderPriceComparison();
   renderFoods();
+  renderWeekSummary();
   void renderDietLog();
+}
+function renderWeekSummary(){
+  const {monday, next} = currentWeek();
+  const sunday = new Date(next);
+  sunday.setDate(next.getDate() - 1);
+  const label = date => `${date.getMonth() + 1}/${date.getDate()}`;
+  const records = dietRecords.filter(record => sameWeek(record.date));
+
+  // 按分类收集本周吃到的不同食物名。同一样吃了多次只算一种。
+  const eaten = dietItemCategoryRules.map(() => new Set());
+  records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
+    const rank = dietItemRank(item);
+    if (rank < dietItemCategoryRules.length) eaten[rank].add(item);
+  })));
+
+  document.getElementById("weekMeta").textContent = `${label(monday)}–${label(sunday)} · ${records.length} 天有记录`;
+  document.getElementById("weekSummary").innerHTML = dietItemCategoryRules.map((rule, index) => {
+    const items = Array.from(eaten[index]);
+    // 一种都没吃到的分类照样列出来，空缺本身就是有用的信息。
+    return `<div class="target-row${items.length ? "" : " target-row-empty"}">
+      <div class="target-row-head"><strong>${rule.icon} ${rule.name}</strong><b>${items.length} 种</b></div>
+      <small>${items.length ? items.join(" · ") : "本周还没吃到"}</small>
+    </div>`;
+  }).join("");
 }
 function renderPriceComparison(){
   const groups = groupPricesByFood();
@@ -1238,8 +1281,7 @@ async function renderShopping(){
         <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
       </summary>
       <div class="receipt-lines">${lines}</div>
-      ${photoToolsMarkup(receipt.key)}
-      ${photoGridMarkup("shopping", attachedPhotos, `${receipt.store} 小票`)}
+      ${photoSectionMarkup("shopping", receipt.key, attachedPhotos, `${receipt.store} 小票`)}
     </details>`;
   }).join("") : `<div class="note">暂无采购记录。</div>`;
   bindPhotoControls(document.getElementById("purchaseHistory"), () => void renderShopping());
@@ -1263,8 +1305,7 @@ async function renderDietLog(){
     return `<div class="diet-day">
       <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`}${attachedPhotos.length ? ` · 📷 ${attachedPhotos.length}` : ""}</span></div>
       ${meals}
-      ${photoToolsMarkup(owner)}
-      ${photoGridMarkup("diet", attachedPhotos, `${record.date} 餐食`)}
+      ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
   }).join("");
   bindPhotoControls(list, () => void renderDietLog());
