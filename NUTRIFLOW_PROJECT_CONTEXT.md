@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v24`
+- 当前离线缓存：`nutriflow-pwa-v25`
 - 底部导航顺序：`首页`、`食材`、`饮食`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
@@ -78,6 +78,8 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - 每个展开的小票可添加多张私密照片，缩略图可点击后在大图查看器中打开；点大图本身、黑色背景或右上角关闭按钮都可缩回。照片 Blob 仅保存在添加时所在设备、所在浏览器和同一网址的 IndexedDB（数据库 `nutriflow_private_photos_v1`）中；不写入采购数组、不提交 GitHub、不发布到 GitHub Pages，其他人和其他设备看不到。
 - 私密照片能力由采购和饮食两处共用，实现集中在 `listPrivatePhotos` / `savePrivatePhoto` / `removePrivatePhoto` / `photoToolsMarkup` / `photoGridMarkup` / `bindPhotoControls`。照片按 owner 归属：小票用 `receiptId`，饮食用 `diet:<日期>`（见 `dietPhotoOwner`）。IndexedDB 里的字段名仍叫 `receiptId`，是为了让已存在的照片记录无需迁移即可继续读取；新增其他归属时沿用同一字段，不要改 schema 或升 DB 版本。
 - 对象 URL 按区隔离保存在 `activePhotoUrls = {shopping, diet}`，各自渲染时只回收自己那一组。不要改回单一数组：那会让重渲染采购页时吊销饮食页仍在显示的缩略图 URL。
+- 「照片仅保存在这台设备」这句话每个板块只写一次：饮食写在页面顶部的说明框里，采购写在「采购历史」标题下的 `.private-note` 里。`photoToolsMarkup` 只输出右对齐的 📷 按钮，**不要**再把这句话塞回每条记录下面——用户明确要求不要重复。
+- 缩略图统一加了 `filter:brightness(.94) saturate(.88)` 和一层薄纱 `.photo-tile::after`。餐食照片多是白盘白米饭，直出比暖白低饱和的界面亮一大截，会盖过文字内容。大图查看器不加任何滤镜，保证看到的是原图。
 - 原始照片可继续由用户保存在 iCloud；PWA 不读取 iCloud 私有文件路径，也不保存 iCloud 共享链接。清除该浏览器的网站数据会同时清除本机照片附件。
 
 ## 3. 个性化与隐私
@@ -215,6 +217,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-21：「照片仅保存在这台设备」改为每个板块只写一次，不再跟在每条记录下面；饮食页顶部说明去掉“重量不明确时会标注约”一句。缩略图降亮降饱和并叠薄纱，避免白盘餐食照片盖过界面内容，大图仍是原图。离线缓存升至 v25。
 - 2026-07-21：餐次内的食物改为按分类顺序显示（鱼禽瘦肉 → 蛋奶豆 → 蔬菜 → 主食 → 水果坚果），排序只在渲染时进行。补记三餐遗漏的主食“藜麦米饭”，并修正同步包模板：过滤规则被误套用到饮食上导致主食被跳过，现已限定为只作用于采购，饮食要求写全所有食物并单列主食字段。离线缓存升至 v24。
 - 2026-07-21：饮食页每天的记录下方加入本机私密照片区（上传、缩略图、点开大图、删除、`📷 N` 计数）。私密照片实现抽成采购与饮食共用的函数，照片按 owner 归属，饮食用 `diet:<日期>`；对象 URL 改为按区隔离，避免重渲染采购页时吊销饮食页仍在用的缩略图。`renderDietLog` 改为 async 并加并发保护。已在真实 IndexedDB 下验证上传、缩略图、大图、删除和跨区渲染互不影响；离线缓存升至 v23。
 - 2026-07-21：写入 2026-07-21 午餐记录（同样无估算克数）。“肉丸”与“虾”一样没有对应采购记录，按既定规则照实保留。发现同步包的「消耗」与页面“吃完”含义不同，已在上下文中区分；离线缓存升至 v22。

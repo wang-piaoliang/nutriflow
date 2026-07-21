@@ -116,6 +116,10 @@ test("groups purchases into one card per receipt at runtime", async () => {
 
   // The Hema receipt has no confirmed order total, so it stays marked as 已记.
   assert.match(history, /已记 ¥24\.90/);
+
+  // The privacy sentence sits once above the list, not inside every receipt.
+  assert.equal(history.match(/data-photo-owner=/g).length, 2);
+  assert.doesNotMatch(history, /仅保存在这台设备/);
 });
 
 test("renders the confirmed diet log by day", async () => {
@@ -139,9 +143,10 @@ test("renders the confirmed diet log by day", async () => {
   assert.match(list, /未提供估算量/);
   assert.doesNotMatch(list, /还没有实际饮食记录/);
 
-  // Each day offers the same device-local photo controls the receipts have.
+  // Each day offers the same device-local photo controls the receipts have,
+  // but the privacy sentence is stated once per section, never per day.
   assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01]"/g).length, 2);
-  assert.match(list, /照片仅保存在这台设备，不上传 GitHub/);
+  assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
 test("orders meal items by food category", async () => {
@@ -190,7 +195,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v24"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v25"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
