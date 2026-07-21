@@ -95,6 +95,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /indexedDB/);
   assert.match(html, /仅保存在这台设备，不上传 GitHub/);
   assert.match(html, /data-open-photo/);
+
+  // Deleting is a long press on the photo itself. The old always-visible ×
+  // sat on top of a small thumbnail and was easy to hit by accident.
+  assert.doesNotMatch(html, /class="photo-remove"/);
+  assert.match(html, /长按可删除/);
+  assert.match(html, /-webkit-touch-callout:none/);
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
   assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="dietLog"'));
@@ -256,7 +262,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v27"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v28"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
