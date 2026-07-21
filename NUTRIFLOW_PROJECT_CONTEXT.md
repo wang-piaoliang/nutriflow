@@ -170,7 +170,8 @@ python3 -m http.server 8000 -d public
 - GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
 - 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages` 并请求 Pages 重建；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
 - 固定执行规则：每次完成一批较大的用户可见修改后，默认在同一任务内直接测试、提交并发布，无需发布前再询问或把发布留作后续步骤；最终交付时一次性说明修改和线上结果。用户明确要求发布的文档规则变更也立即同步到 GitHub。
-- 2026-07-21：`v18`（盒马牛腱肉记录与采购筛选规则）已通过测试并发布到 GitHub Pages。
+- 2026-07-21：`v19`（修复采购历史渲染 bug、新增运行时测试）已通过测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认采购历史显示 2 次小票。发布时 `gh-pages` 再次出现 non-fast-forward：`git subtree split` 生成的历史与远端已分叉，`npm run publish:pages` 的 `git push github <split>:refs/heads/gh-pages` 必然被拒。处理方式是保留远端历史的叠加式发布——先 `git fetch github gh-pages`，确认远端树与本地 `public/` 的差异只有本次改动，再用 `git commit-tree <HEAD:public 的 tree> -p <远端 gh-pages commit>` 造一个提交推上去，然后请求 Pages 重建。下次发布若再遇到同样报错，按此步骤处理，不要强推覆盖远端历史。
+- 2026-07-21：`v18`（盒马牛腱肉记录与采购筛选规则）已通过测试并发布到 GitHub Pages。该版本线上采购历史实际是空白的，问题在 v19 修复。
 - 2026-07-21：`v16`（目标同行显示、导航重排、动物性食物总量与频次修正、小票展开和照片大图）已通过测试、手机/桌面布局检查并发布到 GitHub Pages，线上构建状态为 `built`。
 - 2026-07-20：`v15`（首页图标配色）已通过测试并发布到 GitHub Pages；因同时发布造成 `gh-pages` 分支快进冲突后，已保留远端历史并完成合并式静态发布。
 - 2026-07-20：`v14` 已在本地通过测试并提交为 `55bb50c`，但两次发布均因本机无法连接 `github.com:443` 超时而未推送；网络恢复后优先运行 `npm run publish:pages`。
