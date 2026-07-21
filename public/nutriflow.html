@@ -709,18 +709,19 @@ const categories = [
 ];
 
 const dailyTargets = [
-  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。🥚 其中鸡蛋 1 个，计入本项总量，保留蛋黄。"},
+  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
   {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
   {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
   {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
-  {icon:"🥛", name:"奶/酸奶", amount:"300-500ml", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。"}
+  {icon:"🥛", name:"奶/酸奶/蛋", amount:"300-500ml + 蛋 1 个", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。🥚 鸡蛋保留蛋黄；按膳食指南它归在鱼禽肉蛋里，克数仍计入上面那 120-200g，这里只是把它和早餐的奶放在一起看。"}
 ];
 
+// 三餐用一天的时间线（日出→正午→夜晚），加餐不属于这条线，所以用食物本身。
 const mealTargets = [
-  {name:"早餐", amount:"牛奶 300ml + 鸡蛋 1 个 + 主食", note:"全麦面包、燕麦或米饭都可以；增重靠规律吃够，不靠高油。"},
-  {name:"午餐", amount:"鱼/瘦肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
-  {name:"晚餐", amount:"鱼/瘦肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
-  {name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
+  {icon:"🌅", name:"早餐", amount:"牛奶 300ml + 鸡蛋 1 个 + 主食", note:"全麦面包、燕麦或米饭都可以；增重靠规律吃够，不靠高油。"},
+  {icon:"🌞", name:"午餐", amount:"鱼/瘦肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
+  {icon:"🌙", name:"晚餐", amount:"鱼/瘦肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
+  {icon:"🍏", name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
 ];
 
 const foods = [
@@ -1199,7 +1200,7 @@ function render(){
   `).join("");
   document.getElementById("mealList").innerHTML = mealTargets.map(target => `
     <div class="target-row">
-      <div class="target-row-head"><strong>${target.name}</strong><b>${target.amount}</b></div>
+      <div class="target-row-head"><strong>${target.icon} ${target.name}</strong><b>${target.amount}</b></div>
       <small>${target.note}</small>
     </div>
   `).join("");
@@ -1280,7 +1281,7 @@ async function renderShopping(){
     const icon = iconForFood(purchase.foodId);
     return `<label class="buy-row ${done ? "done" : ""}">
       <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
-      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购买于 ${purchase.date.slice(0,10)}<br>${purchase.store}${done ? `<br>吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
+      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购于 ${purchase.date.slice(0,10)} ${purchase.store}${done ? ` · 吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
       <span class="amount">${icon}</span>
     </label>`;
   };
