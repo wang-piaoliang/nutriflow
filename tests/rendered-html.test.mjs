@@ -141,14 +141,43 @@ test("renders the confirmed diet log by day", async () => {
   // Newest day first, regardless of the order inside the source array.
   assert.ok(list.indexOf("2026-07-21") < list.indexOf("2026-07-20"));
 
-  // The sync package carried no gram estimates, so none may be invented.
-  assert.match(list, /未提供估算量/);
+  // Days fall back to a plain meal count; no 未提供估算量 wording anywhere.
+  assert.match(list, /1 餐/);
+  assert.match(list, /2 餐/);
+  assert.doesNotMatch(list, /未提供估算量/);
   assert.doesNotMatch(list, /还没有实际饮食记录/);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
   assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01]"/g).length, 2);
   assert.doesNotMatch(list, /仅保存在这台设备/);
+});
+
+test("summarises how many foods per category the week covered", async () => {
+  const { context, elements } = await runAppScript();
+
+  // Both records fall in the same week as the fixed reference date below.
+  const summary = elements.get("weekSummary").innerHTML;
+
+  assert.match(summary, /🥩 鱼禽瘦肉<\/strong><b>5 种/);
+  // Names appear in the order first seen, walking the records newest day first.
+  assert.match(summary, /虾 · 肉丸 · 鸡肉 · 猪肉 · 牛肉/);
+  assert.match(summary, /🥦 蔬菜<\/strong><b>3 种/);
+  assert.match(summary, /🍚 主食<\/strong><b>1 种/);
+
+  // A category with nothing eaten still shows up, so the gap is visible.
+  assert.match(summary, /🍎 水果坚果<\/strong><b>0 种/);
+  assert.match(summary, /本周还没吃到/);
+  assert.match(summary, /target-row-empty/);
+
+  // 藜麦米饭 eaten at three meals counts once, not three times.
+  assert.equal((summary.match(/藜麦米饭/g) || []).length, 1);
+  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 2 天有记录/);
+
+  // Local parsing: a Monday record must not fall into the previous week.
+  const monday = context.currentWeek().monday;
+  const iso = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+  assert.equal(context.sameWeek(iso), true);
 });
 
 test("orders meal items by food category", async () => {
@@ -227,7 +256,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v26"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v27"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
