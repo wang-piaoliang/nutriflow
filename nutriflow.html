@@ -391,14 +391,6 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.photo-remove{
-  border:1px solid var(--line);
-  border-radius:8px;
-  background:var(--surface);
-  color:var(--text);
-  display:grid;
-  place-items:center;
-}
 /* 添加按钮就是网格里的一格，和缩略图并排。
    之前它独占一整行、右对齐，左边整片空白，照片上方看着很空。 */
 .photo-add{
@@ -421,10 +413,30 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-top:1px solid var(--line);
 }
 .photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
-.photo-open{width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
+.photo-open{
+  width:100%;
+  height:100%;
+  padding:0;
+  border:0;
+  background:transparent;
+  cursor:zoom-in;
+  /* 关掉 iOS 长按图片的“存储图片/拷贝”气泡，长按要留给删除。 */
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
+}
 /* 餐食照片多是白盘子白米饭，直出会比暖白低饱和的界面亮出一大截，喧宾夺主。
    缩略图统一压一点亮度和饱和度并叠一层薄纱，让它融进卡片；大图查看器不做处理，看原样。 */
-.photo-tile img{display:block;width:100%;height:100%;object-fit:cover;filter:brightness(.94) saturate(.88)}
+.photo-tile img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  filter:brightness(.94) saturate(.88);
+  transition:transform .2s ease, filter .2s ease;
+}
+/* 按住时缩一下、暗一点，让人知道长按正在生效，而不是没反应。 */
+.photo-open.holding img{transform:scale(.94);filter:brightness(.8) saturate(.8)}
 .photo-tile::after{
   content:"";
   position:absolute;
@@ -434,7 +446,6 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   box-shadow:inset 0 0 0 1px rgba(20,20,20,.05);
   pointer-events:none;
 }
-.photo-remove{position:absolute;top:4px;right:4px;width:28px;height:28px;font-size:16px;line-height:1;background:color-mix(in srgb,var(--surface) 90%,transparent)}
 .photo-viewer{
   position:fixed;
   inset:0;
@@ -616,7 +627,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>采购历史</h2>
           <span class="subtle" id="purchaseMeta">0 条</span>
         </div>
-        <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub。</p>
+        <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</p>
         <div id="purchaseHistory"></div>
       </article>
 
@@ -646,7 +657,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>每天吃了什么</h2>
           <span class="subtle" id="dietLogMeta">0 天</span>
         </div>
-        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub。</div>
+        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -907,7 +918,7 @@ function photoSectionMarkup(scope, ownerId, photos, label){
   // 添加按钮排在缩略图之后，作为网格的最后一格。
   const tiles = photos.map(photo => {
     const url = photoUrl(scope, photo.blob);
-    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-photo-alt="${label}照片" aria-label="打开${label}照片"><img src="${url}" alt="${label}照片"></button><button class="photo-remove" type="button" data-delete-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
+    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
   return `<div class="photo-grid">${tiles}<label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>`;
 }
@@ -926,21 +937,44 @@ function bindPhotoControls(container, rerender){
       }
     });
   });
-  container.querySelectorAll("[data-delete-photo]").forEach(button => {
-    button.addEventListener("click", async event => {
-      event.stopPropagation();
-      if (!window.confirm("删除这张仅保存在本机的照片？")) return;
-      try{
-        await removePrivatePhoto(button.dataset.deletePhoto);
-        rerender();
-      }catch(error){
-        console.error(error);
-        window.alert("照片未能删除，请重试。");
-      }
-    });
-  });
+  // 轻点看大图，长按删除。缩略图上不再常驻一个 ×：它太小又贴着图，
+  // 在手机上很容易在想放大时误触。
   container.querySelectorAll("[data-open-photo]").forEach(button => {
+    let holdTimer = null;
+    let deletedByHold = false;
+    let startX = 0;
+    let startY = 0;
+    const endHold = () => {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      button.classList.remove("holding");
+    };
+    button.addEventListener("pointerdown", event => {
+      deletedByHold = false;
+      startX = event.clientX;
+      startY = event.clientY;
+      endHold();
+      button.classList.add("holding");
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        deletedByHold = true;
+        button.classList.remove("holding");
+        void deletePhotoAfterConfirm(button.dataset.deletePhoto, rerender);
+      }, 550);
+    });
+    // 手指移动通常是在滚动页面，不该当成长按。
+    button.addEventListener("pointermove", event => {
+      if (Math.abs(event.clientX - startX) > 10 || Math.abs(event.clientY - startY) > 10) endHold();
+    });
+    ["pointerup","pointercancel","pointerleave"].forEach(type => button.addEventListener(type, endHold));
+    // 压掉 iOS 长按图片弹出的“存储图片”菜单。
+    button.addEventListener("contextmenu", event => event.preventDefault());
     button.addEventListener("click", () => {
+      // 长按结束后系统仍会补一个 click，这里挡掉，避免删完又弹出大图。
+      if (deletedByHold){
+        deletedByHold = false;
+        return;
+      }
       const viewer = document.getElementById("photoViewer");
       const image = document.getElementById("photoViewerImage");
       image.src = button.dataset.openPhoto;
@@ -950,6 +984,16 @@ function bindPhotoControls(container, rerender){
       viewer.querySelector(".photo-viewer-close").focus();
     });
   });
+}
+async function deletePhotoAfterConfirm(id, rerender){
+  if (!window.confirm("删除这张仅保存在本机的照片？")) return;
+  try{
+    await removePrivatePhoto(id);
+    rerender();
+  }catch(error){
+    console.error(error);
+    window.alert("照片未能删除，请重试。");
+  }
 }
 function categoryById(id){return categories.find(category => category.id === id)}
 function foodById(id){return foods.find(food => food.id === id)}
