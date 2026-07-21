@@ -410,7 +410,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   background:rgba(0,0,0,.9);
 }
 [hidden]{display:none!important}
-.photo-viewer img{display:block;max-width:min(100%,900px);max-height:calc(100vh - 64px);margin:auto;object-fit:contain}
+.photo-viewer img{display:block;max-width:min(100%,900px);max-height:calc(100vh - 64px);margin:auto;object-fit:contain;cursor:zoom-out}
 .photo-viewer-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:#fff;color:#111;font-size:22px;line-height:1}
 .note{
   margin-top:10px;
@@ -1147,6 +1147,7 @@ function closePhotoViewer(){
   photoViewerTrigger = null;
 }
 photoViewer.querySelector(".photo-viewer-close").addEventListener("click", closePhotoViewer);
+document.getElementById("photoViewerImage").addEventListener("click", closePhotoViewer);
 photoViewer.addEventListener("click", event => {
   if (event.target === photoViewer) closePhotoViewer();
 });
