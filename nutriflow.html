@@ -227,11 +227,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 .target-row-head{
   display:grid;
-  grid-template-columns:minmax(48px,auto) minmax(0,1fr);
+  grid-template-columns:max-content minmax(0,1fr);
   gap:12px;
   align-items:flex-start;
 }
 .target-row strong{font-size:15px}
+#home .target-row strong{white-space:nowrap}
 .target-row b{
   font-size:16px;
   line-height:1.35;
@@ -343,10 +344,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .receipt-card > summary::-webkit-details-marker{display:none}
 .receipt-head{
   display:grid;
-  grid-template-columns:1fr auto;
+  grid-template-columns:auto minmax(0,1fr) auto;
   gap:10px;
   align-items:start;
 }
+.receipt-toggle{
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+  font-size:25px;
+  line-height:1;
+  transform-origin:center;
+  transition:transform .18s ease;
+}
+.receipt-card[open] .receipt-toggle{transform:rotate(90deg)}
 .receipt-head strong{display:block;font-size:17px}
 .receipt-head small{display:block;margin-top:4px;color:var(--muted);line-height:1.35}
 .receipt-total{text-align:right;font-weight:780;font-size:18px}
@@ -384,8 +397,21 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .photo-add{flex:0 0 36px;width:36px;height:36px;font-size:18px}
 .receipt-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;margin-top:10px}
 .photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
+.photo-open{width:100%;height:100%;padding:0;border:0;background:transparent;cursor:zoom-in}
 .photo-tile img{display:block;width:100%;height:100%;object-fit:cover}
 .photo-remove{position:absolute;top:4px;right:4px;width:28px;height:28px;font-size:16px;line-height:1;background:color-mix(in srgb,var(--surface) 90%,transparent)}
+.photo-viewer{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  display:grid;
+  place-items:center;
+  padding:52px 12px 12px;
+  background:rgba(0,0,0,.9);
+}
+[hidden]{display:none!important}
+.photo-viewer img{display:block;max-width:min(100%,900px);max-height:calc(100vh - 64px);margin:auto;object-fit:contain}
+.photo-viewer-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:#fff;color:#111;font-size:22px;line-height:1}
 .note{
   margin-top:10px;
   padding:12px;
@@ -460,7 +486,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   h2{font-size:17px}
   .section-title{align-items:flex-start}
   .subtle{font-size:12px}
-  .target-row-head{grid-template-columns:48px minmax(0,1fr);gap:8px}
+  .target-row-head{grid-template-columns:max-content minmax(0,1fr);gap:8px}
   .target-row b{text-align:left;font-size:16px}
   .target-row strong{font-size:14px}
   .target-row small{font-size:13px}
@@ -603,14 +629,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-btn active" data-view="home"><b>◎</b><span>首页</span></button>
-  <button class="nav-btn" data-view="dietLog"><b>▤</b><span>饮食</span></button>
   <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
+  <button class="nav-btn" data-view="dietLog"><b>▤</b><span>饮食</span></button>
   <button class="nav-btn" data-view="shopping"><b>＋</b><span>采购</span></button>
 </nav>
 
+<div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="小票照片大图" hidden>
+  <button class="photo-viewer-close" type="button" aria-label="关闭大图">×</button>
+  <img id="photoViewerImage" alt="小票照片大图">
+</div>
+
 <script>
 const categories = [
-  {id:"animalProtein", name:"鱼禽瘦肉", icon:"🐟", weeklyAmount:"鱼 300-500g + 畜禽肉合计 300-500g", weeklyVariety:"3-5 种", note:"鱼约 2 次；红肉和禽肉共享畜禽肉额度，不分别叠加。"},
+  {id:"animalProtein", name:"鱼禽瘦肉", icon:"🐟", weeklyAmount:"鱼禽肉合计 600-1000g（其中水产 300-500g）", weeklyVariety:"3-5 种", note:"另加蛋类 300-350g，动物性食物总计约 900-1350g。水产 2 次、禽肉 2-3 次、牛猪羊合计约 2 次；同类替换，不把每项次数相加。"},
   {id:"eggDairySoy", name:"蛋奶豆", icon:"🥛", weeklyAmount:"鸡蛋约 7 个 + 奶 2.1-3.5L + 大豆及制品适量", weeklyVariety:"3-5 种"},
   {id:"vegetable", name:"蔬菜", icon:"🥦", weeklyAmount:"2.1-3.5kg", weeklyVariety:"7-10 种", note:"每天尽量安排 3-5 种，深色蔬菜约占一半。"},
   {id:"staple", name:"主食", icon:"🍚", weeklyAmount:"干粮 0.7-1.0kg + 薯类 0.6-1.0kg", weeklyVariety:"3-5 种"},
@@ -634,16 +665,16 @@ const mealTargets = [
 ];
 
 const foods = [
-  {id:"fattyFish", category:"animalProtein", name:"富脂鱼", variants:"鲭鱼 / 沙丁鱼 / 三文鱼", weeklyTarget:"200-350g", weeklyTimes:"1-2 次", score:4.9, nutrients:"EPA/DHA、维 D、蛋白质", feature:"鱼类中的优先项，补充红肉和禽肉难以提供的长链 Omega-3；清蒸、烤或炖，少油炸。"},
-  {id:"beef", category:"animalProtein", name:"牛肉", variants:"里脊 / 臀肉 / 腿肉 / 少肥西冷", weeklyTarget:"150-250g", weeklyTimes:"1-2 次", score:4.8, nutrients:"血红素铁、B12、锌、优质蛋白", feature:"对缺铁恢复最有针对性，所以排在猪肉前；考虑结直肠癌家族史，控制总量并避开加工肉。"},
-  {id:"leanPork", category:"animalProtein", name:"瘦猪肉", variants:"猪小里脊 / 通脊 / 少肥梅花肉", weeklyTarget:"150-250g", weeklyTimes:"1-2 次", score:4.6, nutrients:"维 B1、蛋白质、铁、锌", feature:"小里脊和通脊都是猪肉。优先里脊、通脊；梅花肉选少肥部分，兼顾口感和胆囊结石饮食。"},
-  {id:"shellfish", category:"animalProtein", name:"虾贝类", variants:"虾仁 / 扇贝 / 贝柱", weeklyTarget:"0-200g", weeklyTimes:"0-1 次", score:4.4, nutrients:"蛋白质、B12、硒、锌", feature:"适合替换一顿水产增加多样性，但不能完全替代富脂鱼的 Omega-3。"},
-  {id:"chicken", category:"animalProtein", name:"鸡肉", variants:"去皮鸡腿 / 鸡小胸 / 鸡胸", weeklyTarget:"100-250g", weeklyTimes:"1-2 次", score:4.2, nutrients:"蛋白质、烟酸、B 族维生素", feature:"三者差异不值得拆开评分：鸡腿口感和铁锌略好，鸡小胸与鸡胸更瘦，按口味轮换即可。"},
-  {id:"whiteFish", category:"animalProtein", name:"白肉鱼", variants:"鳕鱼 / 巴沙鱼 / 鲈鱼", weeklyTarget:"0-200g", weeklyTimes:"0-1 次", score:4.1, nutrients:"蛋白质、硒", feature:"清淡易吃，主要贡献蛋白质；和富脂鱼轮换，不把它当作 Omega-3 的主要来源。"},
+  {id:"fattyFish", category:"animalProtein", name:"富脂鱼", variants:"鲭鱼 / 沙丁鱼 / 三文鱼", weeklyTarget:"200-350g", weeklyTimes:"每周 1 次（占水产 2 次中的 1 次）", score:4.9, nutrients:"EPA/DHA、维 D、蛋白质", feature:"鱼类中的优先项，补充红肉和禽肉难以提供的长链 Omega-3；清蒸、烤或炖，少油炸。"},
+  {id:"beef", category:"animalProtein", name:"牛肉", variants:"里脊 / 臀肉 / 腿肉 / 少肥西冷", weeklyTarget:"150-250g", weeklyTimes:"每周约 1 次（与猪、羊共享红肉次数）", score:4.8, nutrients:"血红素铁、B12、锌、优质蛋白", feature:"对缺铁恢复最有针对性，所以排在猪肉前；考虑结直肠癌家族史，控制总量并避开加工肉。"},
+  {id:"leanPork", category:"animalProtein", name:"瘦猪肉", variants:"猪小里脊 / 通脊 / 少肥梅花肉", weeklyTarget:"150-250g", weeklyTimes:"每周约 1 次（与牛、羊共享红肉次数）", score:4.6, nutrients:"维 B1、蛋白质、铁、锌", feature:"小里脊和通脊都是猪肉。优先里脊、通脊；梅花肉选少肥部分，兼顾口感和胆囊结石饮食。"},
+  {id:"shellfish", category:"animalProtein", name:"虾贝类", variants:"虾仁 / 扇贝 / 贝柱", weeklyTarget:"0-200g", weeklyTimes:"每周 0-1 次（与白肉鱼轮换）", score:4.4, nutrients:"蛋白质、B12、硒、锌", feature:"适合替换一顿水产增加多样性，但不能完全替代富脂鱼的 Omega-3。"},
+  {id:"chicken", category:"animalProtein", name:"鸡肉", variants:"去皮鸡腿 / 鸡小胸 / 鸡胸", weeklyTarget:"100-250g", weeklyTimes:"每周 2-3 次", score:4.2, nutrients:"蛋白质、烟酸、B 族维生素", feature:"三者差异不值得拆开评分：鸡腿口感和铁锌略好，鸡小胸与鸡胸更瘦，按口味轮换即可。"},
+  {id:"whiteFish", category:"animalProtein", name:"白肉鱼", variants:"鳕鱼 / 巴沙鱼 / 鲈鱼", weeklyTarget:"0-200g", weeklyTimes:"每周 0-1 次（与虾贝轮换）", score:4.1, nutrients:"蛋白质、硒", feature:"清淡易吃，主要贡献蛋白质；和富脂鱼轮换，不把它当作 Omega-3 的主要来源。"},
   {id:"liver", category:"animalProtein", name:"动物肝脏", variants:"猪肝 / 鸡肝", weeklyTarget:"每次 25-50g", weeklyTimes:"每月 2-3 次", score:4.0, nutrients:"血红素铁、维 A、B12、叶酸", feature:"营养密度高但不是越多越好。你正在补铁，少量轮换即可，不用每周固定购买。"},
-  {id:"lamb", category:"animalProtein", name:"羊肉", variants:"瘦羊腿 / 羊里脊", weeklyTarget:"0-150g", weeklyTimes:"0-1 次", score:3.9, nutrients:"铁、锌、B12、蛋白质", feature:"可替换一顿牛猪肉；仍计入红肉总量，不额外叠加。"},
-  {id:"squid", category:"animalProtein", name:"鱿鱼 / 墨鱼", variants:"鲜鱿鱼 / 墨鱼", weeklyTarget:"0-150g", weeklyTimes:"0-1 次", score:3.8, nutrients:"蛋白质、硒、B12", feature:"作为水产变化即可，少选重盐、油炸或加工版本。"},
-  {id:"duck", category:"animalProtein", name:"鸭肉", variants:"去皮鸭腿 / 鸭胸", weeklyTarget:"0-150g", weeklyTimes:"0-1 次", score:3.7, nutrients:"蛋白质、铁、B 族维生素", feature:"偶尔换口味；去皮、少油烹调，仍计入畜禽肉合计。"},
+  {id:"lamb", category:"animalProtein", name:"羊肉", variants:"瘦羊腿 / 羊里脊", weeklyTarget:"0-150g", weeklyTimes:"偶尔替换牛肉或猪肉", score:3.9, nutrients:"铁、锌、B12、蛋白质", feature:"可替换一顿牛猪肉；仍计入红肉总量，不额外叠加。"},
+  {id:"squid", category:"animalProtein", name:"鱿鱼 / 墨鱼", variants:"鲜鱿鱼 / 墨鱼", weeklyTarget:"0-150g", weeklyTimes:"偶尔替换白肉鱼或虾贝", score:3.8, nutrients:"蛋白质、硒、B12", feature:"作为水产变化即可，少选重盐、油炸或加工版本。"},
+  {id:"duck", category:"animalProtein", name:"鸭肉", variants:"去皮鸭腿 / 鸭胸", weeklyTarget:"0-150g", weeklyTimes:"偶尔替换鸡肉", score:3.7, nutrients:"蛋白质、铁、B 族维生素", feature:"偶尔换口味；去皮、少油烹调，仍计入畜禽肉合计。"},
 
   {id:"egg", category:"eggDairySoy", name:"鸡蛋", weeklyTarget:"约 7 个", weeklyTimes:"每天 1 个", score:4.6, nutrients:"蛋白质、B12、胆碱、维 D", feature:"早餐核心，保留蛋黄；不需要为了增重每天吃到 2 个。"},
   {id:"milk", category:"eggDairySoy", name:"牛奶", weeklyTarget:"2.1-3.5L", weeklyTimes:"每天", score:4.3, nutrients:"蛋白质、钙、B2", feature:"每天 300-500ml。能耐受时可选普通全脂奶，用规律摄入支持增重。"},
@@ -996,12 +1027,13 @@ async function renderShopping(){
     `).join("");
     const photoTiles = attachedPhotos.map(photo => {
       const url = photoUrl(photo.blob);
-      return `<div class="photo-tile"><img src="${url}" alt="${receipt.store} 小票照片"><button class="photo-remove" type="button" data-delete-receipt-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
+      return `<div class="photo-tile"><button class="photo-open" type="button" data-open-receipt-photo="${url}" data-photo-alt="${receipt.store} 小票照片" aria-label="打开${receipt.store}小票照片"><img src="${url}" alt="${receipt.store} 小票照片"></button><button class="photo-remove" type="button" data-delete-receipt-photo="${photo.id}" aria-label="删除这张本机照片" title="删除这张本机照片">×</button></div>`;
     }).join("");
     return `<details class="receipt-card">
       <summary class="receipt-head">
+        <span class="receipt-toggle" aria-hidden="true">›</span>
         <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件${categorySummary ? ` · ${categorySummary}` : ""}</small></div>
-        <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length} · ` : ""}展开</small></div>
+        <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
       </summary>
       <div class="receipt-lines">${lines}</div>
       <div class="receipt-photo-tools">
@@ -1026,7 +1058,8 @@ async function renderShopping(){
     });
   });
   document.querySelectorAll("[data-delete-receipt-photo]").forEach(button => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", async event => {
+      event.stopPropagation();
       if (!window.confirm("删除这张仅保存在本机的照片？")) return;
       try{
         await removeReceiptPhoto(button.dataset.deleteReceiptPhoto);
@@ -1035,6 +1068,17 @@ async function renderShopping(){
         console.error(error);
         window.alert("照片未能删除，请重试。");
       }
+    });
+  });
+  document.querySelectorAll("[data-open-receipt-photo]").forEach(button => {
+    button.addEventListener("click", () => {
+      const viewer = document.getElementById("photoViewer");
+      const image = document.getElementById("photoViewerImage");
+      image.src = button.dataset.openReceiptPhoto;
+      image.alt = button.dataset.photoAlt || "小票照片大图";
+      photoViewerTrigger = button;
+      viewer.hidden = false;
+      viewer.querySelector(".photo-viewer-close").focus();
     });
   });
 }
@@ -1060,7 +1104,7 @@ function renderFoods(){
       .slice(0,6)
       .map(food => food.name)
       .join(" / ");
-    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周共买 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${category.note ? `${category.note}<br>` : ""}${top}<br>库内 ${list.length} 组食材可轮换</span></div>`;
+    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周目标 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${category.note ? `${category.note}<br>` : ""}${top}<br>库内 ${list.length} 组食材可轮换</span></div>`;
   }).join("");
   document.getElementById("weeklySummary").innerHTML = summary;
   const tabs = document.getElementById("foodTabs");
@@ -1093,6 +1137,21 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     document.getElementById(button.dataset.view).classList.add("active");
     window.scrollTo({top:0, behavior:"smooth"});
   });
+});
+const photoViewer = document.getElementById("photoViewer");
+let photoViewerTrigger = null;
+function closePhotoViewer(){
+  photoViewer.hidden = true;
+  document.getElementById("photoViewerImage").removeAttribute("src");
+  photoViewerTrigger?.focus();
+  photoViewerTrigger = null;
+}
+photoViewer.querySelector(".photo-viewer-close").addEventListener("click", closePhotoViewer);
+photoViewer.addEventListener("click", event => {
+  if (event.target === photoViewer) closePhotoViewer();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !photoViewer.hidden) closePhotoViewer();
 });
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {
