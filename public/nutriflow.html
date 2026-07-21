@@ -1008,10 +1008,10 @@ async function renderShopping(){
   const total = purchases.reduce((sum, purchase) => sum + Number(purchase.totalPrice || 0), 0);
   const receiptMap = purchases.reduce((map, purchase) => {
     const key = purchase.receiptId || `${purchase.store || "未知地点"}-${purchase.date}`;
-    if (!map[key]) map[key] = {key, store: purchase.store || "未记录地点", date: purchase.date, items: [], totalKnown:purchase.receiptTotalKnown !== false, note:purchase.receiptNote || ""};
-    map.totalKnown = map.totalKnown && purchase.receiptTotalKnown !== false;
-    if (!map.note && purchase.receiptNote) map.note = purchase.receiptNote;
-    map[key].items.push(purchase);
+    const receipt = (map[key] ||= {key, store: purchase.store || "未记录地点", date: purchase.date, items: [], totalKnown:true, note:""});
+    receipt.totalKnown = receipt.totalKnown && purchase.receiptTotalKnown !== false;
+    if (!receipt.note && purchase.receiptNote) receipt.note = purchase.receiptNote;
+    receipt.items.push(purchase);
     return map;
   }, {});
   const receipts = Object.values(receiptMap).sort((a,b) => b.date.localeCompare(a.date));

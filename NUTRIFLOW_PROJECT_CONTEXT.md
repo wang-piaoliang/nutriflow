@@ -21,7 +21,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v18`
+- 当前离线缓存：`nutriflow-pwa-v19`
 - 底部导航顺序：`首页`、`食材`、`饮食`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
@@ -151,6 +151,8 @@ npm test
 git diff --check
 ```
 
+`tests/rendered-html.test.mjs` 除了对源码做正则断言，还会用 `node:vm` 加上一套最小 DOM 桩真正执行 `public/nutriflow.html` 里的脚本，并 `await renderShopping()`。这是为了捕获渲染期的运行时异常：`render()` 用 `void renderShopping()` 触发渲染，异常会变成静默的 rejected promise，浏览器控制台不报错、对应区块只是空白，纯源码断言查不出来。改动渲染逻辑后要确认这两个运行时测试仍然通过。
+
 轻量静态预览：
 
 ```bash
@@ -187,7 +189,8 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
-- 2026-07-21：按新的记录范围新增盒马牛腱肉 400g，跳过椰子水和重复的 fudi 小票；未知整单总价的小票改为显示“已记”金额；离线缓存升至 v18，已发布。
+- 2026-07-21：修复采购历史无法渲染的 bug。小票分组的 `reduce` 把 `totalKnown` 和 `note` 写到了累加器本身而不是 `map[key]`，导致 `Object.values` 多出 `undefined` 和一条字符串；页面把小票数显示成 4 次，遍历到字符串时抛 `TypeError`，整个采购历史区块空白，小票照片的上传/删除/查看监听器也随之失效。改为写回当前小票对象，并对每件商品归并 `totalKnown` / `note`，使“待确认”标记出现在非首件商品上时同样生效。新增两个用 `node:vm` 实际执行页面脚本的测试；离线缓存升至 v19。
+- 2026-07-21：按新的记录范围新增盒马牛腱肉 400g，跳过椰子水和重复的 fudi 小票；未知整单总价的小票改为显示“已记”金额；离线缓存升至 v18，已发布。该版本引入了上面这个渲染 bug。
 - 2026-07-21：小票照片大图支持点击照片本身直接缩回；离线缓存升至 v17，已通过测试并发布到 GitHub Pages。
 - 2026-07-21：进一步明确“大改完成即直接发布”的固定规则；发布不再作为需要单独确认或稍后执行的步骤，最终交付统一报告实现和线上结果；规则已提交并同步到 GitHub。
 - 2026-07-20：底部导航调整为首页、食材、饮食、采购；每天目标标题和值保持同行；每周鱼禽肉改为合计口径并按分类重写建议频次；采购小票改为左侧箭头展开，私密照片支持点开大图；离线缓存升至 v16。
