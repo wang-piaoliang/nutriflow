@@ -120,12 +120,16 @@ test("groups purchases into one card per receipt at runtime", async () => {
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "1 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "2 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
   assert.match(list, /虾 · 猪肉 · 牛肉 · 花菜 · 胡萝卜 · 毛豆/);
   assert.match(list, /牛肉 · 虾 · 花菜 · 胡萝卜 · 毛豆/);
+  assert.match(list, /番茄 · 虾 · 肉丸 · 鸡肉 · 花菜 · 胡萝卜 · 毛豆/);
+
+  // Newest day first, regardless of the order inside the source array.
+  assert.ok(list.indexOf("2026-07-21") < list.indexOf("2026-07-20"));
 
   // The sync package carried no gram estimates, so none may be invented.
   assert.match(list, /未提供估算量/);
@@ -155,7 +159,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v21"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v22"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
