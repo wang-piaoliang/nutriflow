@@ -202,8 +202,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
-.target-inside{font-size:13px;font-weight:650;color:var(--text)}
-.target-row-empty{opacity:.62}
+.week-line{display:grid;gap:6px}
+.week-line b{font-size:15px}
+.week-line span{color:var(--muted);font-size:13px;line-height:1.55;overflow-wrap:anywhere}
 .hero .metric span{color:#5f6e63}
 .list{display:grid;gap:10px}
 .item{
@@ -708,7 +709,7 @@ const categories = [
 ];
 
 const dailyTargets = [
-  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", inside:"🥚 其中鸡蛋 1 个", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。鸡蛋计入本项总量，保留蛋黄。"},
+  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", note:"🥚 其中鸡蛋 1 个，计入本项总量，保留蛋黄。可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
   {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
   {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
   {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
@@ -1193,7 +1194,6 @@ function render(){
   document.getElementById("dailyList").innerHTML = dailyTargets.map(target => `
     <div class="target-row">
       <div class="target-row-head"><strong>${target.icon} ${target.name}</strong><b>${target.amount}</b></div>
-      ${target.inside ? `<span class="target-inside">${target.inside}</span>` : ""}
       <small>${target.note}</small>
     </div>
   `).join("");
@@ -1223,15 +1223,20 @@ function renderWeekSummary(){
     if (rank < dietItemCategoryRules.length) eaten[rank].add(item);
   })));
 
+  // 只做一行总结，不逐类展开——展开后这张卡片会占掉大半屏。
+  // 也不提示“还没吃到”：一周还没过完，缺什么都言之过早。
+  const counts = dietItemCategoryRules
+    .map((rule, index) => ({rule, count:eaten[index].size}))
+    .filter(entry => entry.count > 0);
+  const total = counts.reduce((sum, entry) => sum + entry.count, 0);
+
   document.getElementById("weekMeta").textContent = `${label(monday)}–${label(sunday)} · ${records.length} 天有记录`;
-  document.getElementById("weekSummary").innerHTML = dietItemCategoryRules.map((rule, index) => {
-    const items = Array.from(eaten[index]);
-    // 一种都没吃到的分类照样列出来，空缺本身就是有用的信息。
-    return `<div class="target-row${items.length ? "" : " target-row-empty"}">
-      <div class="target-row-head"><strong>${rule.icon} ${rule.name}</strong><b>${items.length} 种</b></div>
-      <small>${items.length ? items.join(" · ") : "本周还没吃到"}</small>
-    </div>`;
-  }).join("");
+  document.getElementById("weekSummary").innerHTML = total
+    ? `<div class="week-line">
+        <b>共 ${total} 种食物</b>
+        <span>${counts.map(entry => `${entry.rule.icon} ${entry.rule.name} ${entry.count}`).join(" · ")}</span>
+      </div>`
+    : `<div class="note">本周还没有记录。</div>`;
 }
 function renderPriceComparison(){
   const groups = groupPricesByFood();

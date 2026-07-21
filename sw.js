@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutriflow-pwa-v28";
+const CACHE_NAME = "nutriflow-pwa-v29";
 const APP_SHELL = [
   "./",
   "./nutriflow.html",
