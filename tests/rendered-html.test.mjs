@@ -117,6 +117,21 @@ test("groups purchases into one card per receipt at runtime", async () => {
   assert.match(history, /已记 ¥24\.90/);
 });
 
+test("renders the confirmed diet log by day", async () => {
+  const { elements } = await runAppScript();
+
+  assert.equal(elements.get("dietLogMeta").textContent, "1 天");
+
+  const list = elements.get("dietLogList").innerHTML;
+  assert.match(list, /2026-07-20/);
+  assert.match(list, /虾 · 猪肉 · 牛肉 · 花菜 · 胡萝卜 · 毛豆/);
+  assert.match(list, /牛肉 · 虾 · 花菜 · 胡萝卜 · 毛豆/);
+
+  // The sync package carried no gram estimates, so none may be invented.
+  assert.match(list, /未提供估算量/);
+  assert.doesNotMatch(list, /还没有实际饮食记录/);
+});
+
 test("keeps the receipt total-unknown flag per receipt, not per first item", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
@@ -140,7 +155,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v20"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v21"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

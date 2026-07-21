@@ -21,10 +21,11 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v20`
+- 当前离线缓存：`nutriflow-pwa-v21`
 - 底部导航顺序：`首页`、`食材`、`饮食`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
+- 2026-07-21 用户明确决定维持这一现状：**不要**为了同步而把“吃完”写进 `purchases` 数据。因此同步包里的「库存变化 / 消耗」无法由 Codex 写入仓库，只能由用户在手机上自己勾选。收到含库存变化的同步包时，照实告知用户需要手动勾，不要新增 `consumedAt` 之类字段，也不要假装已处理。
 
 ### 首页
 
@@ -50,6 +51,9 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 
 - 饮食页按日期展示已确认的餐食记录；新收到餐食照片或文字后，先在手机 ChatGPT 对话中整理为同步包，再写入 `dietRecords`。
 - 目前的 `dietRecords` 仍是硬编码数组，尚未做设备间自动同步。
+- 记录格式：`{date, summary, meals:[{name, items:[], note}]}`。`date` 用 `YYYY-MM-DD`，页面按它倒序排列；`summary` 省略时自动显示“N 餐”。
+- 同步包没给估算克数时不要编造。当天所有餐次都没有量时，在 `summary` 里统一标注一次（例如“2 餐 · 未提供估算量”），不要给每条餐次重复写同样的备注。
+- 首批记录为 2026-07-20 的午餐和晚餐，来自同步包，只有食物名称、没有估算量。其中“虾”在采购记录里没有对应条目；用户确认饮食记录照实保留、不为它补造采购记录。饮食记录与采购记录本来就相互独立，出现这种不匹配时不要自动补数据。
 
 ### 采购
 
@@ -193,6 +197,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-21：写入首批饮食记录（2026-07-20 午餐、晚餐，来自同步包，无估算克数）。同步包中的「消耗」按用户决定不写入仓库，仍由用户在手机上勾选；“虾”无对应采购记录，按用户确认照实保留。新增饮食页渲染测试；离线缓存升至 v21。
 - 2026-07-21：移除盒马小票上的解释性备注文字，小票只保留店名、时间、件数、分类重量和金额；总价未确认仍由“已记”前缀表示。离线缓存升至 v20。
 - 2026-07-21：`scripts/publish-pages.sh` 改用叠加提交发布 `gh-pages`，不再用 `git subtree split`，消除反复出现的 non-fast-forward；仓库级 git 身份设为 `wang-piaoliang <52517818+wang-piaoliang@users.noreply.github.com>`。
 - 2026-07-21：修复采购历史无法渲染的 bug。小票分组的 `reduce` 把 `totalKnown` 和 `note` 写到了累加器本身而不是 `map[key]`，导致 `Object.values` 多出 `undefined` 和一条字符串；页面把小票数显示成 4 次，遍历到字符串时抛 `TypeError`，整个采购历史区块空白，小票照片的上传/删除/查看监听器也随之失效。改为写回当前小票对象，并对每件商品归并 `totalKnown` / `note`，使“待确认”标记出现在非首件商品上时同样生效。新增两个用 `node:vm` 实际执行页面脚本的测试；离线缓存升至 v19。
