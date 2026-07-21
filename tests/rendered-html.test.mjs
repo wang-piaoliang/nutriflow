@@ -125,9 +125,12 @@ test("renders the confirmed diet log by day", async () => {
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
-  assert.match(list, /虾 · 猪肉 · 牛肉 · 花菜 · 胡萝卜 · 毛豆/);
-  assert.match(list, /牛肉 · 虾 · 花菜 · 胡萝卜 · 毛豆/);
-  assert.match(list, /番茄 · 虾 · 肉丸 · 鸡肉 · 花菜 · 胡萝卜 · 毛豆/);
+
+  // Items are displayed grouped by category, not in the order they arrived,
+  // and the staple lands after the vegetables.
+  assert.match(list, /虾 · 猪肉 · 牛肉 · 毛豆 · 花菜 · 胡萝卜 · 藜麦米饭/);
+  assert.match(list, /牛肉 · 虾 · 毛豆 · 花菜 · 胡萝卜 · 藜麦米饭/);
+  assert.match(list, /虾 · 肉丸 · 鸡肉 · 毛豆 · 番茄 · 花菜 · 胡萝卜 · 藜麦米饭/);
 
   // Newest day first, regardless of the order inside the source array.
   assert.ok(list.indexOf("2026-07-21") < list.indexOf("2026-07-20"));
@@ -139,6 +142,29 @@ test("renders the confirmed diet log by day", async () => {
   // Each day offers the same device-local photo controls the receipts have.
   assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01]"/g).length, 2);
   assert.match(list, /照片仅保存在这台设备，不上传 GitHub/);
+});
+
+test("orders meal items by food category", async () => {
+  const { context } = await runAppScript();
+  const sort = context.sortMealItems;
+
+  assert.deepEqual(
+    sort(["米饭", "苹果", "菠菜", "牛肉", "鸡蛋"]),
+    ["牛肉", "鸡蛋", "菠菜", "米饭", "苹果"],
+  );
+
+  // 蔬菜 is matched before 水果坚果 so a gourd vegetable is not read as fruit.
+  assert.deepEqual(sort(["西瓜", "冬瓜"]), ["冬瓜", "西瓜"]);
+
+  // 毛豆米 must stay a soy food rather than matching 米 as a staple.
+  assert.deepEqual(sort(["毛豆米", "米饭"]), ["毛豆米", "米饭"]);
+  assert.deepEqual(sort(["米饭", "毛豆米"]), ["毛豆米", "米饭"]);
+
+  // Unrecognised names sort last and keep their relative order.
+  assert.deepEqual(sort(["某种新食物", "牛肉", "另一种"]), ["牛肉", "某种新食物", "另一种"]);
+
+  // Equal-category items keep the order they were reported in.
+  assert.deepEqual(sort(["胡萝卜", "菠菜"]), ["胡萝卜", "菠菜"]);
 });
 
 test("keeps the receipt total-unknown flag per receipt, not per first item", async () => {
@@ -164,7 +190,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v23"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v24"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
