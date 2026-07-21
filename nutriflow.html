@@ -392,16 +392,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-/* 添加按钮就是网格里的一格，和缩略图并排。
-   之前它独占一整行、右对齐，左边整片空白，照片上方看着很空。 */
+/* 按钮本身保持原来的 36×36 小方块，但位置放在网格的最后一格。
+   之前它独占一整行、右对齐，左边整片空白；后来撑成整格又太大。 */
 .photo-add{
-  aspect-ratio:1;
+  width:36px;
+  height:36px;
+  align-self:center;
+  justify-self:start;
   display:grid;
   place-items:center;
-  border:1px dashed var(--line);
+  border:1px solid var(--line);
   border-radius:8px;
   background:var(--surface);
-  color:var(--muted);
+  color:var(--text);
   font-size:18px;
   cursor:pointer;
 }
@@ -716,12 +719,14 @@ const dailyTargets = [
   {icon:"🥛", name:"奶/酸奶/蛋", amount:"300-500ml + 蛋 1 个", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。🥚 鸡蛋保留蛋黄；按膳食指南它归在鱼禽肉蛋里，克数仍计入上面那 120-200g，这里只是把它和早餐的奶放在一起看。"}
 ];
 
-// 三餐用一天的时间线（日出→正午→夜晚），加餐不属于这条线，所以用食物本身。
+// 图标统一用食物，和「每天目标」「食材」页的 emoji 语言保持一致；
+// 用过日出/太阳/月亮那套风景图标，和界面其他地方格格不入。
+// 这几个也都避开了 dailyTargets 已经占用的 🥩🥦🍚🍎🥛。
 const mealTargets = [
-  {icon:"🌅", name:"早餐", amount:"牛奶 300ml + 鸡蛋 1 个 + 主食", note:"全麦面包、燕麦或米饭都可以；增重靠规律吃够，不靠高油。"},
-  {icon:"🌞", name:"午餐", amount:"鱼/瘦肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
-  {icon:"🌙", name:"晚餐", amount:"鱼/瘦肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
-  {icon:"🍏", name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
+  {icon:"🍞", name:"早餐", amount:"牛奶 300ml + 鸡蛋 1 个 + 主食", note:"全麦面包、燕麦或米饭都可以；增重靠规律吃够，不靠高油。"},
+  {icon:"🍱", name:"午餐", amount:"鱼/瘦肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
+  {icon:"🍲", name:"晚餐", amount:"鱼/瘦肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
+  {icon:"🥜", name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
 ];
 
 const foods = [
