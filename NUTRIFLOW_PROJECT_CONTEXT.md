@@ -169,8 +169,10 @@ python3 -m http.server 8000 -d public
 - 已在本机安装 GitHub CLI 并以 `wang-piaoliang` 登录；Git 凭据保存在系统钥匙串。
 - GitHub Pages 使用 `gh-pages` 分支的根目录，只保存从 `public/` 导出的静态 PWA 文件；源码仍保留在 `main`。
 - 正式发布命令为 `npm run publish:pages`。它会运行测试、推送 `main`，再将 `public/` 发布到 `gh-pages` 并请求 Pages 重建；随后检查 <https://wang-piaoliang.github.io/nutriflow/>。
+- 发布到 `gh-pages` 的方式是「在远端当前提交之上叠加一个提交」：取 `HEAD:public` 的 tree，以远端 `gh-pages` 为父提交调用 `git commit-tree`，再推送。这样每次都是快进，远端历史完整保留。若远端 `gh-pages` 尚不存在（首次发布），则创建无父提交；若远端 tree 与本地 `public/` 完全相同，则跳过空提交只请求重建。
+- 本地 git 身份已在仓库级设为 `wang-piaoliang <wyrecardo@outlook.com>`，避免公开提交历史里出现自动推导的本机主机名或内网 IP。新克隆仓库后需要重新设置。
 - 固定执行规则：每次完成一批较大的用户可见修改后，默认在同一任务内直接测试、提交并发布，无需发布前再询问或把发布留作后续步骤；最终交付时一次性说明修改和线上结果。用户明确要求发布的文档规则变更也立即同步到 GitHub。
-- 2026-07-21：`v19`（修复采购历史渲染 bug、新增运行时测试）已通过测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认采购历史显示 2 次小票。发布时 `gh-pages` 再次出现 non-fast-forward：`git subtree split` 生成的历史与远端已分叉，`npm run publish:pages` 的 `git push github <split>:refs/heads/gh-pages` 必然被拒。处理方式是保留远端历史的叠加式发布——先 `git fetch github gh-pages`，确认远端树与本地 `public/` 的差异只有本次改动，再用 `git commit-tree <HEAD:public 的 tree> -p <远端 gh-pages commit>` 造一个提交推上去，然后请求 Pages 重建。下次发布若再遇到同样报错，按此步骤处理，不要强推覆盖远端历史。
+- 2026-07-21：`v19`（修复采购历史渲染 bug、新增运行时测试）已通过测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认采购历史显示 2 次小票。发布时 `gh-pages` 再次出现 non-fast-forward，当时用叠加提交的方式手工完成；随后已把这个做法固化进 `scripts/publish-pages.sh`，替换掉原来的 `git subtree split`，同类报错不会再出现。
 - 2026-07-21：`v18`（盒马牛腱肉记录与采购筛选规则）已通过测试并发布到 GitHub Pages。该版本线上采购历史实际是空白的，问题在 v19 修复。
 - 2026-07-21：`v16`（目标同行显示、导航重排、动物性食物总量与频次修正、小票展开和照片大图）已通过测试、手机/桌面布局检查并发布到 GitHub Pages，线上构建状态为 `built`。
 - 2026-07-20：`v15`（首页图标配色）已通过测试并发布到 GitHub Pages；因同时发布造成 `gh-pages` 分支快进冲突后，已保留远端历史并完成合并式静态发布。
@@ -190,6 +192,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-21：`scripts/publish-pages.sh` 改用叠加提交发布 `gh-pages`，不再用 `git subtree split`，消除反复出现的 non-fast-forward；仓库级 git 身份设为 `wang-piaoliang <wyrecardo@outlook.com>`。
 - 2026-07-21：修复采购历史无法渲染的 bug。小票分组的 `reduce` 把 `totalKnown` 和 `note` 写到了累加器本身而不是 `map[key]`，导致 `Object.values` 多出 `undefined` 和一条字符串；页面把小票数显示成 4 次，遍历到字符串时抛 `TypeError`，整个采购历史区块空白，小票照片的上传/删除/查看监听器也随之失效。改为写回当前小票对象，并对每件商品归并 `totalKnown` / `note`，使“待确认”标记出现在非首件商品上时同样生效。新增两个用 `node:vm` 实际执行页面脚本的测试；离线缓存升至 v19。
 - 2026-07-21：按新的记录范围新增盒马牛腱肉 400g，跳过椰子水和重复的 fudi 小票；未知整单总价的小票改为显示“已记”金额；离线缓存升至 v18，已发布。该版本引入了上面这个渲染 bug。
 - 2026-07-21：小票照片大图支持点击照片本身直接缩回；离线缓存升至 v17，已通过测试并发布到 GitHub Pages。
