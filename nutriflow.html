@@ -733,7 +733,16 @@ const purchases = [
 ];
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
-const dietRecords = [];
+const dietRecords = [
+  {
+    date:"2026-07-20",
+    summary:"2 餐 · 未提供估算量",
+    meals:[
+      {name:"午餐", items:["虾","猪肉","牛肉","花菜","胡萝卜","毛豆"]},
+      {name:"晚餐", items:["牛肉","虾","花菜","胡萝卜","毛豆"]}
+    ]
+  }
+];
 
 const PHOTO_DB_NAME = "nutriflow_private_photos_v1";
 const PHOTO_STORE_NAME = "receiptPhotos";
