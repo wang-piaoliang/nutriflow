@@ -798,7 +798,9 @@ const purchases = [
   {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-01", date:"2026-07-22 09:28", foodId:"radish", item:"长白萝卜", amount:"约1kg", packageSpec:"1 份", totalPrice:2.18, unitPrice:"2.18 元/份", store:"盒马鲜生（大钟寺店）", bought:true, receiptTotalKnown:false},
   {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-02", date:"2026-07-22 09:28", foodId:"shellfish", item:"盒马大颗粒虾滑", amount:"300g", packageSpec:"2 袋 · 150g/袋", totalPrice:24.28, unitPrice:"12.14 元/袋", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-03", date:"2026-07-22 09:28", foodId:"leafy", item:"盒马日日鲜生菜", amount:"约500g", packageSpec:"1 袋", totalPrice:3.05, unitPrice:"3.05 元/袋", store:"盒马鲜生（大钟寺店）", bought:true},
-  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-04", date:"2026-07-22 09:28", foodId:"mushroom", item:"鲜香菇", amount:"约150g", packageSpec:"1 份", totalPrice:2.40, unitPrice:"2.40 元/份", store:"盒马鲜生（大钟寺店）", bought:true}
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-04", date:"2026-07-22 09:28", foodId:"mushroom", item:"鲜香菇", amount:"约150g", packageSpec:"1 份", totalPrice:2.40, unitPrice:"2.40 元/份", store:"盒马鲜生（大钟寺店）", bought:true},
+  // 主食/油/盐/米等属于备货，pantry:true 让它进入完整采购记录，但不进「现有食材」勾选清单。
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-05", date:"2026-07-22 09:28", foodId:"noodle", item:"盒马 乌冬面", amount:"600g", packageSpec:"1 袋 · 200g×3", totalPrice:8.65, unitPrice:"8.65 元/袋", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true}
 ];
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
@@ -1290,7 +1292,9 @@ async function renderShopping(){
   const photosByReceipt = await loadPhotosByOwner();
   if (renderVersion !== shoppingRenderVersion) return;
   resetPhotoUrls("shopping");
-  const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag");
+  // 「现有食材」和「已吃完历史」都只列需要跟踪是否吃完的生鲜；购物袋和 pantry
+  // 备货（主食/油/盐/米等）进入完整采购记录，但不在这份勾选清单里出现。
+  const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag" && !purchase.pantry);
   const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
   const consumedItems = boughtItems
     .filter(purchase => consumed[purchase.id])

@@ -38,7 +38,8 @@ After every code, content, nutrition-rule, purchase-data, or deployment change:
 
 - Treat a pasted `NutriFlow 同步包` as structured input from the user's separate mobile ChatGPT conversation.
 - Deduplicate purchases by stable record ID when present; otherwise compare receipt date, store, item, amount, and price.
-- Current intake scope: record cooking ingredients, including meat, seafood, vegetables and other fresh ingredients meant to be eaten. Skip duplicates, bottled or coconut water, seasonings, milk, cooking oil and rice/staple purchases unless the user explicitly changes this rule.
+- Current intake scope (updated 2026-07-23): the purchase record is COMPLETE. Record every purchased item on the receipt, including staples (rice, noodles, bread), cooking oil, salt, seasonings, milk and other pantry goods — not only fresh cooking ingredients. Still deduplicate genuine duplicate lines by the stable record ID rule above.
+- Pantry vs fresh: staples/oil/salt/seasonings/pantry goods are logged with `pantry:true`. A `pantry:true` item appears in the receipt history, its receipt category-weight summary, the 食材 weekly-bought total and the 元/kg price comparison, but is kept OUT of the 现有食材 "check off when eaten" list (and its 已吃完历史). The shopping bag stays excluded from that list via `foodId:"bag"` as before. Fresh ingredients (meat, seafood, vegetables, eggs, tofu, fruit/nuts) are NOT `pantry` and do enter 现有食材.
 - Keep one receipt-level store/date/total summary and place individual products beneath it.
 - Preserve raw uncertainty. Mark unreadable receipt fields as `待确认`; do not invent values.
 - Meal records and purchase records may be public because the user explicitly approved this. Do not publish payment details, phone numbers, membership IDs, exact home addresses, barcodes, medical documents, or private health measurements.

@@ -112,12 +112,17 @@ test("groups purchases into one card per receipt at runtime", async () => {
   const meta = elements.get("purchaseMeta").textContent;
   const history = elements.get("purchaseHistory").innerHTML;
 
-  // Three receipts, twelve line items. A receipt count above the number of
+  // Three receipts, thirteen line items. A receipt count above the number of
   // distinct receipt IDs means the grouping accumulator leaked extra keys.
-  assert.match(meta, /^3 次 · 12 件 /);
+  assert.match(meta, /^3 次 · 13 件 /);
   assert.equal(history.match(/<details class="receipt-card">/g).length, 3);
   assert.match(history, /fudi 超市五道口店/);
   assert.match(history, /盒马鲜生/);
+
+  // The receipt record is complete: the udon staple is logged here even though
+  // it is a pantry item kept out of the 现有食材 checklist below.
+  assert.match(history, /乌冬面/);
+  assert.doesNotMatch(elements.get("boughtFoods").innerHTML, /乌冬面/);
   assert.doesNotMatch(history, /undefined/);
 
   // Receipt totals are shown as a plain amount, with no 已记 prefix.
@@ -234,9 +239,9 @@ test("compares unit prices per food", async () => {
 
   const compare = elements.get("priceCompare").innerHTML;
 
-  // Eleven weighed items. The shopping bag is sold per piece, so converting it
-  // to 元/kg would be meaningless and it must stay out.
-  assert.equal(elements.get("priceMeta").textContent, "11 种");
+  // Twelve weighed items (incl. the udon staple). The shopping bag is sold per
+  // piece, so converting it to 元/kg would be meaningless and it must stay out.
+  assert.equal(elements.get("priceMeta").textContent, "12 种");
   assert.doesNotMatch(compare, /购物袋/);
 
   // 24.28 for 300g of 虾滑 is 80.9 元/kg, now the dearest; 24.90 for 400g of
@@ -256,7 +261,7 @@ test("compares unit prices per food", async () => {
   context.renderPriceComparison();
 
   const regrouped = elements.get("priceCompare").innerHTML;
-  assert.equal(elements.get("priceMeta").textContent, "11 种");
+  assert.equal(elements.get("priceMeta").textContent, "12 种");
   assert.match(regrouped, /2 次 · 40\.0–62\.2/);
   assert.match(regrouped, /class="fill hot"/);
 });
@@ -267,7 +272,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v33"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v34"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
