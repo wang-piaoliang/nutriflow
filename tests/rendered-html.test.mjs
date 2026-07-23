@@ -112,10 +112,10 @@ test("groups purchases into one card per receipt at runtime", async () => {
   const meta = elements.get("purchaseMeta").textContent;
   const history = elements.get("purchaseHistory").innerHTML;
 
-  // Two receipts, eight line items. A receipt count above the number of
+  // Three receipts, twelve line items. A receipt count above the number of
   // distinct receipt IDs means the grouping accumulator leaked extra keys.
-  assert.match(meta, /^2 次 · 8 件 /);
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 2);
+  assert.match(meta, /^3 次 · 12 件 /);
+  assert.equal(history.match(/<details class="receipt-card">/g).length, 3);
   assert.match(history, /fudi 超市五道口店/);
   assert.match(history, /盒马鲜生/);
   assert.doesNotMatch(history, /undefined/);
@@ -126,17 +126,18 @@ test("groups purchases into one card per receipt at runtime", async () => {
   assert.doesNotMatch(meta, /已记/);
 
   // The privacy sentence sits once above the list, not inside every receipt.
-  assert.equal(history.match(/data-photo-owner=/g).length, 2);
+  assert.equal(history.match(/data-photo-owner=/g).length, 3);
   assert.doesNotMatch(history, /仅保存在这台设备/);
 });
 
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "2 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "3 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
+  assert.match(list, /2026-07-22/);
 
   // Items are displayed grouped by category, not in the order they arrived,
   // and the staple lands after the vegetables.
@@ -145,17 +146,21 @@ test("renders the confirmed diet log by day", async () => {
   assert.match(list, /虾 · 肉丸 · 鸡肉 · 毛豆 · 番茄 · 花菜 · 胡萝卜 · 藜麦米饭/);
 
   // Newest day first, regardless of the order inside the source array.
+  assert.ok(list.indexOf("2026-07-22") < list.indexOf("2026-07-21"));
   assert.ok(list.indexOf("2026-07-21") < list.indexOf("2026-07-20"));
 
   // Days fall back to a plain meal count; no 未提供估算量 wording anywhere.
-  assert.match(list, /1 餐/);
   assert.match(list, /2 餐/);
   assert.doesNotMatch(list, /未提供估算量/);
   assert.doesNotMatch(list, /还没有实际饮食记录/);
 
+  // Egg is recorded as 蛋 (not 鸡蛋) so the 鸡 keyword does not pull it into
+  // 鱼禽瘦肉; it must group under 蛋奶豆 with 毛豆, after the meats.
+  assert.match(list, /鸡肉 · 牛肉 · 虾 · 肉丸 · 蛋 · 毛豆/);
+
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01]"/g).length, 2);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[012]"/g).length, 3);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -165,19 +170,18 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 5 + 1 + 3 + 1 distinct foods.
-  // 藜麦米饭 eaten at three meals counts once, not three times.
-  assert.match(summary, /共 10 种食物/);
-  assert.match(summary, /🥩 鱼禽瘦肉 5/);
-  assert.match(summary, /🥛 蛋奶豆 1/);
-  assert.match(summary, /🥦 蔬菜 3/);
-  assert.match(summary, /🍚 主食 1/);
+  // One compact line, not a row per category: 8 + 3 + 7 + 2 + 1 distinct foods.
+  // A food eaten at several meals counts once, not once per meal.
+  assert.match(summary, /共 21 种食物/);
+  assert.match(summary, /🥩 鱼禽瘦肉 8/);
+  assert.match(summary, /🥛 蛋奶豆 3/);
+  assert.match(summary, /🥦 蔬菜 7/);
+  assert.match(summary, /🍚 主食 2/);
+  assert.match(summary, /🍎 水果坚果 1/);
 
-  // The week is still running, so an untouched category is simply left out
-  // rather than called out as missing.
-  assert.doesNotMatch(summary, /水果坚果/);
+  // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
-  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 2 天有记录/);
+  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 3 天有记录/);
 
   // Local parsing: a Monday record must not fall into the previous week.
   const monday = context.currentWeek().monday;
@@ -220,7 +224,7 @@ test("folds receipt-level fields across every line item", async () => {
   await context.renderShopping();
 
   const history = elements.get("purchaseHistory").innerHTML;
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 3);
+  assert.equal(history.match(/<details class="receipt-card">/g).length, 4);
   assert.match(history, /¥3\.00/);
   assert.match(history, /总价待确认/);
 });
@@ -230,12 +234,14 @@ test("compares unit prices per food", async () => {
 
   const compare = elements.get("priceCompare").innerHTML;
 
-  // Seven weighed items. The shopping bag is sold per piece, so converting it
+  // Eleven weighed items. The shopping bag is sold per piece, so converting it
   // to 元/kg would be meaningless and it must stay out.
-  assert.equal(elements.get("priceMeta").textContent, "7 种");
+  assert.equal(elements.get("priceMeta").textContent, "11 种");
   assert.doesNotMatch(compare, /购物袋/);
 
-  // 24.90 for 400g is 62.2 元/kg, the dearest, so that food leads the list.
+  // 24.28 for 300g of 虾滑 is 80.9 元/kg, now the dearest; 24.90 for 400g of
+  // beef is 62.2 元/kg and both are printed. Beef still outranks 胡萝卜.
+  assert.match(compare, /80\.9 元\/kg/);
   assert.match(compare, /62\.2 元\/kg/);
   assert.ok(compare.indexOf("牛腱肉") < compare.indexOf("胡萝卜"));
 
@@ -250,7 +256,7 @@ test("compares unit prices per food", async () => {
   context.renderPriceComparison();
 
   const regrouped = elements.get("priceCompare").innerHTML;
-  assert.equal(elements.get("priceMeta").textContent, "7 种");
+  assert.equal(elements.get("priceMeta").textContent, "11 种");
   assert.match(regrouped, /2 次 · 40\.0–62\.2/);
   assert.match(regrouped, /class="fill hot"/);
 });
@@ -261,7 +267,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v32"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v33"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
