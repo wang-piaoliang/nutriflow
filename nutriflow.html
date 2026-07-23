@@ -794,15 +794,27 @@ const purchases = [
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-05", date:"2026-07-17 21:13", foodId:"cauliflower", item:"松花菜", amount:"672g", packageSpec:"称重 0.672kg", totalPrice:4.82, unitPrice:"7.18 元/kg（约 3.59 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 5"},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-06", date:"2026-07-17 21:13", foodId:"carrot", item:"精品胡萝卜", amount:"748g", packageSpec:"称重 0.748kg", totalPrice:2.97, unitPrice:"3.98 元/kg（约 1.99 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 6"},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-07", date:"2026-07-17 21:13", foodId:"bag", item:"fudi 购物袋小", amount:"1 个", packageSpec:"1 个", totalPrice:0.70, unitPrice:"0.70 元/个", store:"fudi 超市五道口店", bought:true, note:"小票序号 7；应收合计 65.73"},
-  {receiptId:"2026-07-18-hema", id:"2026-07-18-hema-01", date:"2026-07-18 17:27", foodId:"beef", item:"国产谷饲黄牛牛腱肉", amount:"400g", packageSpec:"盒装 400g", totalPrice:24.90, unitPrice:"24.90 元/盒", store:"盒马鲜生", bought:true, receiptTotalKnown:false}
+  {receiptId:"2026-07-18-hema", id:"2026-07-18-hema-01", date:"2026-07-18 17:27", foodId:"beef", item:"国产谷饲黄牛牛腱肉", amount:"400g", packageSpec:"盒装 400g", totalPrice:24.90, unitPrice:"24.90 元/盒", store:"盒马鲜生", bought:true, receiptTotalKnown:false},
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-01", date:"2026-07-22 09:28", foodId:"radish", item:"长白萝卜", amount:"约1kg", packageSpec:"1 份", totalPrice:2.18, unitPrice:"2.18 元/份", store:"盒马鲜生（大钟寺店）", bought:true, receiptTotalKnown:false},
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-02", date:"2026-07-22 09:28", foodId:"shellfish", item:"盒马大颗粒虾滑", amount:"300g", packageSpec:"2 袋 · 150g/袋", totalPrice:24.28, unitPrice:"12.14 元/袋", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-03", date:"2026-07-22 09:28", foodId:"leafy", item:"盒马日日鲜生菜", amount:"约500g", packageSpec:"1 袋", totalPrice:3.05, unitPrice:"3.05 元/袋", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-22-hema", id:"2026-07-22-hema-04", date:"2026-07-22 09:28", foodId:"mushroom", item:"鲜香菇", amount:"约150g", packageSpec:"1 份", totalPrice:2.40, unitPrice:"2.40 元/份", store:"盒马鲜生（大钟寺店）", bought:true}
 ];
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
 const dietRecords = [
   {
+    date:"2026-07-22",
+    meals:[
+      {name:"午餐", items:["番茄","蛋","鸡肉","牛肉","虾","肉丸","胡萝卜","毛豆","花菜"]},
+      {name:"晚餐", items:["白萝卜","虾滑","生菜","香菇","乌冬面"]}
+    ]
+  },
+  {
     date:"2026-07-21",
     meals:[
-      {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆","藜麦米饭"]}
+      {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆","藜麦米饭"]},
+      {name:"晚餐", items:["鸭肉","鸡肉","花生","豆腐","火腿","菌菇"]}
     ]
   },
   {
@@ -1042,6 +1054,7 @@ function iconForFood(foodId){
     mushroom:"🍄",
     tomato:"🍅",
     carrot:"🥕",
+    radish:"🥬",
     pepper:"🫑",
     spinach:"🥬",
     pumpkin:"🎃",
@@ -1076,7 +1089,7 @@ function iconForFood(foodId){
 const purchaseGroupRules = [
   {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
-  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
+  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
   {name:"豆类", ids:["tofu","soyMilk","edamame"]},
   {name:"主食", ids:["rice","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
   {name:"水果坚果", ids:["apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
