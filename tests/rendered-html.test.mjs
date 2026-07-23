@@ -104,6 +104,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
   assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="dietLog"'));
+
+  // A standalone/dock app can sit on the old cached shell, so the page reloads
+  // once when a new service worker takes control and re-checks on foreground.
+  assert.match(html, /addEventListener\("controllerchange"/);
+  assert.match(html, /window\.location\.reload\(\)/);
+  assert.match(html, /visibilityState === "visible"/);
 });
 
 test("groups purchases into one card per receipt at runtime", async () => {
@@ -272,7 +278,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v34"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v35"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

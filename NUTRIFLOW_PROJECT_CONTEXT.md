@@ -23,7 +23,8 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v34`
+- 当前离线缓存：`nutriflow-pwa-v35`
+- 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序：`首页`、`食材`、`饮食`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
 - “吃完”状态保存在当前设备和当前网址的 `localStorage`，键为 `nutriflow_consumed_v1`；它不会自动跨手机、电脑或不同域名同步。
@@ -251,6 +252,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-23：**修复桌面/独立 app 停在旧版本**。用户反馈 Safari 里是新版、桌面 dock app 是旧版。根因是页面注册 SW 后没有在新 SW 接管时刷新，dock app 常驻只吃旧缓存壳。`nutriflow.html` 新增 `controllerchange → location.reload()`（`hadController` 跳过首次安装）与 `visibilitychange → registration.update()`。新增测试断言这三段逻辑存在。离线缓存升至 v35。
 - 2026-07-23：**采购记录规则改为「完整记录」**。用户明确：主食/油/盐/米等要写进采购记录（小票完整），但不进「现有食材」勾选是否吃完。实现上新增 `pantry:true` 标记，`renderShopping` 的 `boughtItems` 过滤加 `!purchase.pantry`，使备货只从「现有食材」和「已吃完历史」里排除，仍保留在采购历史、分类重量汇总、食材页本周采购量和元/kg 单价对比中。补记本单原先跳过的盒马乌冬面（`noodle`，600g，8.65 元，`pantry:true`）；小票总额随之显示 40.56 元（仍与印刷的 42.42 差 1.86，未擅改）。同步更新 AGENTS.md、同步包模板过滤规则说明，及测试断言（小票 3 次/13 件、单价对比 12 种、断言乌冬面在采购历史但不在现有食材）。离线缓存升至 v34。
 - 2026-07-23：按同步包更新数据。新增 2026-07-22 盒马鲜生（大钟寺店）小票 4 件（长白萝卜、大颗粒虾滑、生菜、鲜香菇），乌冬面属主食按规则跳过采购；该单整单总价 42.42 与明细相加 40.56 不符（差 1.86，未修改），故标 `receiptTotalKnown:false`。新增饮食记录 2026-07-22（午餐、晚餐）与 2026-07-21 晚餐；07-22 午餐鸡蛋写作 `蛋` 以免被 `鸡` 关键词错分到鱼禽瘦肉。新增 `radish` 图标与蔬菜分组；同步更新 9 项运行时测试断言（小票 3 次/12 件、饮食 3 天、本周吃到共 21 种、单价对比 11 种、虾滑 80.9 元/kg 最贵等）。离线缓存升至 v33。
 - 2026-07-21：每顿目标图标换成食物（🍞🍱🍲🥜），弃用上一版的日出/太阳/月亮；照片添加按钮真正缩回 36×36 小方块（上一版只改了字号，观感没变）。离线缓存升至 v32。
