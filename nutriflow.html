@@ -1442,9 +1442,28 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !photoViewer.hidden) closePhotoViewer();
 });
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  // Safari re-checks the service worker on every navigation, so the browser tab
+  // always ends up on the latest build. A standalone/dock app does not: it can
+  // stay alive and keep serving the old cached shell until it is fully quit.
+  // So when a new worker takes control, reload once to pick up the new version.
+  // `hadController` skips the very first install (nothing to replace yet).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadingForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForUpdate || !hadController) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js", {updateViaCache:"none"})
-      .then(registration => registration.update())
+      .then(registration => {
+        registration.update();
+        // The dock app can regain focus without firing `load` again, so also
+        // re-check for a new build each time it returns to the foreground.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") registration.update();
+        });
+      })
       .catch(() => {});
   });
 }
