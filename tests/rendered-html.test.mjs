@@ -29,15 +29,21 @@ async function runAppScript() {
     querySelectorAll: () => [],
   });
 
+  const store = new Map();
   const context = {
     window: {},
     navigator: {},
     location: { protocol: "http:" },
     console: { log() {}, warn() {}, error() {} },
-    localStorage: { getItem: () => null, setItem() {} },
+    crypto: { randomUUID: () => `id-${store.size}-${Math.random().toString(36).slice(2)}` },
+    localStorage: {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => store.set(key, value),
+    },
     document: {
       addEventListener() {},
       querySelectorAll: () => [],
+      createElement: () => createElement(),
       getElementById(id) {
         if (!elements.has(id)) elements.set(id, createElement());
         return elements.get(id);
@@ -224,6 +230,55 @@ test("orders meal items by food category", async () => {
   assert.deepEqual(sort(["胡萝卜", "菠菜"]), ["胡萝卜", "菠菜"]);
 });
 
+test("shows the real dish name but categorises by its hidden tag", async () => {
+  const { context, elements } = await runAppScript();
+
+  // 烤鸭 carries as:"鸭肉". The dish name is what gets displayed...
+  assert.deepEqual(
+    context.sortMealItems([{ name: "烤鸭", as: "鸭肉" }, "米饭"]),
+    ["烤鸭", "米饭"],
+  );
+  assert.match(elements.get("dietLogList").innerHTML, /烤鸭/);
+
+  // ...while the tag decides the category, so it still sorts as meat.
+  assert.equal(context.dietItemRank({ name: "烤鸭", as: "鸭肉" }), 0);
+
+  // A dish name carrying no keyword of its own would otherwise fall through
+  // to the uncategorised bucket and drop out of the weekly counts.
+  const uncategorised = context.dietItemRank("说不上来的东西");
+  assert.equal(context.dietItemRank("罗宋汤"), uncategorised);
+  assert.equal(context.dietItemRank({ name: "罗宋汤", as: "牛肉" }), 0);
+});
+
+test("merges manually added meals into the day", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+
+  const before = evaluate("allDietRecords()").find((record) => record.date === "2026-07-20");
+  assert.equal(before.meals.filter((meal) => meal.name === "早餐").length, 0);
+
+  context.addDietEntry("2026-07-20", "早餐", ["牛奶", "鸡蛋"]);
+  context.addDietEntry("2026-07-20", "午餐", ["酸奶"]);
+
+  const after = evaluate("allDietRecords()").find((record) => record.date === "2026-07-20");
+
+  // Arrays built inside the vm realm are not reference-equal to host arrays,
+  // so compare joined strings rather than using deepEqual on them.
+  // A new meal appears, and meals stay in 早餐/午餐/晚餐/加餐 order.
+  assert.equal(after.meals.map((meal) => meal.name).join("/"), "早餐/午餐/晚餐");
+
+  // An entry for an existing meal joins that meal instead of duplicating it.
+  const lunch = after.meals.find((meal) => meal.name === "午餐");
+  assert.ok(lunch.items.includes("酸奶"));
+  assert.equal(lunch.added.length, 1);
+
+  // Only the manual part is removable; the synced items carry no entry id.
+  const breakfast = after.meals.find((meal) => meal.name === "早餐");
+  assert.equal(breakfast.added[0].items.join("/"), "牛奶/鸡蛋");
+  context.removeDietEntry(breakfast.added[0].id);
+  const reverted = evaluate("allDietRecords()").find((record) => record.date === "2026-07-20");
+  assert.equal(reverted.meals.map((meal) => meal.name).join("/"), "午餐/晚餐");
+});
+
 test("folds receipt-level fields across every line item", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
@@ -279,7 +334,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v35"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v36"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
