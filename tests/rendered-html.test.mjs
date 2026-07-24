@@ -221,12 +221,12 @@ test("summarises how many foods per category the week covered", async () => {
   // 乌冬面, 杂粮饭, and the sushi 寿司饭.
   // One metric tile per category (same visual as the home hero), plus a caption
   // with the total.
-  assert.match(summary, /本周共 31 种食物/);
-  assert.match(summary, /<b>11<\/b><span>🥩 鱼禽瘦肉<\/span>/);
-  assert.match(summary, /<b>6<\/b><span>🥛 蛋奶豆<\/span>/);
-  assert.match(summary, /<b>8<\/b><span>🥦 蔬菜<\/span>/);
-  assert.match(summary, /<b>5<\/b><span>🍚 主食<\/span>/);
-  assert.match(summary, /<b>1<\/b><span>🍎 水果坚果<\/span>/);
+  assert.match(summary, /本周吃到 31 种食物/);
+  assert.match(summary, /<b>🥩 11<\/b><span>鱼禽瘦肉<\/span>/);
+  assert.match(summary, /<b>🥛 6<\/b><span>蛋奶豆<\/span>/);
+  assert.match(summary, /<b>🥦 8<\/b><span>蔬菜<\/span>/);
+  assert.match(summary, /<b>🍚 5<\/b><span>主食<\/span>/);
+  assert.match(summary, /<b>🍎 1<\/b><span>水果坚果<\/span>/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
@@ -385,7 +385,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v50"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v51"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

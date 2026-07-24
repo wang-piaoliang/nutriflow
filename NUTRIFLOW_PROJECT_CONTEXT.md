@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v50`
+- 当前离线缓存：`nutriflow-pwa-v51`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -289,6 +289,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：按用户反馈一批微调。① **「本周吃到」磁贴**：把「图标 + 数字」放一起当主体（`<b>🥩 11</b>`），分类名放到下面小字（`<span>鱼禽瘦肉</span>`）——之前只看到大数字不知代表啥；`#dietLog .metric` 把数字压到 17px、分类名放大到 13px（只影响饮食页，首页 hero 不动）；caption 改「本周吃到 N 种食物…」。② 饮食页说明文字改「每顿饭发给 Claude 识别记录，照片存本地不传 GitHub。」。③ 在外就餐餐厅名后**加冒号**：`📍 寿司郎：` 直接接菜名（同一行）。④ **相机 icon 精简**：饮食页每天的加照片入口从卡片内的大相机按钮移到**标题行的小相机**（`photoAddLabel`，`.photo-add-mini`，点它直接选图，有照片时带数量）；`photoSectionMarkup` 对 `scope==="diet"` 只出缩略图不再放大按钮；小票（shopping）是可折叠卡片、summary 里不便放 input，仍保留卡内大按钮。⑤ **云同步卡片配置后收起**：`initSync` 里 `collapse()`——已填口令就隐藏输入表单和说明、只留标题+状态+一个「已开启，点这里改设置」小链接（`#syncEdit`），点它再展开；没配置则照常显示表单。离线缓存升至 v51。
 - 2026-07-24：按用户反馈两处调整。① **「本周吃到」做成绿色 hero 大卡片**：把它从与「每天吃了什么」合并的那张卡里拆出来，单独一张 `card hero`（绿底、白标题、浅色磁贴），视觉上和「目标」页顶部「今天吃到这些」一致；加 `#dietLog .hero h2/p` 尺寸对齐首页、`.hero .subtle` 让 weekMeta 在绿底可读；删掉不再用的 `.diet-subhead`。**注意这推翻了旧的"两者不要拆开"要求**。② **在外就餐的餐厅名改成和食物同一行**：`📍 名称` 后面从 `<br>` 换行改成空格，和菜名排在同一行。离线缓存升至 v50。
 - 2026-07-24：**去掉 `.section-title` 底部那条分隔线**（用户反馈每个板块标题下那条线太突兀）。吸顶是靠不透明背景 `background:var(--surface)` 盖住滚过的内容，`box-shadow:0 1px 0 var(--line)` 那条线并非必需，删掉即可，sticky 行为不变。`.hero .section-title` 本就 `box-shadow:none`。测试没断言过这条 shadow，不受影响。离线缓存升至 v49。
 - 2026-07-24：云同步**预填 Worker 地址**（用户已把 Worker 部署到 `https://nutriflow-sync.nutriflow.workers.dev`）。新增 `DEFAULT_SYNC_URL` 常量：输入框预填该地址、`syncConfig()` 用它兜底，于是每台设备通常只需填一次口令。地址非密钥、可公开写死；填别的地址会覆盖默认。同步的时机不变（打开/回前台拉、改动推），未加定时轮询——用户明确「现在这样就够了」。离线缓存升至 v48。
