@@ -175,6 +175,11 @@ test("renders the confirmed diet log by day", async () => {
   // 鱼禽瘦肉; it must group under 蛋奶豆 with 毛豆, after the meats.
   assert.match(list, /鸡肉 · 牛肉 · 虾 · 肉丸 · 蛋 · 毛豆/);
 
+  // Every meal carries its own ＋ so food can be appended to that exact meal
+  // without going back to a form and re-picking the date.
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 8);
+  assert.equal(list.match(/data-inline-for=/g).length, 8);
+
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
   assert.equal(list.match(/data-photo-owner="diet:2026-07-2[0123]"/g).length, 4);
@@ -335,7 +340,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v36"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v37"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

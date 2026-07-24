@@ -202,10 +202,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
-.diet-form{margin-bottom:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
-.diet-form > summary{padding:11px 12px;color:var(--green);font-size:14px;font-weight:650;cursor:pointer;list-style:none}
-.diet-form > summary::-webkit-details-marker{display:none}
-.diet-form-body{display:grid;gap:8px;padding:0 12px 12px}
+/* 「本周吃到」和「每天吃了什么」合并进同一张卡片，用一条分隔线隔开。 */
+.diet-subhead{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.section-title .subtle{display:flex;align-items:center;gap:8px}
+.head-add{
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--green);
+  font-size:15px;
+  line-height:1;
+}
+.diet-form{display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
 .diet-form-row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .diet-form input,.diet-form select{
   min-width:0;
@@ -225,7 +237,39 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:14px;
   font-weight:650;
 }
-.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+/* 每一顿后面的小 ＋，点开就地加东西，不用回到顶部的表单选日期。 */
+.chip-add{
+  width:22px;
+  height:22px;
+  display:grid;
+  place-items:center;
+  border:1px dashed var(--line);
+  border-radius:999px;
+  background:transparent;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1;
+}
+.inline-add{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
+.inline-add input{
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-size:13px;
+}
+.inline-add-save{
+  padding:8px 14px;
+  border:0;
+  border-radius:8px;
+  background:var(--green);
+  color:#fff;
+  font-size:13px;
+  font-weight:650;
+}
 .chip-remove{
   padding:4px 8px;
   border:1px solid var(--line);
@@ -693,14 +737,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle" id="weekMeta"></span>
         </div>
         <div class="list" id="weekSummary"></div>
-      </article>
 
-      <article class="card">
-        <div class="section-title">
+        <div class="section-title diet-subhead">
           <h2>每天吃了什么</h2>
-          <span class="subtle" id="dietLogMeta">0 天</span>
+          <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</div>
+        <div class="note">每顿餐食照片发给 Claude 识别整理，照片仅存本地不上传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -1570,10 +1612,18 @@ async function renderDietLog(){
       const removable = (meal.added || []).map(entry =>
         `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.join(" · ")} ✕</button>`
       ).join("");
+      const key = `${record.date}|${meal.name}`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
         <small>${sortMealItems(meal.items).join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small>
-        ${removable ? `<div class="chip-row">${removable}</div>` : ""}
+        <div class="chip-row">
+          ${removable}
+          <button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>
+        </div>
+        <div class="inline-add" data-inline-for="${key}" hidden>
+          <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
+          <button class="inline-add-save" type="button">加</button>
+        </div>
       </div>`;
     }).join("");
     const owner = dietPhotoOwner(record.date);
@@ -1584,34 +1634,34 @@ async function renderDietLog(){
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
   }).join("");
-  list.innerHTML = `${dietFormMarkup()}${days || `<div class="note">还没有饮食记录。可以用上面的表单直接补记，或把餐食照片发给 GPT 让它整理。</div>`}`;
+  list.innerHTML = `${dietDayFormMarkup()}${days || `<div class="note">还没有饮食记录。用右上角的 ＋ 直接补记，或把餐食照片发给 Claude 让它整理。</div>`}`;
   bindPhotoControls(list, () => void renderDietLog());
   bindDietForm(list);
 }
-function dietFormMarkup(){
+// 整天/整顿都还没有记录时才用得上这个表单，平时收起来。
+// 已经存在的那一顿直接用它自己那一行的 ＋，不必回到这里选日期。
+function dietDayFormMarkup(){
   const today = new Date();
   const value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-  return `<details class="diet-form">
-    <summary>＋ 补记一餐</summary>
-    <div class="diet-form-body">
-      <div class="diet-form-row">
-        <input type="date" id="dietFormDate" value="${value}" aria-label="日期">
-        <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
-      </div>
-      <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
-      <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+  return `<div class="diet-form" id="dietDayForm" hidden>
+    <div class="diet-form-row">
+      <input type="date" id="dietFormDate" value="${value}" aria-label="日期">
+      <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
     </div>
-  </details>`;
+    <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
+    <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+  </div>`;
+}
+// 空格、逗号、顿号、加号都当分隔符，怎么随手写都能拆开。
+function parseItemInput(text){
+  return String(text).split(/[\s,，、+]+/).map(part => part.trim()).filter(Boolean);
 }
 function bindDietForm(container){
-  const save = container.querySelector("#dietFormSave");
-  if (!save) return;
   const submit = () => {
     const date = container.querySelector("#dietFormDate").value;
     const meal = container.querySelector("#dietFormMeal").value;
     const field = container.querySelector("#dietFormItems");
-    // 空格、逗号、顿号、加号都当分隔符，怎么随手写都能拆开。
-    const items = field.value.split(/[\s,，、+]+/).map(text => text.trim()).filter(Boolean);
+    const items = parseItemInput(field.value);
     if (!date || !items.length){
       field.focus();
       return;
@@ -1620,10 +1670,38 @@ function bindDietForm(container){
     field.value = "";
     render();
   };
-  save.addEventListener("click", submit);
+  container.querySelector("#dietFormSave").addEventListener("click", submit);
   container.querySelector("#dietFormItems").addEventListener("keydown", event => {
     if (event.key === "Enter") submit();
   });
+
+  // 每一顿后面的 ＋：就地展开一个输入框，往这一顿里加东西。
+  container.querySelectorAll("[data-add-item]").forEach(button => {
+    button.addEventListener("click", () => {
+      const box = container.querySelector(`[data-inline-for="${button.dataset.addItem}"]`);
+      box.hidden = !box.hidden;
+      if (!box.hidden) box.querySelector("input").focus();
+    });
+  });
+  container.querySelectorAll("[data-inline-for]").forEach(box => {
+    const [date, meal] = box.dataset.inlineFor.split("|");
+    const field = box.querySelector("input");
+    const commit = () => {
+      const items = parseItemInput(field.value);
+      if (!items.length){
+        field.focus();
+        return;
+      }
+      addDietEntry(date, meal, items);
+      render();
+    };
+    box.querySelector(".inline-add-save").addEventListener("click", commit);
+    field.addEventListener("keydown", event => {
+      if (event.key === "Enter") commit();
+      if (event.key === "Escape") box.hidden = true;
+    });
+  });
+
   container.querySelectorAll("[data-remove-entry]").forEach(button => {
     button.addEventListener("click", () => {
       if (!window.confirm("删除这条手动补记的内容？")) return;
@@ -1666,6 +1744,13 @@ function renderFoods(){
     </div>
   `).join("");
 }
+// 这个按钮在列表外面，重渲染不会动它，所以只绑一次。
+document.getElementById("dietAddDay").addEventListener("click", () => {
+  const form = document.getElementById("dietDayForm");
+  if (!form) return;
+  form.hidden = !form.hidden;
+  if (!form.hidden) form.querySelector("#dietFormItems").focus();
+});
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-btn").forEach(item => item.classList.remove("active"));
