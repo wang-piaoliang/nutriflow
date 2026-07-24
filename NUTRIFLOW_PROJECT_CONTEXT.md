@@ -261,6 +261,7 @@ python3 -m http.server 8000 -d public
 - 发布到 `gh-pages` 的方式是「在远端当前提交之上叠加一个提交」：取 `HEAD:public` 的 tree，以远端 `gh-pages` 为父提交调用 `git commit-tree`，再推送。这样每次都是快进，远端历史完整保留。若远端 `gh-pages` 尚不存在（首次发布），则创建无父提交；若远端 tree 与本地 `public/` 完全相同，则跳过空提交只请求重建。
 - 本地 git 身份已在仓库级设为 `wang-piaoliang <52517818+wang-piaoliang@users.noreply.github.com>`。用 GitHub noreply 地址是为了避免公开提交历史里出现自动推导的本机主机名或内网 IP，同时也不暴露真实邮箱，GitHub 仍能正确关联到账号。新克隆仓库后需要重新设置。
 - 固定执行规则：每次完成一批较大的用户可见修改后，默认在同一任务内直接测试、提交并发布，无需发布前再询问或把发布留作后续步骤；最终交付时一次性说明修改和线上结果。用户明确要求发布的文档规则变更也立即同步到 GitHub。
+- 2026-07-24：`v41`（食材页分类筛选栏吸顶，配套把 overflow 从 hidden 改 clip 以保住 sticky）已通过 12 项测试并发布到 GitHub Pages。
 - 2026-07-24：`v40`（就地输入框退出编辑自动收起、手动补记食物改为行内轻标并把删除入口收进编辑框）已通过 12 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v40、`.added-item` 样式已上线。
 - 2026-07-24：`v39`（修复 iOS 点输入框自动放大裁掉右侧内容）已通过 11 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v39、`.inline-add input` 字号为 16px。
 - 2026-07-21：`v19`（修复采购历史渲染 bug、新增运行时测试）已通过测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认采购历史显示 2 次小票。发布时 `gh-pages` 再次出现 non-fast-forward，当时用叠加提交的方式手工完成；随后已把这个做法固化进 `scripts/publish-pages.sh`，替换掉原来的 `git subtree split`，同类报错不会再出现。
@@ -283,6 +284,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：**食材页分类筛选栏吸顶**。往下滑食材列表时，`鱼禽瘦肉/蛋奶豆/蔬菜/主食/水果坚果` 这排筛选按钮以前会跟着滚走。给 `.tabs` 加 `position:sticky; top:env(safe-area-inset-top)`（避开刘海时间）+ 背景和底部细线，滑动时始终吸在顶部。关键前提：`position:sticky` 会被祖先的 `overflow:hidden` 破坏（hidden 会把祖先变成非滚动的滚动容器），所以把 `html`/`body`/`.app`/`.card` 的 `overflow(-x):hidden` 全部改成 `overflow(-x):clip`（clip 同样裁剪但不建立滚动容器），并保留 hidden 作为旧浏览器回退。新增测试断言 `.tabs` 为 sticky、`.card` 用 clip。离线缓存升至 v41。
 - 2026-07-24：**手动补记的两处体验修正**。① 每一顿的就地输入框（＋ 展开的那个「加一样…」+「加」按钮）现在在退出编辑时会自动收起——`.inline-add` 上加了 `focusout` 监听，焦点离开（点到别处、收起键盘）就 `hidden`，延后一拍判断以免误伤框内「加」/删除按钮的点击；原本只有 Esc 能收。② 手动加的食物不再单独渲染成带边框、带 ✕ 的白色胶囊行，而是直接进食物列表、用主色（`.added-item`→`var(--green)`）轻微区分，能看出是自己加的但不突兀；删除入口（✕ 小胶囊）收进了那一顿默认隐藏的编辑框内，只有点开 ＋ 才出现。`.inline-add` 拆成 `.inline-add-row`（输入框+按钮）外层容纳可删除项。新增一条测试锁定「行内轻标 + 删除项在隐藏编辑框内」。离线缓存升至 v40。
 - 2026-07-24：**修复 iOS 点输入框自动放大、右侧内容被裁**。用户反馈在 iPhone 上点「加一样」输入框后整页被放大、右边（绿色添加按钮、右上角餐数）显示不全。根因是 iOS Safari 会对 `font-size<16px` 的文本输入框在聚焦时自动放大页面。把 `.inline-add input`（13px）和 `.diet-form input,.diet-form select`（14px）统一提到 16px，聚焦不再触发缩放；没有用 `maximum-scale=1/user-scalable=no` 禁用缩放，以保留用户正常的双指缩放。离线缓存升至 v39。
 - 2026-07-24：「本周吃到」与「每天吃了什么」合并成一张卡片；说明文字缩短。手动补记改成两个小图标入口——每一顿后面的 ＋ 可就地往那一顿加食物，标题右侧的 ＋ 用于整天/整顿还不存在的情况；去掉了原来的「＋ 补记一餐」文字按钮。离线缓存升至 v37。

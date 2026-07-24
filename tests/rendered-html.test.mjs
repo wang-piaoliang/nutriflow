@@ -102,6 +102,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /仅保存在这台设备，不上传 GitHub/);
   assert.match(html, /data-open-photo/);
 
+  // The 食材 category filter bar pins to the top while the list scrolls, so it
+  // stays reachable; sticky only holds when its overflow ancestors use clip
+  // rather than hidden, which would silently turn them into scroll containers.
+  assert.match(html, /\.tabs\{[^}]*position:sticky/);
+  assert.match(html, /\.card\{[^}]*overflow:clip/);
+
   // Deleting is a long press on the photo itself. The old always-visible ×
   // sat on top of a small thumbnail and was easy to hit by accident.
   assert.doesNotMatch(html, /class="photo-remove"/);
@@ -362,7 +368,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v40"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v41"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
