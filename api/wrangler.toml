@@ -1,0 +1,10 @@
+# NutriFlow 云同步 Worker 的部署配置。
+# 部署步骤见本目录 README.md。database_id 由 `wrangler d1 create nutriflow` 生成后填进来。
+name = "nutriflow-sync"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nutriflow"
+database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"

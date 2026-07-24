@@ -9,6 +9,7 @@
 ## Source Of Truth
 
 - The current product is the mobile-first PWA in `public/nutriflow.html`.
+- Optional cloud sync backend lives in `api/` (a standalone Cloudflare Worker + D1: `worker.js`, `wrangler.toml`, `schema.sql`, `README.md`). It syncs only the manual diet entries (`nutriflow_diet_entries_v1`). It is deployed separately with `wrangler deploy` by the user (their own Cloudflare account) — `npm run publish:pages` does NOT deploy it and must not try to. The app works unchanged when sync is not configured; never make sync a hard dependency.
 - PWA metadata and offline behavior live in `public/manifest.webmanifest` and `public/sw.js`.
 - `app/page.tsx` and `public/index.html` redirect the root route to `/nutriflow.html`.
 - Purchase and food data are currently hardcoded in `public/nutriflow.html`.

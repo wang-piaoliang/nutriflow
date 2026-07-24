@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v46`
+- 当前离线缓存：`nutriflow-pwa-v47`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -89,7 +89,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
   - **每一顿后面的 `.chip-add`（虚线圆形 ＋）**——最常用的那个。点开就地展开一个输入框，往这一顿里加食物，不用回到表单重选日期和餐次。它**渲染在 `<small>` 食物列表的末尾、和文字同一行**（inline-flex + `vertical-align`），用户明确要求不要另起一行；不要把它移回下面的 `.chip-row`。删除用的胶囊（`.chip-row`）仍在下一行，只在这一顿有手动补记时才出现。
   - **「每天吃了什么」标题右侧的 `.head-add`（＋）**——只在整天或整顿还不存在时才用得上，展开 `#dietDayForm`（日期 + 餐次 + 食物）。该按钮在 `dietLogList` 外面，重渲染不会重建，所以**只绑一次**，不要挪进 `bindDietForm`，否则每次渲染都会叠加一个监听器。
 - 食物输入统一走 `parseItemInput()`：空格、逗号、顿号、加号都当分隔符。
-- 存在 `localStorage` 的 `nutriflow_diet_entries_v1`，和"吃完"状态一样是**设备本地**的，不进 Git、不跨设备。
+- 存在 `localStorage` 的 `nutriflow_diet_entries_v1`，默认是**设备本地**的、不进 Git。**可选云同步**（2026-07-24 加）：用户自建的 Cloudflare Worker + D1（代码在 `api/`）能把这段手动补记同步到云端、跨设备。前端在「目标」页最下有「☁️ 云同步」卡片，填 Worker 地址 + 口令（存 `nutriflow_sync_url` / `nutriflow_sync_token`）即启用：打开页面 `syncPull()` 拉取、每次 `saveDietEntries()` 走 `schedulePush()` 防抖 `PUT`、回前台再拉一次；`Authorization: Bearer <口令>`。**不配置就零影响**，完全按本地走。照片（IndexedDB）和"吃完"（`nutriflow_consumed_v1`）**不**走同步，仍设备本地——延续 2026-07-21 的决定。同步只覆盖 `dietEntries`，`dietRecords`（代码里的）不受影响。
 - `allDietRecords()` 把 `dietRecords`（同步包写进代码的）和手动补记合并：同一天同一餐合成一条，餐次按早餐/午餐/晚餐/加餐排序。手动补的那几样额外记在 `meal.added` 里，界面上显示成可点的胶囊按钮，**只有它们能删**——同步包写进代码的删不掉，避免用户误删了下次发版又回来、造成困惑。
 - 渲染饮食页和周总结都要走 `allDietRecords()`，不要直接读 `dietRecords`，否则手动补记的内容不会出现在统计里。
 - 三餐的主食“藜麦米饭”最初没有出现在同步包里（照片里有）。原因是同步包模板里“跳过…米等主食”的过滤规则本意只针对采购，却被套用到了饮食上。模板已改：过滤规则明确限定为只作用于「新增采购」，饮食部分要求把所有出现的食物写全，并单列“主食”字段。
@@ -289,6 +289,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：**新增可选云同步后端**（用户选「自建后端」）。`api/` 下是一个独立的 Cloudflare Worker + D1（`worker.js`、`wrangler.toml`、`schema.sql`、`README.md`），提供 `GET/PUT /doc/:key`（Bearer 口令鉴权、CORS、表惰性建好），把网页手动补记的 `nutriflow_diet_entries_v1` 整段存云端、跨设备同步。它**独立于** gh-pages 静态站和 vinext Next 应用，用 `wrangler deploy` 单独部署（需用户自己的 Cloudflare 账号，免费额度内 0 成本）。前端在「目标」页加「☁️ 云同步」卡片 + 一套 sync 模块（`syncConfig/syncRequest/schedulePush/syncPull/setSyncStatus`），feature-flag：不填就零影响。已用本地 mock + CDP 端到端验证推送/拉取/换设备/错口令四条路径。离线缓存升至 v47。照片和「吃完」仍不同步。
 - 2026-07-24：按用户要求做四项界面调整。① 底部导航顺序改为 `饮食`、`采购`、`食材`、`目标`，默认落地页改为 `饮食`；末位原「首页」更名「目标」（`data-view="home"` 不变）。② 「本周吃到」从单行文字改成和首页顶部同款的分类指标磁贴（`grid3` + `.metric` + `.week-caption`），数据口径不变。③ 「每天吃了什么」说明文字改为“每顿饭发给 Claude 识别，自动整理成记录；照片仅存本地不上传。”。④ 新增在外就餐支持：餐次可加 `place`（餐厅名），以 `📍 名称` 显示在最前、合并时保留；07-24 晚餐寿司郎已用 `place:"寿司郎"`。相应更新导航顺序、周总结磁贴、缓存版本等测试断言。离线缓存升至 v46。
 - 2026-07-24：**修复上一版标题吸顶把首页 hero 改坏**。上一版给所有 `.section-title` 加了白色背景（吸顶要盖住滚动内容），但首页绿色 hero 卡片的标题是白字配绿底——白背景把绿底盖成一个空白框、白字也看不见了。加 `.hero .section-title{position:static;background:transparent;box-shadow:none;...}` 让 hero 标题不套用吸顶白底。新增测试断言该 opt-out。离线缓存升至 v45。
 - 2026-07-24：**照片顺序修复 + 各板块标题吸顶**。① 上传新照片后顺序会乱：照片按随机 UUID 主键从 IndexedDB `getAll` 取回（≈乱序），`loadPhotosByOwner` 从不排序。改为按 `createdAt` 升序排——老照片始终在前、新照片追加到末尾；早年无 `createdAt` 的老照片用空串当最早排最前。② 把 `.section-title` 全部改成 `position:sticky; top:env(safe-area-inset-top)`（背景+底部细线，margin-bottom 改 padding-bottom 好让吸顶时盖住下面滚过的内容），这样采购历史、食材单价对比、现有食材、饮食记录等长列表往下滑时当前板块标题一直留在顶部。食材营养价值卡片的标题加 `has-sticky-tabs` 类改回 `position:static`——它下面紧跟着已经吸顶的分类筛选栏，避免两条叠一起。新增测试断言 `.section-title` 吸顶与该 opt-out 类。离线缓存升至 v44。
