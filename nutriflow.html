@@ -313,7 +313,11 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+.sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
 .hero .metric span{color:#5f6e63}
+/* 本周吃到磁贴：图标和数字放一起当主体，分类名放大一点、更清楚。 */
+#dietLog .metric b{font-size:17px}
+#dietLog .metric span{font-size:13px;margin-top:4px}
 .list{display:grid;gap:10px}
 .item{
   display:grid;
@@ -506,6 +510,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.photo-add-mini{cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 /* 添加按钮独占一行、靠右，分隔线在这一行上方。
    分隔线到按钮、按钮到缩略图都收得很紧，否则中间会像空出一整行。 */
 .photo-tools{
@@ -732,8 +737,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>☁️ 云同步</h2>
           <span class="subtle" id="syncStatus">未配置</span>
         </div>
-        <div class="note">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，通常每台设备只需填一次口令、点保存即可；不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
-        <div class="sync-form">
+        <button class="sync-edit" type="button" id="syncEdit" hidden>已开启，点这里改设置</button>
+        <div class="note" id="syncNote">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，通常每台设备只需填一次口令、点保存即可；不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
+        <div class="sync-form" id="syncForm">
           <input type="url" id="syncUrl" placeholder="Worker 地址 https://…workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
           <input type="text" id="syncToken" placeholder="同步口令（部署时设的 SYNC_TOKEN）" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" id="syncSave">保存并同步</button>
@@ -794,7 +800,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">每顿饭发给 Claude 识别，自动整理成记录；照片仅存本地不上传。</div>
+        <div class="note">每顿饭发给 Claude 识别记录，照片存本地不传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -1304,9 +1310,16 @@ function photoSectionMarkup(scope, ownerId, photos, label){
     const url = photoUrl(scope, photo.blob);
     return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
-  // 添加按钮单独一行、右对齐，缩略图紧跟在下面。
-  // 这两行之间不要再留空隙，之前那一版看着像空了一行。
-  return `<div class="photo-tools"><label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>${tiles ? `<div class="photo-grid">${tiles}</div>` : ""}`;
+  const grid = tiles ? `<div class="photo-grid">${tiles}</div>` : "";
+  // 饮食页每天的加照片入口移到了标题行的小相机（photoAddLabel），这里就不再放大相机按钮，
+  // 避免一天出现两个相机 icon（用户反馈）。小票（shopping）是可折叠卡片、标题在 summary 里
+  // 不方便放 input，所以仍保留卡片内的加照片按钮。
+  if (scope === "diet") return grid;
+  return `<div class="photo-tools"><label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>${grid}`;
+}
+// 标题行里的小相机：点它直接选照片；有照片时后面带数量。文件 input 已全局隐藏，label 点击即触发。
+function photoAddLabel(ownerId, count){
+  return `<label class="photo-add-mini" title="加照片" aria-label="加照片">📷${count ? ` ${count}` : ""}<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label>`;
 }
 function bindPhotoControls(container, rerender){
   container.querySelectorAll("[data-photo-owner]").forEach(input => {
@@ -1619,9 +1632,9 @@ function renderWeekSummary(){
   document.getElementById("weekMeta").textContent = `${label(monday)}–${label(sunday)} · ${records.length} 天有记录`;
   document.getElementById("weekSummary").innerHTML = total
     ? `<div class="grid3 week-metrics">
-        ${counts.map(entry => `<div class="metric"><b>${entry.count}</b><span>${entry.rule.icon} ${entry.rule.name}</span></div>`).join("")}
+        ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
       </div>
-      <p class="week-caption">本周共 ${total} 种食物，看看这几类是不是都吃到了。</p>`
+      <p class="week-caption">本周吃到 ${total} 种食物，看看这几类都吃到没。</p>`
     : `<div class="note">本周还没有记录。</div>`;
 }
 function renderPriceComparison(){
@@ -1748,7 +1761,7 @@ async function renderDietLog(){
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}</span> ` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}：</span>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
           <div class="inline-add-row">
             <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
@@ -1761,7 +1774,7 @@ async function renderDietLog(){
     const owner = dietPhotoOwner(record.date);
     const attachedPhotos = photosByOwner[owner] || [];
     return `<div class="diet-day">
-      <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`}${attachedPhotos.length ? ` · 📷 ${attachedPhotos.length}` : ""}</span></div>
+      <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`} · ${photoAddLabel(owner, attachedPhotos.length)}</span></div>
       ${meals}
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
@@ -1946,14 +1959,25 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   const urlInput = document.getElementById("syncUrl");
   const tokenInput = document.getElementById("syncToken");
   const saveBtn = document.getElementById("syncSave");
+  const form = document.getElementById("syncForm");
+  const note = document.getElementById("syncNote");
+  const editBtn = document.getElementById("syncEdit");
   if (!urlInput || !tokenInput || !saveBtn) return;
   urlInput.value = localStorage.getItem(SYNC_URL_KEY) || DEFAULT_SYNC_URL;
   tokenInput.value = localStorage.getItem(SYNC_TOKEN_KEY) || "";
+  // 已配置就把输入表单收起来，只留标题 + 状态 + 一个「改设置」小按钮，避免一直显示可输入框。
+  function collapse(collapsed){
+    if (form) form.hidden = collapsed;
+    if (note) note.hidden = collapsed;
+    if (editBtn) editBtn.hidden = !collapsed;
+  }
+  collapse(!!syncConfig());
+  editBtn?.addEventListener("click", () => collapse(false));
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(SYNC_URL_KEY, urlInput.value.trim());
     localStorage.setItem(SYNC_TOKEN_KEY, tokenInput.value.trim());
-    if (syncConfig()) syncPull();
-    else setSyncStatus("未配置");
+    if (syncConfig()){ syncPull(); collapse(true); }
+    else { setSyncStatus("未配置"); collapse(false); }
   });
   if (syncConfig()){
     syncPull();
