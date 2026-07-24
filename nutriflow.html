@@ -309,6 +309,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   text-align:left;
 }
 .week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+.sync-form{display:grid;gap:8px;margin-top:12px}
+.sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
+.sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
 .hero .metric span{color:#5f6e63}
 .list{display:grid;gap:10px}
 .item{
@@ -722,6 +725,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <figcaption>《中国居民平衡膳食宝塔（2022）》。图中克数和毫升数都是每天的建议量，“每周至少 2 次水产品”是频率建议。点击图片看高清版。</figcaption>
         </figure>
       </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>☁️ 云同步</h2>
+          <span class="subtle" id="syncStatus">未配置</span>
+        </div>
+        <div class="note">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。留空即只存本机；照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
+        <div class="sync-form">
+          <input type="url" id="syncUrl" placeholder="Worker 地址 https://…workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="text" id="syncToken" placeholder="同步口令（部署时设的 SYNC_TOKEN）" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="button" id="syncSave">保存并同步</button>
+        </div>
+      </article>
     </div>
   </section>
 
@@ -979,6 +995,7 @@ const MEAL_ORDER = ["早餐","午餐","晚餐","加餐"];
 let dietEntries = load(DIET_ENTRIES_KEY, []);
 function saveDietEntries(){
   localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
+  schedulePush();
 }
 function addDietEntry(date, meal, items){
   dietEntries.push({
@@ -990,6 +1007,56 @@ function addDietEntry(date, meal, items){
 function removeDietEntry(id){
   dietEntries = dietEntries.filter(entry => entry.id !== id);
   saveDietEntries();
+}
+// ---- 云同步（可选，用户自建 Cloudflare Worker + D1，见 api/README.md）----
+// 只同步手动补记的餐食（DIET_ENTRIES_KEY）。不配置就完全不影响：所有编辑照旧只存本机。
+// 配置后：打开页面拉取一次、每次改动防抖推送整段。照片和"吃完"勾选不走这里。
+const SYNC_URL_KEY = "nutriflow_sync_url";
+const SYNC_TOKEN_KEY = "nutriflow_sync_token";
+function syncConfig(){
+  const url = (localStorage.getItem(SYNC_URL_KEY) || "").trim().replace(/\/+$/, "");
+  const token = (localStorage.getItem(SYNC_TOKEN_KEY) || "").trim();
+  return url && token ? {url, token} : null;
+}
+async function syncRequest(method, body){
+  const cfg = syncConfig();
+  if (!cfg) return null;
+  const res = await fetch(`${cfg.url}/doc/diet_entries`, {
+    method,
+    headers: {"Authorization":`Bearer ${cfg.token}`, "Content-Type":"application/json"},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(res.status === 401 ? "口令不对" : `同步失败 (${res.status})`);
+  return res.json();
+}
+let syncPushTimer = null;
+function schedulePush(){
+  if (!syncConfig()) return;
+  setSyncStatus("同步中…");
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => {
+    syncRequest("PUT", {value: dietEntries})
+      .then(() => setSyncStatus("已同步"))
+      .catch(err => setSyncStatus(err.message));
+  }, 600);
+}
+async function syncPull(){
+  if (!syncConfig()) return;
+  setSyncStatus("同步中…");
+  try{
+    const data = await syncRequest("GET");
+    if (data && Array.isArray(data.value)){
+      dietEntries = data.value;
+      localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
+      void renderDietLog();
+      renderWeekSummary();
+    }
+    setSyncStatus("已同步");
+  }catch(err){ setSyncStatus(err.message); }
+}
+function setSyncStatus(msg){
+  const el = document.getElementById("syncStatus");
+  if (el) el.textContent = msg;
 }
 // 同一天、同一餐可能既有同步包写的、又有手动补的，合并成一条显示，
 // 但手动补的那几样单独留下 entryId，这样只有它们能被删掉。
@@ -1868,6 +1935,27 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       .catch(() => {});
   });
 }
+// 云同步：填充已存配置、绑定保存、（已配置时）打开与回前台各拉取一次。
+(function initSync(){
+  const urlInput = document.getElementById("syncUrl");
+  const tokenInput = document.getElementById("syncToken");
+  const saveBtn = document.getElementById("syncSave");
+  if (!urlInput || !tokenInput || !saveBtn) return;
+  urlInput.value = localStorage.getItem(SYNC_URL_KEY) || "";
+  tokenInput.value = localStorage.getItem(SYNC_TOKEN_KEY) || "";
+  saveBtn.addEventListener("click", () => {
+    localStorage.setItem(SYNC_URL_KEY, urlInput.value.trim());
+    localStorage.setItem(SYNC_TOKEN_KEY, tokenInput.value.trim());
+    if (syncConfig()) syncPull();
+    else setSyncStatus("未配置");
+  });
+  if (syncConfig()){
+    syncPull();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") syncPull();
+    });
+  }
+})();
 render();
 </script>
 </body>
