@@ -287,6 +287,26 @@ test("merges manually added meals into the day", async () => {
   assert.equal(reverted.meals.map((meal) => meal.name).join("/"), "午餐/晚餐");
 });
 
+test("marks manual foods inline and hides their delete control until editing", async () => {
+  const { context, elements } = await runAppScript();
+
+  context.addDietEntry("2026-07-20", "早餐", ["牛奶"]);
+  await context.renderDietLog();
+  const html = elements.get("dietLogList").innerHTML;
+
+  // The manually added food joins the meal's food list with a subtle accent,
+  // not as a separate bordered ✕ pill on its own row.
+  assert.match(html, /<span class="added-item">牛奶<\/span>/);
+
+  // Its delete control lives inside that meal's hidden inline editor, so no ✕
+  // shows on the card until the ＋ is opened.
+  assert.match(html, /class="inline-add" data-inline-for="2026-07-20\|早餐" hidden/);
+  assert.ok(
+    html.indexOf('data-inline-for="2026-07-20|早餐"') < html.indexOf("data-remove-entry"),
+    "the remove control sits inside the editor, after the inline-add opens",
+  );
+});
+
 test("folds receipt-level fields across every line item", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
@@ -342,7 +362,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v39"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v40"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

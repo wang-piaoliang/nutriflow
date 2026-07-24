@@ -257,7 +257,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:12px;
   line-height:1;
 }
-.inline-add{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
+.inline-add{display:grid;gap:8px;margin-top:8px}
+.inline-add-row{display:grid;grid-template-columns:1fr auto;gap:6px}
 .inline-add input{
   min-width:0;
   padding:8px 10px;
@@ -574,6 +575,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .meal-entry{padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
 .meal-entry b{display:block;font-size:14px}
 .meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5}
+/* 手动补记的食物在食物列表里用主色轻微区分，能看出是自己加的，但不另起一行、不加边框叉号。 */
+.added-item{color:var(--green)}
 .bottom-nav{
   position:fixed;
   left:50%;
@@ -1621,20 +1624,28 @@ async function renderDietLog(){
   document.getElementById("dietLogMeta").textContent = `${records.length} 天`;
   const days = records.map(record => {
     const meals = record.meals.map(meal => {
-      // 只有手动补的那几样能删，同步包写进代码的删不掉。
+      // 只有手动补的那几样能删，同步包写进代码的删不掉。删除入口收进下面的编辑框里，
+      // 平时不在食物列表旁边露出叉号。
       const removable = (meal.added || []).map(entry =>
         `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.join(" · ")} ✕</button>`
       ).join("");
+      // 手动补记的食物在下面的食物列表里用主色轻微标一下，不再单独做成带边框叉号的胶囊。
+      const addedLabels = new Set((meal.added || []).flatMap(entry => entry.items.map(itemLabel)));
+      const itemsMarkup = sortMealItems(meal.items)
+        .map(label => addedLabels.has(label) ? `<span class="added-item">${label}</span>` : label)
+        .join(" · ");
       const key = `${record.date}|${meal.name}`;
       // ＋ 直接跟在食物列表末尾，不另起一行。
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${sortMealItems(meal.items).join(" · ")} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
-        ${removable ? `<div class="chip-row">${removable}</div>` : ""}
+        <small>${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
-          <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
-          <button class="inline-add-save" type="button">加</button>
+          <div class="inline-add-row">
+            <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
+            <button class="inline-add-save" type="button">加</button>
+          </div>
+          ${removable ? `<div class="chip-row">${removable}</div>` : ""}
         </div>
       </div>`;
     }).join("");
@@ -1711,6 +1722,13 @@ function bindDietForm(container){
     field.addEventListener("keydown", event => {
       if (event.key === "Enter") commit();
       if (event.key === "Escape") box.hidden = true;
+    });
+    // 退出编辑（点到别处、收起键盘）就把这一顿的输入框和删除项一起收起来。
+    // 延后一拍判断，好让框内「加」/删除按钮的点击先处理完，焦点仍在框内时不收起。
+    box.addEventListener("focusout", () => {
+      setTimeout(() => {
+        if (!box.contains(document.activeElement)) box.hidden = true;
+      }, 0);
     });
   });
 
