@@ -314,6 +314,20 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
 .sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
+.dining-add{display:grid;gap:8px;margin:12px 0}
+.dining-add>input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
+.dining-add-row{display:flex;gap:8px}
+.dining-add-row input{flex:1;min-width:0;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
+.dining-add-row button{padding:9px 16px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
+.dining-entry{padding:12px 0;border-top:1px solid var(--line)}
+.dining-entry:first-child{border-top:none}
+.dining-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.dining-head strong{font-size:15px}
+.dining-row{display:flex;align-items:center;gap:10px;margin-top:8px}
+.dining-price-field{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:14px}
+.dining-price{width:112px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:16px}
+.dining-del{margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--muted);font-size:13px;cursor:pointer}
+.dining-note{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5}
 .hero .metric span{color:#5f6e63}
 /* 本周吃到磁贴：图标和数字放一起当主体，分类名放大一点、更清楚。 */
 #dietLog .metric b{font-size:17px}
@@ -782,6 +796,23 @@ h3{margin:0;font-size:15px;letter-spacing:0}
         <div class="note">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
         <div class="bars" id="priceCompare"></div>
       </article>
+
+      <article class="card desktop-span">
+        <div class="section-title">
+          <h2>在外就餐</h2>
+          <span class="subtle" id="diningMeta">0 笔</span>
+        </div>
+        <div class="note">记录在外面吃饭的花费。没拍照也没关系，价格可以后补——点每条的价格框直接改、或点小相机加照片。只存本机，不上传 GitHub。</div>
+        <div class="dining-add">
+          <input type="text" id="diningPlace" placeholder="餐厅 / 吃了啥" autocomplete="off">
+          <div class="dining-add-row">
+            <input type="date" id="diningDate" aria-label="日期">
+            <input type="number" id="diningPrice" inputmode="decimal" placeholder="价格（元，可留空后补）" autocomplete="off">
+            <button type="button" id="diningAdd">添加</button>
+          </div>
+        </div>
+        <div id="diningList"></div>
+      </article>
     </div>
   </section>
 
@@ -1070,6 +1101,79 @@ function setSyncStatus(msg){
   const el = document.getElementById("syncStatus");
   if (el) el.textContent = msg;
 }
+// ---- 在外就餐记录（本机）----
+// 记在外面吃饭的花费：{id, date, place, price, note}。价格可留空后补。
+// 照片走现有私密照片系统，owner 用 `dining:<id>`。和"吃完""照片"一样只存本机，不进 Git、暂不走云同步。
+const DINING_KEY = "nutriflow_dining_v1";
+let diningEntries = load(DINING_KEY, []);
+function saveDining(){ localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); }
+function addDining(entry){
+  diningEntries.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    date: entry.date, place: entry.place, price: entry.price, note: entry.note || ""
+  });
+  saveDining();
+}
+function updateDiningPrice(id, price){
+  const entry = diningEntries.find(e => e.id === id);
+  if (!entry) return;
+  entry.price = (price === "" || price == null) ? null : Number(price);
+  saveDining();
+}
+function removeDining(id){
+  diningEntries = diningEntries.filter(e => e.id !== id);
+  saveDining();
+}
+function diningOwner(id){ return `dining:${id}`; }
+async function renderDining(){
+  const list = document.getElementById("diningList");
+  if (!list) return;
+  const photosByOwner = await loadPhotosByOwner();
+  resetPhotoUrls("dining");
+  const entries = diningEntries.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const totalKnown = entries.reduce((sum, e) => sum + (typeof e.price === "number" && !isNaN(e.price) ? e.price : 0), 0);
+  const missing = entries.filter(e => e.price == null || isNaN(e.price)).length;
+  const meta = document.getElementById("diningMeta");
+  if (meta) meta.textContent = `${entries.length} 笔 · ¥${totalKnown.toFixed(2).replace(/\.00$/, "")}${missing ? ` · ${missing} 笔待补价` : ""}`;
+  list.innerHTML = entries.map(entry => {
+    const owner = diningOwner(entry.id);
+    const photos = photosByOwner[owner] || [];
+    const priceVal = (entry.price == null || isNaN(entry.price)) ? "" : entry.price;
+    const label = entry.place || "在外就餐";
+    return `<div class="dining-entry">
+      <div class="dining-head"><strong>${label}</strong><span class="subtle">${entry.date || ""} · ${photoAddLabel(owner, photos.length)}</span></div>
+      <div class="dining-row">
+        <label class="dining-price-field">¥<input type="number" inputmode="decimal" class="dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="补价格"></label>
+        <button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>
+      </div>
+      ${entry.note ? `<small class="dining-note">${entry.note}</small>` : ""}
+      ${photoSectionMarkup("dining", owner, photos, label)}
+    </div>`;
+  }).join("") || `<div class="note">还没有在外就餐记录。用上面的输入框加一笔，价格可以留空后补。</div>`;
+  bindPhotoControls(list, () => void renderDining());
+  list.querySelectorAll(".dining-price").forEach(input => {
+    input.addEventListener("change", () => { updateDiningPrice(input.dataset.dining, input.value); void renderDining(); });
+  });
+  list.querySelectorAll("[data-dining-del]").forEach(button => {
+    button.addEventListener("click", () => { removeDining(button.dataset.diningDel); void renderDining(); });
+  });
+}
+function bindDiningForm(){
+  const addBtn = document.getElementById("diningAdd");
+  const placeEl = document.getElementById("diningPlace");
+  const dateEl = document.getElementById("diningDate");
+  const priceEl = document.getElementById("diningPrice");
+  if (!addBtn || !placeEl || !dateEl || !priceEl) return;
+  addBtn.addEventListener("click", () => {
+    const place = (placeEl.value || "").trim();
+    const date = dateEl.value || new Date().toISOString().slice(0, 10);
+    const price = priceEl.value.trim() === "" ? null : Number(priceEl.value);
+    if (!place && price == null){ placeEl.focus(); return; }
+    addDining({date, place, price});
+    placeEl.value = ""; priceEl.value = "";
+    void renderDining();
+  });
+}
 // 同一天、同一餐可能既有同步包写的、又有手动补的，合并成一条显示，
 // 但手动补的那几样单独留下 entryId，这样只有它们能被删掉。
 function allDietRecords(){
@@ -1130,7 +1234,7 @@ const PHOTO_STORE_NAME = "receiptPhotos";
 let photoDatabase;
 // Object URLs are revoked per section, so re-rendering 采购 cannot invalidate
 // thumbnails that 饮食 is still showing.
-const activePhotoUrls = {shopping:[], diet:[]};
+const activePhotoUrls = {shopping:[], diet:[], dining:[]};
 let shoppingRenderVersion = 0;
 let dietRenderVersion = 0;
 let activeFoodCategory = "animalProtein";
@@ -1314,7 +1418,7 @@ function photoSectionMarkup(scope, ownerId, photos, label){
   // 饮食页每天的加照片入口移到了标题行的小相机（photoAddLabel），这里就不再放大相机按钮，
   // 避免一天出现两个相机 icon（用户反馈）。小票（shopping）是可折叠卡片、标题在 summary 里
   // 不方便放 input，所以仍保留卡片内的加照片按钮。
-  if (scope === "diet") return grid;
+  if (scope !== "shopping") return grid;
   return `<div class="photo-tools"><label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>${grid}`;
 }
 // 标题行里的小相机：点它直接选照片；有照片时后面带数量。文件 input 已全局隐藏，label 点击即触发。
@@ -1604,6 +1708,7 @@ function render(){
   `).join("");
   void renderShopping();
   renderPriceComparison();
+  void renderDining();
   renderFoods();
   renderWeekSummary();
   void renderDietLog();
@@ -1986,6 +2091,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     });
   }
 })();
+bindDiningForm();
 render();
 </script>
 </body>
