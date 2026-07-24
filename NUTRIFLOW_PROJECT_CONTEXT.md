@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v37`
+- 当前离线缓存：`nutriflow-pwa-v38`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序：`首页`、`食材`、`饮食`、`采购`
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -85,7 +85,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - **食物条目可以带隐藏标签**：写成 `{name:"烤鸭", as:"鸭肉"}`，页面显示「烤鸭」，分类和「本周吃到」的去重用 `as` 的值。用户的要求是"烤鸭就直接写烤鸭，我想知道具体吃了什么菜，统计的时候可以写鸭肉"。取值一律走 `itemLabel()`（显示）和 `itemTag()`（归类/统计），不要直接用条目本身，否则遇到对象会渲染成 `[object Object]`。
 - 只有当菜名本身不含任何分类关键词时才需要加 `as`（例如「罗宋汤」）。像「烤鸭」这种已经含「鸭」的，加 `as` 只是为了统计时和「鸭肉」合并成一种。
 - **用户可以在页面上手动补记餐食**，两个入口，都是小图标、不带文字标签（用户明确说"不用加这个字，可以直接在后面加小icon"）：
-  - **每一顿后面的 `.chip-add`（虚线圆形 ＋）**——最常用的那个。点开就地展开一个输入框，往这一顿里加食物，不用回到表单重选日期和餐次。
+  - **每一顿后面的 `.chip-add`（虚线圆形 ＋）**——最常用的那个。点开就地展开一个输入框，往这一顿里加食物，不用回到表单重选日期和餐次。它**渲染在 `<small>` 食物列表的末尾、和文字同一行**（inline-flex + `vertical-align`），用户明确要求不要另起一行；不要把它移回下面的 `.chip-row`。删除用的胶囊（`.chip-row`）仍在下一行，只在这一顿有手动补记时才出现。
   - **「每天吃了什么」标题右侧的 `.head-add`（＋）**——只在整天或整顿还不存在时才用得上，展开 `#dietDayForm`（日期 + 餐次 + 食物）。该按钮在 `dietLogList` 外面，重渲染不会重建，所以**只绑一次**，不要挪进 `bindDietForm`，否则每次渲染都会叠加一个监听器。
 - 食物输入统一走 `parseItemInput()`：空格、逗号、顿号、加号都当分隔符。
 - 存在 `localStorage` 的 `nutriflow_diet_entries_v1`，和"吃完"状态一样是**设备本地**的，不进 Git、不跨设备。
@@ -281,6 +281,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：每一顿的 ＋ 改为跟在食物列表末尾同一行，不再另起一行。离线缓存升至 v38。
 - 2026-07-24：「本周吃到」与「每天吃了什么」合并成一张卡片；说明文字缩短。手动补记改成两个小图标入口——每一顿后面的 ＋ 可就地往那一顿加食物，标题右侧的 ＋ 用于整天/整顿还不存在的情况；去掉了原来的「＋ 补记一餐」文字按钮。离线缓存升至 v37。
 - 2026-07-23：照片入库前统一归一化（canvas → SDR JPEG + 温和曝光归一），解决 iPhone HDR 照片过曝和明暗不一；旧照片首次读取时自动就地转换。📷 按钮改回右上角独占一行并收紧与缩略图的间距。食物条目支持隐藏标签（`{name:"烤鸭", as:"鸭肉"}`）。新增手动补记餐食（localStorage，可删）。食材库补上萝卜。精简「奶/酸奶/蛋」说明。离线缓存升至 v36。
 - 2026-07-23：**修复桌面/独立 app 停在旧版本**。用户反馈 Safari 里是新版、桌面 dock app 是旧版。根因是页面注册 SW 后没有在新 SW 接管时刷新，dock app 常驻只吃旧缓存壳。`nutriflow.html` 新增 `controllerchange → location.reload()`（`hadController` 跳过首次安装）与 `visibilitychange → registration.update()`。新增测试断言这三段逻辑存在。离线缓存升至 v35。
