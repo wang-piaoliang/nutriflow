@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v48`
+- 当前离线缓存：`nutriflow-pwa-v49`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -289,6 +289,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：**去掉 `.section-title` 底部那条分隔线**（用户反馈每个板块标题下那条线太突兀）。吸顶是靠不透明背景 `background:var(--surface)` 盖住滚过的内容，`box-shadow:0 1px 0 var(--line)` 那条线并非必需，删掉即可，sticky 行为不变。`.hero .section-title` 本就 `box-shadow:none`。测试没断言过这条 shadow，不受影响。离线缓存升至 v49。
 - 2026-07-24：云同步**预填 Worker 地址**（用户已把 Worker 部署到 `https://nutriflow-sync.nutriflow.workers.dev`）。新增 `DEFAULT_SYNC_URL` 常量：输入框预填该地址、`syncConfig()` 用它兜底，于是每台设备通常只需填一次口令。地址非密钥、可公开写死；填别的地址会覆盖默认。同步的时机不变（打开/回前台拉、改动推），未加定时轮询——用户明确「现在这样就够了」。离线缓存升至 v48。
 - 2026-07-24：**新增可选云同步后端**（用户选「自建后端」）。`api/` 下是一个独立的 Cloudflare Worker + D1（`worker.js`、`wrangler.toml`、`schema.sql`、`README.md`），提供 `GET/PUT /doc/:key`（Bearer 口令鉴权、CORS、表惰性建好），把网页手动补记的 `nutriflow_diet_entries_v1` 整段存云端、跨设备同步。它**独立于** gh-pages 静态站和 vinext Next 应用，用 `wrangler deploy` 单独部署（需用户自己的 Cloudflare 账号，免费额度内 0 成本）。前端在「目标」页加「☁️ 云同步」卡片 + 一套 sync 模块（`syncConfig/syncRequest/schedulePush/syncPull/setSyncStatus`），feature-flag：不填就零影响。已用本地 mock + CDP 端到端验证推送/拉取/换设备/错口令四条路径。离线缓存升至 v47。照片和「吃完」仍不同步。
 - 2026-07-24：按用户要求做四项界面调整。① 底部导航顺序改为 `饮食`、`采购`、`食材`、`目标`，默认落地页改为 `饮食`；末位原「首页」更名「目标」（`data-view="home"` 不变）。② 「本周吃到」从单行文字改成和首页顶部同款的分类指标磁贴（`grid3` + `.metric` + `.week-caption`），数据口径不变。③ 「每天吃了什么」说明文字改为“每顿饭发给 Claude 识别，自动整理成记录；照片仅存本地不上传。”。④ 新增在外就餐支持：餐次可加 `place`（餐厅名），以 `📍 名称` 显示在最前、合并时保留；07-24 晚餐寿司郎已用 `place:"寿司郎"`。相应更新导航顺序、周总结磁贴、缓存版本等测试断言。离线缓存升至 v46。

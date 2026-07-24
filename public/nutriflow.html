@@ -184,7 +184,8 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   background:var(--surface);
   margin:2px 0 0;
   padding-bottom:12px;
-  box-shadow:0 1px 0 var(--line);
+  /* 不画分隔线：吸顶时靠不透明背景盖住滚过的内容就够了，
+     静止时那条线显得突兀（用户反馈），故去掉。 */
 }
 /* 食材页这张卡片标题下面紧跟着同样吸顶的分类筛选栏，标题就不再吸顶，免得两条叠在一起。 */
 .section-title.has-sticky-tabs{position:static;box-shadow:none}
