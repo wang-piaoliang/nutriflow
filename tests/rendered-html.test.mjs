@@ -144,7 +144,7 @@ test("groups purchases into one card per receipt at runtime", async () => {
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "3 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "4 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
@@ -171,7 +171,7 @@ test("renders the confirmed diet log by day", async () => {
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[012]"/g).length, 3);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[0123]"/g).length, 4);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -181,18 +181,19 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 8 + 3 + 7 + 2 + 1 distinct foods.
+  // One compact line, not a row per category: 8 + 4 + 7 + 3 + 1 distinct foods.
   // A food eaten at several meals counts once, not once per meal.
-  assert.match(summary, /共 21 种食物/);
+  // 豆皮 matches no category keyword, so it is dropped from the tally entirely.
+  assert.match(summary, /共 23 种食物/);
   assert.match(summary, /🥩 鱼禽瘦肉 8/);
-  assert.match(summary, /🥛 蛋奶豆 3/);
+  assert.match(summary, /🥛 蛋奶豆 4/);
   assert.match(summary, /🥦 蔬菜 7/);
-  assert.match(summary, /🍚 主食 2/);
+  assert.match(summary, /🍚 主食 3/);
   assert.match(summary, /🍎 水果坚果 1/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
-  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 3 天有记录/);
+  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 4 天有记录/);
 
   // Local parsing: a Monday record must not fall into the previous week.
   const monday = context.currentWeek().monday;
