@@ -174,8 +174,18 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  margin:2px 0 12px;
+  /* 标题吸顶：往下滑长列表时，当前板块标题始终留在顶部（避开状态栏时间）。
+     原来的 margin-bottom 改成 padding-bottom，吸顶时不透明背景能把下面滚过的内容盖住。 */
+  position:sticky;
+  top:env(safe-area-inset-top, 0px);
+  z-index:3;
+  background:var(--surface);
+  margin:2px 0 0;
+  padding-bottom:12px;
+  box-shadow:0 1px 0 var(--line);
 }
+/* 食材页这张卡片标题下面紧跟着同样吸顶的分类筛选栏，标题就不再吸顶，免得两条叠在一起。 */
+.section-title.has-sticky-tabs{position:static;box-shadow:none}
 h2{margin:0;font-size:18px;letter-spacing:0;color:var(--text)}
 h3{margin:0;font-size:15px;letter-spacing:0}
 .subtle{color:var(--muted);font-size:13px}
@@ -781,7 +791,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
       </article>
 
       <article class="card">
-        <div class="section-title">
+        <div class="section-title has-sticky-tabs">
           <h2>食材营养价值</h2>
           <span class="subtle">保守参考 · 满分 5.0</span>
         </div>
@@ -1199,7 +1209,15 @@ async function loadPhotosByOwner(){
       return updated;
     }));
   }
-  return photos.reduce((groups, photo) => {
+  // IndexedDB 的 getAll 按主键（随机 UUID）返回，等于乱序，于是新传的照片会插到旧照片
+  // 中间。按 createdAt 升序排一遍：老照片始终在前，新照片追加到末尾。早年没有 createdAt
+  // 的老照片当作最早（空串排在所有 ISO 时间前面）。
+  const ordered = photos.slice().sort((a, b) => {
+    const left = a.createdAt || "";
+    const right = b.createdAt || "";
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  return ordered.reduce((groups, photo) => {
     (groups[photo.receiptId] ||= []).push(photo);
     return groups;
   }, {});

@@ -108,6 +108,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /\.tabs\{[^}]*position:sticky/);
   assert.match(html, /\.card\{[^}]*overflow:clip/);
 
+  // Every card's section title pins the same way, so the current section stays
+  // labelled while its list scrolls. The 食材 nutrition card opts out because
+  // its sticky filter chips sit directly below and would otherwise double-stick.
+  assert.match(html, /\.section-title\{[^}]*position:sticky/);
+  assert.match(html, /<div class="section-title has-sticky-tabs">/);
+
   // Deleting is a long press on the photo itself. The old always-visible ×
   // sat on top of a small thumbnail and was easy to hit by accident.
   assert.doesNotMatch(html, /class="photo-remove"/);
@@ -369,7 +375,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v43"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v44"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
