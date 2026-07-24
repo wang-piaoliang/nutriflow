@@ -113,6 +113,9 @@ test("ships the personalized nutrition and purchase views", async () => {
   // its sticky filter chips sit directly below and would otherwise double-stick.
   assert.match(html, /\.section-title\{[^}]*position:sticky/);
   assert.match(html, /<div class="section-title has-sticky-tabs">/);
+  // The green home hero has white title text, so its section title must opt out
+  // of the white sticky background or it becomes a blank white box over the card.
+  assert.match(html, /\.hero \.section-title\{[^}]*background:transparent/);
 
   // Deleting is a long press on the photo itself. The old always-visible ×
   // sat on top of a small thumbnail and was easy to hit by accident.
@@ -375,7 +378,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v44"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v45"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

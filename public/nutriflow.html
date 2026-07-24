@@ -140,6 +140,8 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   background:var(--hero-accent);
 }
 .hero h2{font-size:28px;color:#fff}
+/* 首页绿色 hero 是彩色横幅、标题是白字，不能套用板块标题的白底吸顶，否则白框盖住绿底、白字也看不见。 */
+.hero .section-title{position:static;background:transparent;box-shadow:none;margin:2px 0 12px;padding-bottom:0}
 .hero p{margin:8px 0 0;color:var(--hero-copy);font-size:14px;line-height:1.5}
 #home h2{font-size:16px}
 #home .hero h2{font-size:20px}
