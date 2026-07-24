@@ -308,9 +308,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   overflow-wrap:anywhere;
   text-align:left;
 }
-.week-line{display:grid;gap:6px}
-.week-line b{font-size:15px}
-.week-line span{color:var(--muted);font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .hero .metric span{color:#5f6e63}
 .list{display:grid;gap:10px}
 .item{
@@ -599,6 +597,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .meal-entry{padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
 .meal-entry b{display:block;font-size:14px}
 .meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5}
+.meal-place{color:var(--text);font-weight:600}
 /* 手动补记的食物在食物列表里用主色轻微区分，能看出是自己加的，但不另起一行、不加边框叉号。 */
 .added-item{color:var(--green)}
 .bottom-nav{
@@ -691,7 +690,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     <button class="icon-btn" onclick="window.print()" title="打印">⌘</button>
   </div>
 
-  <section class="view active" id="home">
+  <section class="view" id="home">
     <div class="stack desktop-grid">
       <article class="card hero desktop-span">
         <div class="section-title">
@@ -763,7 +762,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <section class="view" id="dietLog">
+  <section class="view active" id="dietLog">
     <div class="stack">
       <article class="card">
         <div class="section-title">
@@ -776,7 +775,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">每顿餐食照片发给 Claude 识别整理，照片仅存本地不上传 GitHub。</div>
+        <div class="note">每顿饭发给 Claude 识别，自动整理成记录；照片仅存本地不上传。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -806,10 +805,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
-  <button class="nav-btn active" data-view="home"><b>◎</b><span>首页</span></button>
-  <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
-  <button class="nav-btn" data-view="dietLog"><b>▤</b><span>饮食</span></button>
+  <button class="nav-btn active" data-view="dietLog"><b>▤</b><span>饮食</span></button>
   <button class="nav-btn" data-view="shopping"><b>＋</b><span>采购</span></button>
+  <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
+  <button class="nav-btn" data-view="home"><b>◎</b><span>目标</span></button>
 </nav>
 
 <div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="小票照片大图" hidden>
@@ -928,7 +927,7 @@ const dietRecords = [
       // 寿司郎（スシロー）晚餐，和 baby 一起。完整点单屏 18 项去重后：金枪鱼大腩（含酱烤）、
       // 生三文鱼、炙烧厚切鳗鱼、虾（千丝万缕虾手卷/鲜虾天妇罗/香炸虾）、南瓜天妇罗，配寿司饭；
       // 甜点日照雪顶咖啡冻另记为「咖啡冻」（不归入营养分类）；天妇罗汁是蘸料不计。
-      {name:"晚餐", items:["金枪鱼","三文鱼","鳗鱼","虾","南瓜","寿司饭","咖啡冻"]}
+      {name:"晚餐", place:"寿司郎", items:["金枪鱼","三文鱼","鳗鱼","虾","南瓜","寿司饭","咖啡冻"]}
     ]
   },
   {
@@ -1014,6 +1013,7 @@ function allDietRecords(){
       const merged = ensureMeal(target, meal.name);
       merged.items.push(...meal.items);
       if (meal.note) merged.note = meal.note;
+      if (meal.place) merged.place = meal.place;
     });
   });
   dietEntries.forEach(entry => {
@@ -1545,10 +1545,10 @@ function renderWeekSummary(){
 
   document.getElementById("weekMeta").textContent = `${label(monday)}–${label(sunday)} · ${records.length} 天有记录`;
   document.getElementById("weekSummary").innerHTML = total
-    ? `<div class="week-line">
-        <b>共 ${total} 种食物</b>
-        <span>${counts.map(entry => `${entry.rule.icon} ${entry.rule.name} ${entry.count}`).join(" · ")}</span>
-      </div>`
+    ? `<div class="grid3 week-metrics">
+        ${counts.map(entry => `<div class="metric"><b>${entry.count}</b><span>${entry.rule.icon} ${entry.rule.name}</span></div>`).join("")}
+      </div>
+      <p class="week-caption">本周共 ${total} 种食物，看看这几类是不是都吃到了。</p>`
     : `<div class="note">本周还没有记录。</div>`;
 }
 function renderPriceComparison(){
@@ -1675,7 +1675,7 @@ async function renderDietLog(){
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}</span><br>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
           <div class="inline-add-row">
             <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
