@@ -261,7 +261,7 @@ python3 -m http.server 8000 -d public
 - 发布到 `gh-pages` 的方式是「在远端当前提交之上叠加一个提交」：取 `HEAD:public` 的 tree，以远端 `gh-pages` 为父提交调用 `git commit-tree`，再推送。这样每次都是快进，远端历史完整保留。若远端 `gh-pages` 尚不存在（首次发布），则创建无父提交；若远端 tree 与本地 `public/` 完全相同，则跳过空提交只请求重建。
 - 本地 git 身份已在仓库级设为 `wang-piaoliang <52517818+wang-piaoliang@users.noreply.github.com>`。用 GitHub noreply 地址是为了避免公开提交历史里出现自动推导的本机主机名或内网 IP，同时也不暴露真实邮箱，GitHub 仍能正确关联到账号。新克隆仓库后需要重新设置。
 - 固定执行规则：每次完成一批较大的用户可见修改后，默认在同一任务内直接测试、提交并发布，无需发布前再询问或把发布留作后续步骤；最终交付时一次性说明修改和线上结果。用户明确要求发布的文档规则变更也立即同步到 GitHub。
-- 2026-07-24：`v42`（新增 07-24 晚餐寿司郎记录，更新本周去重计数与相关测试断言）已通过 12 项测试并发布到 GitHub Pages。
+- 2026-07-24：`v42`（新增 07-24 晚餐寿司郎记录，更新本周去重计数与相关测试断言）已通过 12 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v42、07-24 晚餐数据已上线。
 - 2026-07-24：`v41`（食材页分类筛选栏吸顶，配套把 overflow 从 hidden 改 clip 以保住 sticky）已通过 12 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v41、`.tabs` 为 `position:sticky`。
 - 2026-07-24：`v40`（就地输入框退出编辑自动收起、手动补记食物改为行内轻标并把删除入口收进编辑框）已通过 12 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v40、`.added-item` 样式已上线。
 - 2026-07-24：`v39`（修复 iOS 点输入框自动放大裁掉右侧内容）已通过 11 项测试并发布到 GitHub Pages，线上构建状态为 `built`，已在线确认 `sw.js` 为 v39、`.inline-add input` 字号为 16px。
