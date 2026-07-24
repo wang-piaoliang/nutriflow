@@ -150,7 +150,7 @@ test("groups purchases into one card per receipt at runtime", async () => {
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "4 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "5 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
@@ -177,12 +177,12 @@ test("renders the confirmed diet log by day", async () => {
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
-  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 8);
-  assert.equal(list.match(/data-inline-for=/g).length, 8);
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 9);
+  assert.equal(list.match(/data-inline-for=/g).length, 9);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[0123]"/g).length, 4);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01234]"/g).length, 5);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -192,20 +192,20 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 8 + 5 + 7 + 3 + 1 distinct foods.
+  // One compact line, not a row per category: 8 + 6 + 7 + 3 + 1 distinct foods.
   // A food eaten at several meals counts once, not once per meal.
-  // 豆皮 is one of the five soy foods: anything eaten but not yet covered by a
+  // 豆皮 is one of the six soy foods: anything eaten but not yet covered by a
   // category keyword gets added, otherwise it silently drops out of the tally.
-  assert.match(summary, /共 24 种食物/);
+  assert.match(summary, /共 25 种食物/);
   assert.match(summary, /🥩 鱼禽瘦肉 8/);
-  assert.match(summary, /🥛 蛋奶豆 5/);
+  assert.match(summary, /🥛 蛋奶豆 6/);
   assert.match(summary, /🥦 蔬菜 7/);
   assert.match(summary, /🍚 主食 3/);
   assert.match(summary, /🍎 水果坚果 1/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
-  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 4 天有记录/);
+  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 5 天有记录/);
 
   // Local parsing: a Monday record must not fall into the previous week.
   const monday = context.currentWeek().monday;
