@@ -183,8 +183,8 @@ test("renders the confirmed diet log by day", async () => {
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
-  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 9);
-  assert.equal(list.match(/data-inline-for=/g).length, 9);
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 10);
+  assert.equal(list.match(/data-inline-for=/g).length, 10);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
@@ -198,17 +198,18 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 8 + 6 + 7 + 4 + 1 distinct foods.
+  // One compact line, not a row per category: 11 + 6 + 8 + 5 + 1 distinct foods.
   // A food eaten at several meals counts once, not once per meal.
   // 豆皮 is one of the six soy foods: anything eaten but not yet covered by a
   // category keyword gets added, otherwise it silently drops out of the tally.
-  // 主食 has four distinct staples: 藜麦米饭, 米线, 乌冬面, and 07-24's 杂粮饭
-  // (the seven-colour brown-rice blend, tagged 杂粮饭 via its hidden `as`).
-  assert.match(summary, /共 26 种食物/);
-  assert.match(summary, /🥩 鱼禽瘦肉 8/);
+  // 鱼禽瘦肉 gains 07-24 晚餐's Sushiro fish (金枪鱼, 三文鱼, 鳗鱼); 虾 was already
+  // counted. 蔬菜 gains 南瓜. 主食 now has five distinct staples: 藜麦米饭, 米线,
+  // 乌冬面, 杂粮饭, and the sushi 寿司饭.
+  assert.match(summary, /共 31 种食物/);
+  assert.match(summary, /🥩 鱼禽瘦肉 11/);
   assert.match(summary, /🥛 蛋奶豆 6/);
-  assert.match(summary, /🥦 蔬菜 7/);
-  assert.match(summary, /🍚 主食 4/);
+  assert.match(summary, /🥦 蔬菜 8/);
+  assert.match(summary, /🍚 主食 5/);
   assert.match(summary, /🍎 水果坚果 1/);
 
   // A category with no foods this week is dropped rather than called out.
@@ -368,7 +369,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v41"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v42"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
