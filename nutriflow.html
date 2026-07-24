@@ -731,7 +731,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>☁️ 云同步</h2>
           <span class="subtle" id="syncStatus">未配置</span>
         </div>
-        <div class="note">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。留空即只存本机；照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
+        <div class="note">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，通常每台设备只需填一次口令、点保存即可；不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
         <div class="sync-form">
           <input type="url" id="syncUrl" placeholder="Worker 地址 https://…workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
           <input type="text" id="syncToken" placeholder="同步口令（部署时设的 SYNC_TOKEN）" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -1013,8 +1013,11 @@ function removeDietEntry(id){
 // 配置后：打开页面拉取一次、每次改动防抖推送整段。照片和"吃完"勾选不走这里。
 const SYNC_URL_KEY = "nutriflow_sync_url";
 const SYNC_TOKEN_KEY = "nutriflow_sync_token";
+// 默认 Worker 地址（公开端点，不是密钥，可以写死）。每台设备只需填口令即可启用；
+// 想换后端就在输入框填别的地址，存下来的会覆盖这个默认值。
+const DEFAULT_SYNC_URL = "https://nutriflow-sync.nutriflow.workers.dev";
 function syncConfig(){
-  const url = (localStorage.getItem(SYNC_URL_KEY) || "").trim().replace(/\/+$/, "");
+  const url = ((localStorage.getItem(SYNC_URL_KEY) || DEFAULT_SYNC_URL).trim()).replace(/\/+$/, "");
   const token = (localStorage.getItem(SYNC_TOKEN_KEY) || "").trim();
   return url && token ? {url, token} : null;
 }
@@ -1941,7 +1944,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   const tokenInput = document.getElementById("syncToken");
   const saveBtn = document.getElementById("syncSave");
   if (!urlInput || !tokenInput || !saveBtn) return;
-  urlInput.value = localStorage.getItem(SYNC_URL_KEY) || "";
+  urlInput.value = localStorage.getItem(SYNC_URL_KEY) || DEFAULT_SYNC_URL;
   tokenInput.value = localStorage.getItem(SYNC_TOKEN_KEY) || "";
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(SYNC_URL_KEY, urlInput.value.trim());
