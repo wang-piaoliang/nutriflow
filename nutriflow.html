@@ -144,8 +144,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 .hero .section-title{position:static;background:transparent;box-shadow:none;margin:2px 0 12px;padding-bottom:0}
 .hero p{margin:8px 0 0;color:var(--hero-copy);font-size:14px;line-height:1.5}
 #home h2{font-size:16px}
-#home .hero h2{font-size:20px}
-#home .hero p{font-size:12px}
+#home .hero h2,#dietLog .hero h2{font-size:20px}
+#home .hero p,#dietLog .hero p{font-size:12px}
+.hero .subtle{color:var(--hero-copy)}
 #home .metric b{font-size:18px}
 #home .metric span{font-size:11px}
 #home .target-row{padding:10px}
@@ -222,7 +223,6 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
 /* 「本周吃到」和「每天吃了什么」合并进同一张卡片，用一条分隔线隔开。 */
-.diet-subhead{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
 .section-title .subtle{display:flex;align-items:center;gap:8px}
 .head-add{
   width:26px;
@@ -781,14 +781,16 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 
   <section class="view active" id="dietLog">
     <div class="stack">
-      <article class="card">
+      <article class="card hero">
         <div class="section-title">
           <h2>本周吃到</h2>
           <span class="subtle" id="weekMeta"></span>
         </div>
         <div class="list" id="weekSummary"></div>
+      </article>
 
-        <div class="section-title diet-subhead">
+      <article class="card">
+        <div class="section-title">
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
@@ -1746,7 +1748,7 @@ async function renderDietLog(){
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}</span><br>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}</span> ` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
           <div class="inline-add-row">
             <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
