@@ -124,7 +124,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /-webkit-touch-callout:none/);
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
-  assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="dietLog"'));
+  // Bottom-nav order is 饮食 → 采购 → 食材 → 目标, with 饮食 the default view.
+  assert.ok(html.indexOf('data-view="dietLog"') < html.indexOf('data-view="shopping"'));
+  assert.ok(html.indexOf('data-view="shopping"') < html.indexOf('data-view="foods"'));
+  assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="home"'));
+  assert.match(html, /<section class="view active" id="dietLog">/);
+  assert.match(html, /data-view="home"><b>◎<\/b><span>目标<\/span>/);
 
   // A standalone/dock app can sit on the old cached shell, so the page reloads
   // once when a new service worker takes control and re-checks on foreground.
@@ -214,12 +219,14 @@ test("summarises how many foods per category the week covered", async () => {
   // 鱼禽瘦肉 gains 07-24 晚餐's Sushiro fish (金枪鱼, 三文鱼, 鳗鱼); 虾 was already
   // counted. 蔬菜 gains 南瓜. 主食 now has five distinct staples: 藜麦米饭, 米线,
   // 乌冬面, 杂粮饭, and the sushi 寿司饭.
-  assert.match(summary, /共 31 种食物/);
-  assert.match(summary, /🥩 鱼禽瘦肉 11/);
-  assert.match(summary, /🥛 蛋奶豆 6/);
-  assert.match(summary, /🥦 蔬菜 8/);
-  assert.match(summary, /🍚 主食 5/);
-  assert.match(summary, /🍎 水果坚果 1/);
+  // One metric tile per category (same visual as the home hero), plus a caption
+  // with the total.
+  assert.match(summary, /本周共 31 种食物/);
+  assert.match(summary, /<b>11<\/b><span>🥩 鱼禽瘦肉<\/span>/);
+  assert.match(summary, /<b>6<\/b><span>🥛 蛋奶豆<\/span>/);
+  assert.match(summary, /<b>8<\/b><span>🥦 蔬菜<\/span>/);
+  assert.match(summary, /<b>5<\/b><span>🍚 主食<\/span>/);
+  assert.match(summary, /<b>1<\/b><span>🍎 水果坚果<\/span>/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
@@ -378,7 +385,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v45"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v46"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
