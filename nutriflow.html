@@ -62,6 +62,7 @@ html{
   width:100%;
   max-width:100%;
   overflow-x:hidden;
+  overflow-x:clip;
   scroll-behavior:smooth;
   -webkit-text-size-adjust:100%;
   text-size-adjust:100%;
@@ -77,6 +78,7 @@ body{
   background:var(--bg);
   color:var(--text);
   overflow-x:hidden;
+  overflow-x:clip;
 }
 button{font:inherit;cursor:pointer}
 input{font:inherit}
@@ -85,7 +87,9 @@ input{font:inherit}
   max-width:540px;
   margin:0 auto;
   padding:16px 12px calc(88px + env(safe-area-inset-bottom));
-  overflow:hidden;
+  /* 用 clip 而非 hidden 横向裁剪：clip 不会建立滚动容器，页面内的 sticky 才能相对视口生效。 */
+  overflow-x:hidden;
+  overflow-x:clip;
 }
 .topbar{
   display:flex;
@@ -118,7 +122,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   border-radius:8px;
   padding:14px;
   box-shadow:var(--shadow);
+  /* clip 保留圆角裁剪，但不建立滚动容器，卡片内的筛选栏才能 sticky 吸顶。 */
   overflow:hidden;
+  overflow:clip;
 }
 .hero{
   position:relative;
@@ -402,7 +408,13 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   gap:8px;
   overflow:visible;
   max-width:100%;
-  padding:2px 0 8px;
+  /* 往下滑时筛选栏始终吸在顶部；用安全区高度让它避开刘海/状态栏的时间。 */
+  position:sticky;
+  top:env(safe-area-inset-top, 0px);
+  z-index:2;
+  background:var(--surface);
+  padding:8px 0;
+  box-shadow:0 1px 0 var(--line);
 }
 .tab-chip{
   border:1px solid var(--line);
