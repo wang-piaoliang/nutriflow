@@ -187,12 +187,13 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 8 + 4 + 7 + 3 + 1 distinct foods.
+  // One compact line, not a row per category: 8 + 5 + 7 + 3 + 1 distinct foods.
   // A food eaten at several meals counts once, not once per meal.
-  // 豆皮 matches no category keyword, so it is dropped from the tally entirely.
-  assert.match(summary, /共 23 种食物/);
+  // 豆皮 is one of the five soy foods: anything eaten but not yet covered by a
+  // category keyword gets added, otherwise it silently drops out of the tally.
+  assert.match(summary, /共 24 种食物/);
   assert.match(summary, /🥩 鱼禽瘦肉 8/);
-  assert.match(summary, /🥛 蛋奶豆 4/);
+  assert.match(summary, /🥛 蛋奶豆 5/);
   assert.match(summary, /🥦 蔬菜 7/);
   assert.match(summary, /🍚 主食 3/);
   assert.match(summary, /🍎 水果坚果 1/);
