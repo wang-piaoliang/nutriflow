@@ -226,7 +226,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-radius:8px;
   background:var(--surface);
   color:var(--text);
-  font-size:14px;
+  /* 同理，16px 避免 iOS 聚焦时自动放大页面 */
+  font-size:16px;
 }
 .diet-form-save{
   padding:10px;
@@ -264,7 +265,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-radius:8px;
   background:var(--surface);
   color:var(--text);
-  font-size:13px;
+  /* iOS Safari 会对 font-size<16px 的输入框在聚焦时自动放大，导致右侧内容被裁掉；保持 16px 可避免放大 */
+  font-size:16px;
 }
 .inline-add-save{
   padding:8px 14px;
