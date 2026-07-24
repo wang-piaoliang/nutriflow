@@ -315,10 +315,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
 .sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
 .dining-add{display:grid;gap:8px;margin:12px 0}
-.dining-add>input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
-.dining-add-row{display:flex;gap:8px}
-.dining-add-row input{flex:1;min-width:0;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
-.dining-add-row button{padding:9px 16px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
+.dining-add input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
+.dining-add-row{display:flex;flex-wrap:wrap;gap:8px}
+.dining-add-row input{flex:1 1 120px;min-width:0}
+.dining-add-row button{flex:0 0 auto;padding:9px 18px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
 .dining-entry{padding:12px 0;border-top:1px solid var(--line)}
 .dining-entry:first-child{border-top:none}
 .dining-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
@@ -1016,14 +1016,15 @@ const dietRecords = [
   }
 ];
 
-// 餐次里的食物按分类显示，顺序与「食材」页的分类一致：
-// 鱼禽瘦肉 → 蛋奶豆 → 蔬菜 → 主食 → 水果坚果。
+// 餐次里的食物按分类显示，顺序（2026-07-24 用户要求）：
+// 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果（蔬菜排在蛋奶豆前面）。
 // 只影响显示，`dietRecords` 保持同步包上报的原始顺序。
-// 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果。
+// 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果；
+// 毛豆归在蛋奶豆、只匹配蛋奶豆关键词，和蔬菜不冲突，所以蔬菜挪到蛋奶豆前面不影响归类。
 const dietItemCategoryRules = [
   {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
-  {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆皮","豆浆","毛豆","腐竹"]},
   {icon:"🥦", name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
+  {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆皮","豆浆","毛豆","腐竹"]},
   {icon:"🍚", name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
   {icon:"🍎", name:"水果坚果", keywords:["果","橙","橘","柚","蕉","莓","桃","李","杏","梨","葡萄","提子","瓜","枣","柿","石榴","核桃","腰果","花生"]}
 ];
@@ -1035,7 +1036,7 @@ const MEAL_ORDER = ["早餐","午餐","晚餐","加餐"];
 let dietEntries = load(DIET_ENTRIES_KEY, []);
 function saveDietEntries(){
   localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
-  schedulePush();
+  schedulePush("diet_entries");
 }
 function addDietEntry(date, meal, items){
   dietEntries.push({
@@ -1049,22 +1050,38 @@ function removeDietEntry(id){
   saveDietEntries();
 }
 // ---- 云同步（可选，用户自建 Cloudflare Worker + D1，见 api/README.md）----
-// 只同步手动补记的餐食（DIET_ENTRIES_KEY）。不配置就完全不影响：所有编辑照旧只存本机。
-// 配置后：打开页面拉取一次、每次改动防抖推送整段。照片和"吃完"勾选不走这里。
+// 同步「所有手动录入的数据」（目前：手动补记的餐食 + 在外就餐记录）。不配置就完全不影响：
+// 一切照旧只存本机。配置后：打开页面拉取一次、每次改动防抖推送整段。照片和"吃完"勾选不走这里。
 const SYNC_URL_KEY = "nutriflow_sync_url";
 const SYNC_TOKEN_KEY = "nutriflow_sync_token";
 // 默认 Worker 地址（公开端点，不是密钥，可以写死）。每台设备只需填口令即可启用；
 // 想换后端就在输入框填别的地址，存下来的会覆盖这个默认值。
 const DEFAULT_SYNC_URL = "https://nutriflow-sync.nutriflow.workers.dev";
+// 需要同步的文档清单。以后再有手动录入的数据，往这里加一条即可（用户要求：这类默认都同步）。
+// set() 直接写 localStorage、不要调用会再次触发推送的 save 函数，否则 pull→set→push 会绕圈。
+const SYNC_DOCS = [
+  {
+    key: "diet_entries",
+    get: () => dietEntries,
+    set: (value) => { dietEntries = value; localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries)); },
+    rerender: () => { void renderDietLog(); renderWeekSummary(); },
+  },
+  {
+    key: "dining",
+    get: () => diningEntries,
+    set: (value) => { diningEntries = value; localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); },
+    rerender: () => { void renderDining(); },
+  },
+];
 function syncConfig(){
   const url = ((localStorage.getItem(SYNC_URL_KEY) || DEFAULT_SYNC_URL).trim()).replace(/\/+$/, "");
   const token = (localStorage.getItem(SYNC_TOKEN_KEY) || "").trim();
   return url && token ? {url, token} : null;
 }
-async function syncRequest(method, body){
+async function syncRequest(key, method, body){
   const cfg = syncConfig();
   if (!cfg) return null;
-  const res = await fetch(`${cfg.url}/doc/diet_entries`, {
+  const res = await fetch(`${cfg.url}/doc/${key}`, {
     method,
     headers: {"Authorization":`Bearer ${cfg.token}`, "Content-Type":"application/json"},
     body: body ? JSON.stringify(body) : undefined,
@@ -1072,13 +1089,15 @@ async function syncRequest(method, body){
   if (!res.ok) throw new Error(res.status === 401 ? "口令不对" : `同步失败 (${res.status})`);
   return res.json();
 }
-let syncPushTimer = null;
-function schedulePush(){
+const syncPushTimers = {};
+function schedulePush(key){
   if (!syncConfig()) return;
+  const doc = SYNC_DOCS.find(d => d.key === key);
+  if (!doc) return;
   setSyncStatus("同步中…");
-  clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(() => {
-    syncRequest("PUT", {value: dietEntries})
+  clearTimeout(syncPushTimers[key]);
+  syncPushTimers[key] = setTimeout(() => {
+    syncRequest(key, "PUT", {value: doc.get()})
       .then(() => setSyncStatus("已同步"))
       .catch(err => setSyncStatus(err.message));
   }, 600);
@@ -1087,12 +1106,12 @@ async function syncPull(){
   if (!syncConfig()) return;
   setSyncStatus("同步中…");
   try{
-    const data = await syncRequest("GET");
-    if (data && Array.isArray(data.value)){
-      dietEntries = data.value;
-      localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
-      void renderDietLog();
-      renderWeekSummary();
+    for (const doc of SYNC_DOCS){
+      const data = await syncRequest(doc.key, "GET");
+      if (data && Array.isArray(data.value)){
+        doc.set(data.value);
+        doc.rerender();
+      }
     }
     setSyncStatus("已同步");
   }catch(err){ setSyncStatus(err.message); }
@@ -1106,7 +1125,7 @@ function setSyncStatus(msg){
 // 照片走现有私密照片系统，owner 用 `dining:<id>`。和"吃完""照片"一样只存本机，不进 Git、暂不走云同步。
 const DINING_KEY = "nutriflow_dining_v1";
 let diningEntries = load(DINING_KEY, []);
-function saveDining(){ localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); }
+function saveDining(){ localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); schedulePush("dining"); }
 function addDining(entry){
   diningEntries.push({
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1734,12 +1753,12 @@ function renderWeekSummary(){
     .filter(entry => entry.count > 0);
   const total = counts.reduce((sum, entry) => sum + entry.count, 0);
 
-  document.getElementById("weekMeta").textContent = `${label(monday)}–${label(sunday)} · ${records.length} 天有记录`;
+  document.getElementById("weekMeta").textContent = total ? `共 ${total} 种 · ${records.length} 天` : `${records.length} 天`;
   document.getElementById("weekSummary").innerHTML = total
     ? `<div class="grid3 week-metrics">
         ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
       </div>
-      <p class="week-caption">本周吃到 ${total} 种食物，看看这几类都吃到没。</p>`
+      <p class="week-caption">${label(monday)}–${label(sunday)}，看看这几类是不是都吃到了。</p>`
     : `<div class="note">本周还没有记录。</div>`;
 }
 function renderPriceComparison(){
@@ -1866,7 +1885,7 @@ async function renderDietLog(){
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${meal.place ? `<span class="meal-place">📍 ${meal.place}：</span>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <small>${meal.place ? `<span class="meal-place">${meal.place}：</span>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
           <div class="inline-add-row">
             <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">

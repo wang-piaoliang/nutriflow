@@ -176,11 +176,12 @@ test("renders the confirmed diet log by day", async () => {
   assert.match(list, /2026-07-20/);
   assert.match(list, /2026-07-22/);
 
-  // Items are displayed grouped by category, not in the order they arrived,
-  // and the staple lands after the vegetables.
-  assert.match(list, /虾 · 猪肉 · 牛肉 · 毛豆 · 花菜 · 胡萝卜 · 藜麦米饭/);
-  assert.match(list, /牛肉 · 虾 · 毛豆 · 花菜 · 胡萝卜 · 藜麦米饭/);
-  assert.match(list, /虾 · 肉丸 · 鸡肉 · 毛豆 · 番茄 · 花菜 · 胡萝卜 · 藜麦米饭/);
+  // Items are displayed grouped by category in the order 鱼禽瘦肉 → 蔬菜 →
+  // 蛋奶豆 → 主食 → 水果坚果 (vegetables before soy/egg/dairy, per the user),
+  // not in the order they arrived, and the staple lands after the vegetables.
+  assert.match(list, /虾 · 猪肉 · 牛肉 · 花菜 · 胡萝卜 · 毛豆 · 藜麦米饭/);
+  assert.match(list, /牛肉 · 虾 · 花菜 · 胡萝卜 · 毛豆 · 藜麦米饭/);
+  assert.match(list, /虾 · 肉丸 · 鸡肉 · 番茄 · 花菜 · 胡萝卜 · 毛豆 · 藜麦米饭/);
 
   // Newest day first, regardless of the order inside the source array.
   assert.ok(list.indexOf("2026-07-22") < list.indexOf("2026-07-21"));
@@ -192,8 +193,8 @@ test("renders the confirmed diet log by day", async () => {
   assert.doesNotMatch(list, /还没有实际饮食记录/);
 
   // Egg is recorded as 蛋 (not 鸡蛋) so the 鸡 keyword does not pull it into
-  // 鱼禽瘦肉; it must group under 蛋奶豆 with 毛豆, after the meats.
-  assert.match(list, /鸡肉 · 牛肉 · 虾 · 肉丸 · 蛋 · 毛豆/);
+  // 鱼禽瘦肉; it groups under 蛋奶豆 with 毛豆, after the meats and vegetables.
+  assert.match(list, /肉丸 · 番茄 · 胡萝卜 · 花菜 · 蛋 · 毛豆/);
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
@@ -221,16 +222,20 @@ test("summarises how many foods per category the week covered", async () => {
   // 乌冬面, 杂粮饭, and the sushi 寿司饭.
   // One metric tile per category (same visual as the home hero), plus a caption
   // with the total.
-  assert.match(summary, /本周吃到 31 种食物/);
+  // The total moved to weekMeta (prominent, top of the green hero); the tiles
+  // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
+  assert.match(elements.get("weekMeta").textContent, /共 31 种 · 5 天/);
   assert.match(summary, /<b>🥩 11<\/b><span>鱼禽瘦肉<\/span>/);
-  assert.match(summary, /<b>🥛 6<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🥦 8<\/b><span>蔬菜<\/span>/);
+  assert.match(summary, /<b>🥛 6<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 5<\/b><span>主食<\/span>/);
   assert.match(summary, /<b>🍎 1<\/b><span>水果坚果<\/span>/);
+  assert.match(summary, /看看这几类是不是都吃到了/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
-  assert.match(elements.get("weekMeta").textContent, /\d+\/\d+–\d+\/\d+ · 5 天有记录/);
+  // The week's date range now lives in the caption under the tiles.
+  assert.match(summary, /\d+\/\d+–\d+\/\d+/);
 
   // Local parsing: a Monday record must not fall into the previous week.
   const monday = context.currentWeek().monday;
@@ -385,7 +390,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v52"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v53"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
