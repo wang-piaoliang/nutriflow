@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v49`
+- 当前离线缓存：`nutriflow-pwa-v50`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -68,8 +68,8 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 
 #### 本周吃到
 
-- 「本周吃到」和「每天吃了什么」在**同一张卡片**里，用 `.diet-subhead`（上边距 + 分隔线）隔开，不是两张并列的 card。用户明确要求合并，不要再拆开。
-- 「本周吃到」总结（2026-07-24 改版）：改成和首页顶部「今天吃到这些」同款的指标卡片——每个有记录的分类一个 `.metric` 磁贴（`grid3` 布局，大数字 + `图标 分类名`），下面一行 `.week-caption` 写“本周共 N 种食物…”。数据口径没变：同一样吃多次只算一种，用 `itemTag` 去重；一种都没吃到的分类不显示。渲染在 `renderWeekSummary`，旧的单行 `.week-line` 样式已删。
+- 「本周吃到」现在是一张**独立的绿色 hero 大卡片**（`<article class="card hero">`），和「每天吃了什么」拆成上下两张 card。**这推翻了此前"两者必须合在同一张卡片、不要拆开"的旧要求**——用户 2026-07-24 明确改主意：要把饮食页最上面这个框做成和「目标」页顶部「今天吃到这些」一模一样的绿底 hero。所以别再把它们并回一张卡。`.diet-subhead` 那条分隔线样式已删（不再需要）。
+- 「本周吃到」内容（2026-07-24 改版）：绿 hero 卡里放和首页顶部同款的 `.metric` 磁贴（`grid3`，大数字 + `图标 分类名`）+ 一行 `.week-caption`“本周共 N 种食物…”。因为在 `.hero` 里，磁贴自动套 `.hero .metric`（浅色磁贴 + 绿数字），标题走 `.hero h2`（白字，`#dietLog .hero h2` 压到 20px 和首页一致），右侧 `weekMeta` 用 `.hero .subtle`（浅绿、在绿底上可读）。数据口径没变：同一样吃多次只算一种，用 `itemTag` 去重；一种没吃到的分类不显示。渲染在 `renderWeekSummary`，旧 `.week-line` 样式已删。
 - 曾经按分类逐行展开并列出每样食物名，占掉大半屏，用户要求“写总结就行”。**不要**再改回逐类展开的形式。
 - 分类复用 `dietItemCategoryRules`（含 `icon`），所以和餐次内排序用的是同一套规则，改关键词会同时影响两处。
 - 一种都没吃到的分类**直接不显示**，也不提示“还没吃到”。用户的理由是一周还没过完，这时候点名缺什么言之过早。
@@ -84,7 +84,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - 无法识别的食物名排在最后，并保持它们之间的原有相对顺序，不会被丢弃。
 - **食物条目可以带隐藏标签**：写成 `{name:"烤鸭", as:"鸭肉"}`，页面显示「烤鸭」，分类和「本周吃到」的去重用 `as` 的值。用户的要求是"烤鸭就直接写烤鸭，我想知道具体吃了什么菜，统计的时候可以写鸭肉"。取值一律走 `itemLabel()`（显示）和 `itemTag()`（归类/统计），不要直接用条目本身，否则遇到对象会渲染成 `[object Object]`。
 - 只有当菜名本身不含任何分类关键词时才需要加 `as`（例如「罗宋汤」）。像「烤鸭」这种已经含「鸭」的，加 `as` 只是为了统计时和「鸭肉」合并成一种。
-- **在外就餐（2026-07-24 约定）**：那一顿加 `place` 字段写餐厅名，页面上以 `📍 名称` 显示在该顿食物最前面（`.meal-place`，加粗），`place` 在 `allDietRecords()` 合并时会保留（和 `note` 一样）。餐厅餐的食物写简短**菜名**（如「宫保鸡丁」「罗宋汤」），别只写食材、也别写太长；菜名不含分类关键词时用 `{name, as}` 让它能归类和去重。在家做的饭照旧只列食材、不加 `place`。07-24 晚餐寿司郎已用 `place:"寿司郎"`。
+- **在外就餐（2026-07-24 约定）**：那一顿加 `place` 字段写餐厅名，页面上以 `📍 名称`（`.meal-place`，加粗）**和食物同一行**显示在最前面（用户 2026-07-24 明确要求同一行，不要 `<br>` 换行）。`place` 在 `allDietRecords()` 合并时会保留（和 `note` 一样）。餐厅餐的食物写简短**菜名**（如「宫保鸡丁」「罗宋汤」），别只写食材、也别写太长；菜名不含分类关键词时用 `{name, as}` 让它能归类和去重。在家做的饭照旧只列食材、不加 `place`。07-24 晚餐寿司郎已用 `place:"寿司郎"`。
 - **用户可以在页面上手动补记餐食**，两个入口，都是小图标、不带文字标签（用户明确说"不用加这个字，可以直接在后面加小icon"）：
   - **每一顿后面的 `.chip-add`（虚线圆形 ＋）**——最常用的那个。点开就地展开一个输入框，往这一顿里加食物，不用回到表单重选日期和餐次。它**渲染在 `<small>` 食物列表的末尾、和文字同一行**（inline-flex + `vertical-align`），用户明确要求不要另起一行；不要把它移回下面的 `.chip-row`。删除用的胶囊（`.chip-row`）仍在下一行，只在这一顿有手动补记时才出现。
   - **「每天吃了什么」标题右侧的 `.head-add`（＋）**——只在整天或整顿还不存在时才用得上，展开 `#dietDayForm`（日期 + 餐次 + 食物）。该按钮在 `dietLogList` 外面，重渲染不会重建，所以**只绑一次**，不要挪进 `bindDietForm`，否则每次渲染都会叠加一个监听器。
@@ -289,6 +289,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-07-24：按用户反馈两处调整。① **「本周吃到」做成绿色 hero 大卡片**：把它从与「每天吃了什么」合并的那张卡里拆出来，单独一张 `card hero`（绿底、白标题、浅色磁贴），视觉上和「目标」页顶部「今天吃到这些」一致；加 `#dietLog .hero h2/p` 尺寸对齐首页、`.hero .subtle` 让 weekMeta 在绿底可读；删掉不再用的 `.diet-subhead`。**注意这推翻了旧的"两者不要拆开"要求**。② **在外就餐的餐厅名改成和食物同一行**：`📍 名称` 后面从 `<br>` 换行改成空格，和菜名排在同一行。离线缓存升至 v50。
 - 2026-07-24：**去掉 `.section-title` 底部那条分隔线**（用户反馈每个板块标题下那条线太突兀）。吸顶是靠不透明背景 `background:var(--surface)` 盖住滚过的内容，`box-shadow:0 1px 0 var(--line)` 那条线并非必需，删掉即可，sticky 行为不变。`.hero .section-title` 本就 `box-shadow:none`。测试没断言过这条 shadow，不受影响。离线缓存升至 v49。
 - 2026-07-24：云同步**预填 Worker 地址**（用户已把 Worker 部署到 `https://nutriflow-sync.nutriflow.workers.dev`）。新增 `DEFAULT_SYNC_URL` 常量：输入框预填该地址、`syncConfig()` 用它兜底，于是每台设备通常只需填一次口令。地址非密钥、可公开写死；填别的地址会覆盖默认。同步的时机不变（打开/回前台拉、改动推），未加定时轮询——用户明确「现在这样就够了」。离线缓存升至 v48。
 - 2026-07-24：**新增可选云同步后端**（用户选「自建后端」）。`api/` 下是一个独立的 Cloudflare Worker + D1（`worker.js`、`wrangler.toml`、`schema.sql`、`README.md`），提供 `GET/PUT /doc/:key`（Bearer 口令鉴权、CORS、表惰性建好），把网页手动补记的 `nutriflow_diet_entries_v1` 整段存云端、跨设备同步。它**独立于** gh-pages 静态站和 vinext Next 应用，用 `wrangler deploy` 单独部署（需用户自己的 Cloudflare 账号，免费额度内 0 成本）。前端在「目标」页加「☁️ 云同步」卡片 + 一套 sync 模块（`syncConfig/syncRequest/schedulePush/syncPull/setSyncStatus`），feature-flag：不填就零影响。已用本地 mock + CDP 端到端验证推送/拉取/换设备/错口令四条路径。离线缓存升至 v47。照片和「吃完」仍不同步。
