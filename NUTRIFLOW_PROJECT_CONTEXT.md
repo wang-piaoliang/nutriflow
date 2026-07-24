@@ -281,7 +281,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
-- 2026-07-24：每一顿的 ＋ 改为跟在食物列表末尾同一行，不再另起一行。离线缓存升至 v38。
+- 2026-07-24：**修复 iOS 点输入框自动放大、右侧内容被裁**。用户反馈在 iPhone 上点「加一样」输入框后整页被放大、右边（绿色添加按钮、右上角餐数）显示不全。根因是 iOS Safari 会对 `font-size<16px` 的文本输入框在聚焦时自动放大页面。把 `.inline-add input`（13px）和 `.diet-form input,.diet-form select`（14px）统一提到 16px，聚焦不再触发缩放；没有用 `maximum-scale=1/user-scalable=no` 禁用缩放，以保留用户正常的双指缩放。离线缓存升至 v39。
 - 2026-07-24：「本周吃到」与「每天吃了什么」合并成一张卡片；说明文字缩短。手动补记改成两个小图标入口——每一顿后面的 ＋ 可就地往那一顿加食物，标题右侧的 ＋ 用于整天/整顿还不存在的情况；去掉了原来的「＋ 补记一餐」文字按钮。离线缓存升至 v37。
 - 2026-07-23：照片入库前统一归一化（canvas → SDR JPEG + 温和曝光归一），解决 iPhone HDR 照片过曝和明暗不一；旧照片首次读取时自动就地转换。📷 按钮改回右上角独占一行并收紧与缩略图的间距。食物条目支持隐藏标签（`{name:"烤鸭", as:"鸭肉"}`）。新增手动补记餐食（localStorage，可删）。食材库补上萝卜。精简「奶/酸奶/蛋」说明。离线缓存升至 v36。
 - 2026-07-23：**修复桌面/独立 app 停在旧版本**。用户反馈 Safari 里是新版、桌面 dock app 是旧版。根因是页面注册 SW 后没有在新 SW 接管时刷新，dock app 常驻只吃旧缓存壳。`nutriflow.html` 新增 `controllerchange → location.reload()`（`hadController` 跳过首次安装）与 `visibilitychange → registration.update()`。新增测试断言这三段逻辑存在。离线缓存升至 v35。
