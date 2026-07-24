@@ -202,6 +202,86 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .target b{display:block;font-size:17px;line-height:1.2}
 .target span{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
 .target .weekly-total{color:var(--text);font-weight:650}
+/* 「本周吃到」和「每天吃了什么」合并进同一张卡片，用一条分隔线隔开。 */
+.diet-subhead{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.section-title .subtle{display:flex;align-items:center;gap:8px}
+.head-add{
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--green);
+  font-size:15px;
+  line-height:1;
+}
+.diet-form{display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
+.diet-form-row{display:grid;grid-template-columns:1fr auto;gap:8px}
+.diet-form input,.diet-form select{
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-size:14px;
+}
+.diet-form-save{
+  padding:10px;
+  border:0;
+  border-radius:8px;
+  background:var(--green);
+  color:#fff;
+  font-size:14px;
+  font-weight:650;
+}
+.chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+/* 每一顿后面的小 ＋，点开就地加东西，不用回到顶部的表单选日期。 */
+.chip-add{
+  width:22px;
+  height:22px;
+  display:grid;
+  place-items:center;
+  border:1px dashed var(--line);
+  border-radius:999px;
+  background:transparent;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1;
+}
+.inline-add{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
+.inline-add input{
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--text);
+  font-size:13px;
+}
+.inline-add-save{
+  padding:8px 14px;
+  border:0;
+  border-radius:8px;
+  background:var(--green);
+  color:#fff;
+  font-size:13px;
+  font-weight:650;
+}
+.chip-remove{
+  padding:4px 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.3;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  text-align:left;
+}
 .week-line{display:grid;gap:6px}
 .week-line b{font-size:15px}
 .week-line span{color:var(--muted);font-size:13px;line-height:1.55;overflow-wrap:anywhere}
@@ -392,13 +472,18 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 .photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-/* 按钮本身保持原来的 36×36 小方块，但位置放在网格的最后一格。
-   之前它独占一整行、右对齐，左边整片空白；后来撑成整格又太大。 */
+/* 添加按钮独占一行、靠右，分隔线在这一行上方。
+   分隔线到按钮、按钮到缩略图都收得很紧，否则中间会像空出一整行。 */
+.photo-tools{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid var(--line);
+}
 .photo-add{
   width:36px;
   height:36px;
-  align-self:center;
-  justify-self:start;
   display:grid;
   place-items:center;
   border:1px solid var(--line);
@@ -412,9 +497,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(86px,1fr));
   gap:8px;
-  margin-top:12px;
-  padding-top:12px;
-  border-top:1px solid var(--line);
+  margin-top:6px;
 }
 .photo-tile{position:relative;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface-3)}
 .photo-open{
@@ -654,14 +737,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle" id="weekMeta"></span>
         </div>
         <div class="list" id="weekSummary"></div>
-      </article>
 
-      <article class="card">
-        <div class="section-title">
+        <div class="section-title diet-subhead">
           <h2>每天吃了什么</h2>
-          <span class="subtle" id="dietLogMeta">0 天</span>
+          <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">把当天的餐食照片发给 GPT，我会识别食物、按早餐/午餐/晚餐整理，并把记录更新到这里。照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</div>
+        <div class="note">每顿餐食照片发给 Claude 识别整理，照片仅存本地不上传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -716,7 +797,7 @@ const dailyTargets = [
   {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
   {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
   {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
-  {icon:"🥛", name:"奶/酸奶/蛋", amount:"300-500ml + 蛋 1 个", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。🥚 鸡蛋保留蛋黄；按膳食指南它归在鱼禽肉蛋里，克数仍计入上面那 120-200g，这里只是把它和早餐的奶放在一起看。"}
+  {icon:"🥛", name:"奶/酸奶/蛋", amount:"300-500ml + 蛋 1 个", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。🥚 鸡蛋保留蛋黄。"}
 ];
 
 // 图标统一用食物，和「每天目标」「食材」页的 emoji 语言保持一致；
@@ -755,6 +836,7 @@ const foods = [
   {id:"pepper", category:"vegetable", name:"彩椒 / 青椒", weeklyTarget:"200-500g", weeklyTimes:"2-4 次", score:4.5, nutrients:"维 C、类胡萝卜素", feature:"颜色丰富、烹调方便，适合和肉类或豆制品一起快炒。"},
   {id:"cabbage", category:"vegetable", name:"白菜类", variants:"大白菜 / 圆白菜 / 娃娃菜", weeklyTarget:"400-800g", weeklyTimes:"2-4 次", score:4.4, nutrients:"维 C、维 K、膳食纤维", feature:"便宜、耐放、用途广，适合和深色叶菜轮换。"},
   {id:"carrot", category:"vegetable", name:"胡萝卜", weeklyTarget:"300-500g", weeklyTimes:"2-4 次", score:4.4, nutrients:"β-胡萝卜素、膳食纤维", feature:"适合炖肉、炒饭和备餐配色；少量油烹调有利于类胡萝卜素利用。"},
+  {id:"radish", category:"vegetable", name:"萝卜", variants:"白萝卜 / 青萝卜 / 樱桃萝卜", weeklyTarget:"300-600g", weeklyTimes:"1-3 次", score:4.2, nutrients:"维 C、膳食纤维、钾", feature:"耐放、便宜，适合炖汤、炖肉或涮锅；和胡萝卜不是一类，营养也不同。"},
   {id:"greenBeans", category:"vegetable", name:"鲜豆类", variants:"豆角 / 四季豆 / 荷兰豆", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"膳食纤维、叶酸、维 C", feature:"能增加蔬菜口感和种类；四季豆和豆角需彻底熟透。"},
   {id:"tomato", category:"vegetable", name:"番茄", weeklyTarget:"400-700g", weeklyTimes:"2-4 次", score:4.3, nutrients:"番茄红素、维 C、钾", feature:"生熟都可以，适合搭配鸡蛋、牛肉或豆腐。"},
   {id:"cauliflower", category:"vegetable", name:"松花菜", weeklyTarget:"300-600g", weeklyTimes:"2-4 次", score:4.3, nutrients:"维 C、膳食纤维、钾", feature:"适合清炒、焯水冷藏或和肉一起炒。"},
@@ -829,7 +911,7 @@ const dietRecords = [
     date:"2026-07-21",
     meals:[
       {name:"午餐", items:["番茄","虾","肉丸","鸡肉","花菜","胡萝卜","毛豆","藜麦米饭"]},
-      {name:"晚餐", items:["鸭肉","鸡肉","花生","豆腐","火腿","菌菇"]}
+      {name:"晚餐", items:[{name:"烤鸭", as:"鸭肉"},"鸡肉","花生","豆腐","火腿","菌菇"]}
     ]
   },
   {
@@ -847,20 +929,83 @@ const dietRecords = [
 // 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果。
 const dietItemCategoryRules = [
   {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
-  {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆浆","毛豆","腐竹"]},
+  {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆皮","豆浆","毛豆","腐竹"]},
   {icon:"🥦", name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
   {icon:"🍚", name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
   {icon:"🍎", name:"水果坚果", keywords:["果","橙","橘","柚","蕉","莓","桃","李","杏","梨","葡萄","提子","瓜","枣","柿","石榴","核桃","腰果","花生"]}
 ];
-function dietItemRank(name){
-  const index = dietItemCategoryRules.findIndex(rule => rule.keywords.some(keyword => name.includes(keyword)));
+// 手动补记的餐食。`dietRecords` 由同步包写进代码，改它要发版；这里让用户
+// 直接在页面上加，存在本机 localStorage，渲染时和 dietRecords 合并。
+// 它和"吃完"状态一样是设备本地的，不会跟着 GitHub 走。
+const DIET_ENTRIES_KEY = "nutriflow_diet_entries_v1";
+const MEAL_ORDER = ["早餐","午餐","晚餐","加餐"];
+let dietEntries = load(DIET_ENTRIES_KEY, []);
+function saveDietEntries(){
+  localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
+}
+function addDietEntry(date, meal, items){
+  dietEntries.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    date, meal, items
+  });
+  saveDietEntries();
+}
+function removeDietEntry(id){
+  dietEntries = dietEntries.filter(entry => entry.id !== id);
+  saveDietEntries();
+}
+// 同一天、同一餐可能既有同步包写的、又有手动补的，合并成一条显示，
+// 但手动补的那几样单独留下 entryId，这样只有它们能被删掉。
+function allDietRecords(){
+  const byDate = new Map();
+  const ensure = date => {
+    if (!byDate.has(date)) byDate.set(date, {date, meals:[]});
+    return byDate.get(date);
+  };
+  const ensureMeal = (record, name) => {
+    let meal = record.meals.find(entry => entry.name === name);
+    if (!meal){
+      meal = {name, items:[], added:[]};
+      record.meals.push(meal);
+    }
+    return meal;
+  };
+  dietRecords.forEach(record => {
+    const target = ensure(record.date);
+    record.meals.forEach(meal => {
+      const merged = ensureMeal(target, meal.name);
+      merged.items.push(...meal.items);
+      if (meal.note) merged.note = meal.note;
+    });
+  });
+  dietEntries.forEach(entry => {
+    const meal = ensureMeal(ensure(entry.date), entry.meal);
+    meal.items.push(...entry.items);
+    meal.added.push({id:entry.id, items:entry.items});
+  });
+  return Array.from(byDate.values())
+    .map(record => ({
+      ...record,
+      meals: record.meals.slice().sort((a,b) => MEAL_ORDER.indexOf(a.name) - MEAL_ORDER.indexOf(b.name))
+    }))
+    .sort((a,b) => b.date.localeCompare(a.date));
+}
+
+// 一条记录可以是 "白萝卜"，也可以是 {name:"烤鸭", as:"鸭肉"}。
+// 前者显示什么就按什么归类；后者显示具体菜名，归类和统计用隐藏标签 `as`。
+// 这样既能看清那天到底吃的什么菜，"本周吃到" 里又不会把烤鸭和鸭肉算成两种。
+function itemLabel(item){return typeof item === "string" ? item : item.name}
+function itemTag(item){return typeof item === "string" ? item : (item.as || item.name)}
+function dietItemRank(item){
+  const tag = itemTag(item);
+  const index = dietItemCategoryRules.findIndex(rule => rule.keywords.some(keyword => tag.includes(keyword)));
   return index < 0 ? dietItemCategoryRules.length : index;
 }
 function sortMealItems(items){
   return items
-    .map((name, index) => ({name, index, rank:dietItemRank(name)}))
+    .map((item, index) => ({item, index, rank:dietItemRank(item)}))
     .sort((a,b) => a.rank - b.rank || a.index - b.index)
-    .map(entry => entry.name);
+    .map(entry => itemLabel(entry.item));
 }
 
 const PHOTO_DB_NAME = "nutriflow_private_photos_v1";
@@ -908,10 +1053,80 @@ async function listPrivatePhotos(){
     request.onerror = () => reject(request.error || new Error("无法读取本机照片"));
   });
 }
+// iPhone 拍的是 HDR 照片，Safari 会按扩展动态范围渲染，于是缩略图看着过曝，
+// 而且每张的亮度和色调都不一样。CSS 滤镜压不住 HDR——它作用在已经被提亮的
+// 结果上。这里把图片重画进 canvas 再导出 JPEG：canvas 输出必然是 SDR/sRGB，
+// HDR 增益和奇怪的色彩空间都会在这一步被压平。
+// 顺带做一次温和的亮度归一，让明暗不一的照片落到接近的区间。
+const PHOTO_MAX_EDGE = 1600;
+const PHOTO_TARGET_LUMA = 0.56;
+function loadImageFromBlob(blob){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("无法读取这张图片")); };
+    image.src = url;
+  });
+}
+function averageLuma(context, width, height){
+  // 缩到很小再取样，够判断整体明暗，也不用遍历几百万像素。
+  const sample = 32;
+  const data = context.getImageData(0, 0, width, height).data;
+  const step = Math.max(1, Math.floor(Math.sqrt(width * height / (sample * sample))));
+  let sum = 0;
+  let count = 0;
+  for (let index = 0; index < data.length; index += 4 * step){
+    sum += (0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2]) / 255;
+    count++;
+  }
+  return count ? sum / count : PHOTO_TARGET_LUMA;
+}
+async function normalizePhotoBlob(blob){
+  const image = await loadImageFromBlob(blob);
+  const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", {willReadFrequently:true});
+  context.drawImage(image, 0, 0, width, height);
+
+  // 增益夹在这个范围内：只把明显偏亮或偏暗的拉回来，不去“修图”。
+  const luma = averageLuma(context, width, height);
+  const gain = Math.min(1.25, Math.max(0.72, PHOTO_TARGET_LUMA / (luma || PHOTO_TARGET_LUMA)));
+  if (Math.abs(gain - 1) > 0.02){
+    context.clearRect(0, 0, width, height);
+    context.filter = `brightness(${gain.toFixed(3)})`;
+    context.drawImage(image, 0, 0, width, height);
+    context.filter = "none";
+  }
+  const normalized = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.86));
+  return normalized || blob;
+}
+async function putPrivatePhoto(record){
+  const database = await openPhotoDatabase();
+  await new Promise((resolve, reject) => {
+    const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).put(record);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("无法更新本机照片"));
+  });
+}
+// 归一化失败时照原样存，宁可显示得亮一点，也不能把照片弄丢。
+async function normalizedOrOriginal(blob){
+  try{
+    return await normalizePhotoBlob(blob);
+  }catch(error){
+    console.warn("NutriFlow could not normalise a photo", error);
+    return blob;
+  }
+}
 async function savePrivatePhoto(ownerId, file){
   const database = await openPhotoDatabase();
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const record = {id, receiptId:ownerId, blob:file, createdAt:new Date().toISOString()};
+  const blob = await normalizedOrOriginal(file);
+  const record = {id, receiptId:ownerId, blob, normalized:true, createdAt:new Date().toISOString()};
   await new Promise((resolve, reject) => {
     const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).add(record);
     request.onsuccess = () => resolve();
@@ -942,6 +1157,22 @@ async function loadPhotosByOwner(){
   }catch(error){
     console.warn("NutriFlow private photo storage is unavailable", error);
   }
+  // 归一化是后加的，早先存进去的照片还是原始 HDR 图。第一次读到它们时就地
+  // 转换并写回，这样老照片也能和新照片看起来一致，不需要用户重传。
+  const legacy = photos.filter(photo => !photo.normalized && photo.blob);
+  if (legacy.length){
+    photos = await Promise.all(photos.map(async photo => {
+      if (photo.normalized || !photo.blob) return photo;
+      const blob = await normalizedOrOriginal(photo.blob);
+      const updated = {...photo, blob, normalized:true};
+      try{
+        await putPrivatePhoto(updated);
+      }catch(error){
+        console.warn("NutriFlow could not store a normalised photo", error);
+      }
+      return updated;
+    }));
+  }
   return photos.reduce((groups, photo) => {
     (groups[photo.receiptId] ||= []).push(photo);
     return groups;
@@ -954,7 +1185,9 @@ function photoSectionMarkup(scope, ownerId, photos, label){
     const url = photoUrl(scope, photo.blob);
     return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
-  return `<div class="photo-grid">${tiles}<label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>`;
+  // 添加按钮单独一行、右对齐，缩略图紧跟在下面。
+  // 这两行之间不要再留空隙，之前那一版看着像空了一行。
+  return `<div class="photo-tools"><label class="photo-add" title="添加本机私密照片" aria-label="添加本机私密照片">📷<input class="photo-input" type="file" accept="image/*" multiple data-photo-owner="${ownerId}"></label></div>${tiles ? `<div class="photo-grid">${tiles}</div>` : ""}`;
 }
 function bindPhotoControls(container, rerender){
   container.querySelectorAll("[data-photo-owner]").forEach(input => {
@@ -1248,13 +1481,13 @@ function renderWeekSummary(){
   const sunday = new Date(next);
   sunday.setDate(next.getDate() - 1);
   const label = date => `${date.getMonth() + 1}/${date.getDate()}`;
-  const records = dietRecords.filter(record => sameWeek(record.date));
+  const records = allDietRecords().filter(record => sameWeek(record.date));
 
-  // 按分类收集本周吃到的不同食物名。同一样吃了多次只算一种。
+  // 按分类收集本周吃到的不同食物。用 itemTag 去重：烤鸭和鸭肉是同一种。
   const eaten = dietItemCategoryRules.map(() => new Set());
   records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
     const rank = dietItemRank(item);
-    if (rank < dietItemCategoryRules.length) eaten[rank].add(item);
+    if (rank < dietItemCategoryRules.length) eaten[rank].add(itemTag(item));
   })));
 
   // 只做一行总结，不逐类展开——展开后这张卡片会占掉大半屏。
@@ -1377,14 +1610,28 @@ async function renderDietLog(){
   if (renderVersion !== dietRenderVersion) return;
   resetPhotoUrls("diet");
   const list = document.getElementById("dietLogList");
-  const records = dietRecords.slice().sort((a,b) => b.date.localeCompare(a.date));
+  const records = allDietRecords();
   document.getElementById("dietLogMeta").textContent = `${records.length} 天`;
-  if (!records.length){
-    list.innerHTML = `<div class="note">还没有实际饮食记录。下次把餐食照片发给我后，会从当天开始按日期积累。</div>`;
-    return;
-  }
-  list.innerHTML = records.map(record => {
-    const meals = record.meals.map(meal => `<div class="meal-entry"><b>${meal.name}</b><small>${sortMealItems(meal.items).join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small></div>`).join("");
+  const days = records.map(record => {
+    const meals = record.meals.map(meal => {
+      // 只有手动补的那几样能删，同步包写进代码的删不掉。
+      const removable = (meal.added || []).map(entry =>
+        `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.join(" · ")} ✕</button>`
+      ).join("");
+      const key = `${record.date}|${meal.name}`;
+      return `<div class="meal-entry">
+        <b>${meal.name}</b>
+        <small>${sortMealItems(meal.items).join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <div class="chip-row">
+          ${removable}
+          <button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>
+        </div>
+        <div class="inline-add" data-inline-for="${key}" hidden>
+          <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
+          <button class="inline-add-save" type="button">加</button>
+        </div>
+      </div>`;
+    }).join("");
     const owner = dietPhotoOwner(record.date);
     const attachedPhotos = photosByOwner[owner] || [];
     return `<div class="diet-day">
@@ -1393,7 +1640,81 @@ async function renderDietLog(){
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
   }).join("");
+  list.innerHTML = `${dietDayFormMarkup()}${days || `<div class="note">还没有饮食记录。用右上角的 ＋ 直接补记，或把餐食照片发给 Claude 让它整理。</div>`}`;
   bindPhotoControls(list, () => void renderDietLog());
+  bindDietForm(list);
+}
+// 整天/整顿都还没有记录时才用得上这个表单，平时收起来。
+// 已经存在的那一顿直接用它自己那一行的 ＋，不必回到这里选日期。
+function dietDayFormMarkup(){
+  const today = new Date();
+  const value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  return `<div class="diet-form" id="dietDayForm" hidden>
+    <div class="diet-form-row">
+      <input type="date" id="dietFormDate" value="${value}" aria-label="日期">
+      <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
+    </div>
+    <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
+    <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+  </div>`;
+}
+// 空格、逗号、顿号、加号都当分隔符，怎么随手写都能拆开。
+function parseItemInput(text){
+  return String(text).split(/[\s,，、+]+/).map(part => part.trim()).filter(Boolean);
+}
+function bindDietForm(container){
+  const submit = () => {
+    const date = container.querySelector("#dietFormDate").value;
+    const meal = container.querySelector("#dietFormMeal").value;
+    const field = container.querySelector("#dietFormItems");
+    const items = parseItemInput(field.value);
+    if (!date || !items.length){
+      field.focus();
+      return;
+    }
+    addDietEntry(date, meal, items);
+    field.value = "";
+    render();
+  };
+  container.querySelector("#dietFormSave").addEventListener("click", submit);
+  container.querySelector("#dietFormItems").addEventListener("keydown", event => {
+    if (event.key === "Enter") submit();
+  });
+
+  // 每一顿后面的 ＋：就地展开一个输入框，往这一顿里加东西。
+  container.querySelectorAll("[data-add-item]").forEach(button => {
+    button.addEventListener("click", () => {
+      const box = container.querySelector(`[data-inline-for="${button.dataset.addItem}"]`);
+      box.hidden = !box.hidden;
+      if (!box.hidden) box.querySelector("input").focus();
+    });
+  });
+  container.querySelectorAll("[data-inline-for]").forEach(box => {
+    const [date, meal] = box.dataset.inlineFor.split("|");
+    const field = box.querySelector("input");
+    const commit = () => {
+      const items = parseItemInput(field.value);
+      if (!items.length){
+        field.focus();
+        return;
+      }
+      addDietEntry(date, meal, items);
+      render();
+    };
+    box.querySelector(".inline-add-save").addEventListener("click", commit);
+    field.addEventListener("keydown", event => {
+      if (event.key === "Enter") commit();
+      if (event.key === "Escape") box.hidden = true;
+    });
+  });
+
+  container.querySelectorAll("[data-remove-entry]").forEach(button => {
+    button.addEventListener("click", () => {
+      if (!window.confirm("删除这条手动补记的内容？")) return;
+      removeDietEntry(button.dataset.removeEntry);
+      render();
+    });
+  });
 }
 function renderFoods(){
   const summary = categories.map(category => {
@@ -1429,6 +1750,13 @@ function renderFoods(){
     </div>
   `).join("");
 }
+// 这个按钮在列表外面，重渲染不会动它，所以只绑一次。
+document.getElementById("dietAddDay").addEventListener("click", () => {
+  const form = document.getElementById("dietDayForm");
+  if (!form) return;
+  form.hidden = !form.hidden;
+  if (!form.hidden) form.querySelector("#dietFormItems").focus();
+});
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-btn").forEach(item => item.classList.remove("active"));
