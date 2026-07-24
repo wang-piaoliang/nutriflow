@@ -192,15 +192,17 @@ test("summarises how many foods per category the week covered", async () => {
   // Both records fall in the same week as the fixed reference date below.
   const summary = elements.get("weekSummary").innerHTML;
 
-  // One compact line, not a row per category: 8 + 6 + 7 + 3 + 1 distinct foods.
+  // One compact line, not a row per category: 8 + 6 + 7 + 4 + 1 distinct foods.
   // A food eaten at several meals counts once, not once per meal.
   // 豆皮 is one of the six soy foods: anything eaten but not yet covered by a
   // category keyword gets added, otherwise it silently drops out of the tally.
-  assert.match(summary, /共 25 种食物/);
+  // 主食 has four distinct staples: 藜麦米饭, 米线, 乌冬面, and 07-24's 杂粮饭
+  // (the seven-colour brown-rice blend, tagged 杂粮饭 via its hidden `as`).
+  assert.match(summary, /共 26 种食物/);
   assert.match(summary, /🥩 鱼禽瘦肉 8/);
   assert.match(summary, /🥛 蛋奶豆 6/);
   assert.match(summary, /🥦 蔬菜 7/);
-  assert.match(summary, /🍚 主食 3/);
+  assert.match(summary, /🍚 主食 4/);
   assert.match(summary, /🍎 水果坚果 1/);
 
   // A category with no foods this week is dropped rather than called out.
