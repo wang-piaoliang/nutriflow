@@ -238,17 +238,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-weight:650;
 }
 .chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
-/* 每一顿后面的小 ＋，点开就地加东西，不用回到顶部的表单选日期。 */
+/* 每一顿的小 ＋，紧跟在食物列表末尾同一行，点开就地加东西。
+   inline 上下文里要用 inline-flex 才能和文字基线对齐。 */
 .chip-add{
-  width:22px;
-  height:22px;
-  display:grid;
-  place-items:center;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:18px;
+  height:18px;
+  margin-left:2px;
+  padding:0;
+  vertical-align:-3px;
   border:1px dashed var(--line);
   border-radius:999px;
   background:transparent;
   color:var(--muted);
-  font-size:13px;
+  font-size:12px;
   line-height:1;
 }
 .inline-add{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
@@ -1619,13 +1624,12 @@ async function renderDietLog(){
         `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.join(" · ")} ✕</button>`
       ).join("");
       const key = `${record.date}|${meal.name}`;
+      // ＋ 直接跟在食物列表末尾，不另起一行。
+      const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${sortMealItems(meal.items).join(" · ")}${meal.note ? `<br>${meal.note}` : ""}</small>
-        <div class="chip-row">
-          ${removable}
-          <button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>
-        </div>
+        <small>${sortMealItems(meal.items).join(" · ")} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        ${removable ? `<div class="chip-row">${removable}</div>` : ""}
         <div class="inline-add" data-inline-for="${key}" hidden>
           <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
           <button class="inline-add-save" type="button">加</button>
