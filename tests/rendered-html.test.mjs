@@ -170,7 +170,7 @@ test("groups purchases into one card per receipt at runtime", async () => {
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "5 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "6 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
@@ -198,12 +198,12 @@ test("renders the confirmed diet log by day", async () => {
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
-  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 10);
-  assert.equal(list.match(/data-inline-for=/g).length, 10);
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 12);
+  assert.equal(list.match(/data-inline-for=/g).length, 12);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01234]"/g).length, 5);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[012345]"/g).length, 6);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -224,11 +224,11 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  assert.match(elements.get("weekMeta").textContent, /共 31 种 · 5 天/);
-  assert.match(summary, /<b>🥩 11<\/b><span>鱼禽瘦肉<\/span>/);
-  assert.match(summary, /<b>🥦 8<\/b><span>蔬菜<\/span>/);
-  assert.match(summary, /<b>🥛 6<\/b><span>蛋奶豆<\/span>/);
-  assert.match(summary, /<b>🍚 5<\/b><span>主食<\/span>/);
+  assert.match(elements.get("weekMeta").textContent, /共 35 种 · 6 天/);
+  assert.match(summary, /<b>🥩 12<\/b><span>鱼禽瘦肉<\/span>/);
+  assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
+  assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
+  assert.match(summary, /<b>🍚 6<\/b><span>主食<\/span>/);
   assert.match(summary, /<b>🍎 1<\/b><span>水果坚果<\/span>/);
   assert.match(summary, /看看这几类是不是都吃到了/);
 
@@ -390,7 +390,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v53"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v54"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
