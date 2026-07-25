@@ -224,12 +224,12 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  assert.match(elements.get("weekMeta").textContent, /共 35 种 · 6 天/);
+  assert.match(elements.get("weekMeta").textContent, /共 36 种 · 6 天/);
   assert.match(summary, /<b>🥩 12<\/b><span>鱼禽瘦肉<\/span>/);
   assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
   assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 6<\/b><span>主食<\/span>/);
-  assert.match(summary, /<b>🍎 1<\/b><span>水果坚果<\/span>/);
+  assert.match(summary, /<b>🍎 2<\/b><span>水果坚果<\/span>/);
   assert.match(summary, /看看这几类是不是都吃到了/);
 
   // A category with no foods this week is dropped rather than called out.
@@ -390,7 +390,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v54"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v55"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
