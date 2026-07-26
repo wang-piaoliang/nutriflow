@@ -144,10 +144,10 @@ test("groups purchases into one card per receipt at runtime", async () => {
   const meta = elements.get("purchaseMeta").textContent;
   const history = elements.get("purchaseHistory").innerHTML;
 
-  // Three receipts, thirteen line items. A receipt count above the number of
+  // Four receipts, nineteen line items. A receipt count above the number of
   // distinct receipt IDs means the grouping accumulator leaked extra keys.
-  assert.match(meta, /^3 次 · 13 件 /);
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 3);
+  assert.match(meta, /^4 次 · 19 件 /);
+  assert.equal(history.match(/<details class="receipt-card">/g).length, 4);
   assert.match(history, /fudi 超市五道口店/);
   assert.match(history, /盒马鲜生/);
 
@@ -163,14 +163,14 @@ test("groups purchases into one card per receipt at runtime", async () => {
   assert.doesNotMatch(meta, /已记/);
 
   // The privacy sentence sits once above the list, not inside every receipt.
-  assert.equal(history.match(/data-photo-owner=/g).length, 3);
+  assert.equal(history.match(/data-photo-owner=/g).length, 4);
   assert.doesNotMatch(history, /仅保存在这台设备/);
 });
 
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "6 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "7 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
@@ -198,12 +198,12 @@ test("renders the confirmed diet log by day", async () => {
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
-  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 12);
-  assert.equal(list.match(/data-inline-for=/g).length, 12);
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 14);
+  assert.equal(list.match(/data-inline-for=/g).length, 14);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[012345]"/g).length, 6);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[0123456]"/g).length, 7);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -224,9 +224,9 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  assert.match(elements.get("weekMeta").textContent, /共 36 种 · 6 天/);
-  assert.match(summary, /<b>🥩 12<\/b><span>鱼禽瘦肉<\/span>/);
-  assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
+  assert.match(elements.get("weekMeta").textContent, /共 40 种 · 7 天/);
+  assert.match(summary, /<b>🥩 15<\/b><span>鱼禽瘦肉<\/span>/);
+  assert.match(summary, /<b>🥦 10<\/b><span>蔬菜<\/span>/);
   assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 6<\/b><span>主食<\/span>/);
   assert.match(summary, /<b>🍎 2<\/b><span>水果坚果<\/span>/);
@@ -347,7 +347,7 @@ test("folds receipt-level fields across every line item", async () => {
   await context.renderShopping();
 
   const history = elements.get("purchaseHistory").innerHTML;
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 4);
+  assert.equal(history.match(/<details class="receipt-card">/g).length, 5);
   assert.match(history, /¥3\.00/);
   assert.match(history, /总价待确认/);
 });
@@ -357,9 +357,9 @@ test("compares unit prices per food", async () => {
 
   const compare = elements.get("priceCompare").innerHTML;
 
-  // Twelve weighed items (incl. the udon staple). The shopping bag is sold per
+  // Thirteen weighed items (incl. the udon staple and 鸡翅根). The shopping bag is sold per
   // piece, so converting it to 元/kg would be meaningless and it must stay out.
-  assert.equal(elements.get("priceMeta").textContent, "12 种");
+  assert.equal(elements.get("priceMeta").textContent, "13 种");
   assert.doesNotMatch(compare, /购物袋/);
 
   // 24.28 for 300g of 虾滑 is 80.9 元/kg, now the dearest; 24.90 for 400g of
@@ -379,7 +379,7 @@ test("compares unit prices per food", async () => {
   context.renderPriceComparison();
 
   const regrouped = elements.get("priceCompare").innerHTML;
-  assert.equal(elements.get("priceMeta").textContent, "12 种");
+  assert.equal(elements.get("priceMeta").textContent, "13 种");
   assert.match(regrouped, /2 次 · 40\.0–62\.2/);
   assert.match(regrouped, /class="fill hot"/);
 });
@@ -390,7 +390,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v55"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v56"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

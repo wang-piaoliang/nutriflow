@@ -958,6 +958,12 @@ const foods = [
 ];
 
 const purchases = [
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-01", date:"2026-07-26 20:04", foodId:"sauce", item:"盒马 薄盐蚝油", amount:"1 瓶", packageSpec:"500g/瓶", totalPrice:7.9, unitPrice:"7.9 元/瓶", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-02", date:"2026-07-26 20:04", foodId:"ginger", item:"老姜（干姜）", amount:"1 包", packageSpec:"约200g/包", totalPrice:2.89, unitPrice:"2.89 元/包", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-03", date:"2026-07-26 20:04", foodId:"soda", item:"可口可乐 汽水（摩登罐）", amount:"1 提", packageSpec:"330ml×6", totalPrice:11.9, unitPrice:"11.9 元/提", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-04", date:"2026-07-26 20:04", foodId:"chicken", item:"盒马日日鲜 冰鲜鸡翅根", amount:"360g", packageSpec:"1 袋", totalPrice:7.2, unitPrice:"7.2 元/袋", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-05", date:"2026-07-26 20:04", foodId:"iceCream", item:"奥利奥 MINI 脆皮棒 香草", amount:"1 盒", packageSpec:"140g/盒", totalPrice:23.5, unitPrice:"23.5 元/盒", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
+  {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-06", date:"2026-07-26 20:04", foodId:"water", item:"盒马 深层天然水", amount:"1 箱", packageSpec:"550ml×12", totalPrice:9.9, unitPrice:"9.9 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-01", date:"2026-07-17 21:13", foodId:"chickenTender", item:"精选冰鲜鸡小胸", amount:"638g", packageSpec:"称重 0.638kg", totalPrice:17.60, unitPrice:"27.60 元/kg（约 13.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 1"},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-02", date:"2026-07-17 21:13", foodId:"porkShoulder", item:"精选梅花肉", amount:"368g", packageSpec:"称重 0.368kg", totalPrice:15.30, unitPrice:"41.60 元/kg（约 20.80 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 2"},
   {receiptId:"2026-07-17-fudi", id:"2026-07-17-fudi-03", date:"2026-07-17 21:13", foodId:"edamame", item:"毛豆米", amount:"504g", packageSpec:"称重 0.504kg", totalPrice:14.01, unitPrice:"27.80 元/kg（约 13.90 元/斤）", store:"fudi 超市五道口店", bought:true, note:"小票序号 3"},
@@ -976,6 +982,13 @@ const purchases = [
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
 const dietRecords = [
+  {
+    date:"2026-07-26",
+    meals:[
+      {name:"午餐", items:["麻辣牛蛙","虾","小酥肉","拍黄瓜","花生"]},
+      {name:"晚餐", items:["鸡翅","生菜","蛋",{name:"七色糙米饭（＋大米·藜麦·小米）", as:"杂粮饭"}]}
+    ]
+  },
   {
     date:"2026-07-25",
     meals:[
@@ -1029,7 +1042,7 @@ const dietRecords = [
 // 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果；
 // 毛豆归在蛋奶豆、只匹配蛋奶豆关键词，和蔬菜不冲突，所以蔬菜挪到蛋奶豆前面不影响归类。
 const dietItemCategoryRules = [
-  {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
+  {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","蛙","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
   {icon:"🥦", name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
   {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆皮","豆浆","毛豆","腐竹"]},
   {icon:"🍚", name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
@@ -1592,6 +1605,11 @@ function iconForFood(foodId){
     melon:"🍉",
     pomegranate:"🍎",
     nuts:"🥜",
+    ginger:"🫚",
+    soda:"🥤",
+    iceCream:"🍦",
+    water:"💧",
+    sauce:"🧂",
     bag:"🛍️"
   };
   return icons[foodId] || "🛒";
