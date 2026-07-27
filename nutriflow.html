@@ -63,6 +63,8 @@ html{
   max-width:100%;
   overflow-x:hidden;
   overflow-x:clip;
+  /* 关掉横向橡皮筋回弹：内容本身不溢出，但 iOS 轻扫时会弹出一条背景边，去掉它。 */
+  overscroll-behavior-x:none;
   scroll-behavior:smooth;
   -webkit-text-size-adjust:100%;
   text-size-adjust:100%;
@@ -79,6 +81,7 @@ body{
   color:var(--text);
   overflow-x:hidden;
   overflow-x:clip;
+  overscroll-behavior-x:none;
 }
 button{font:inherit;cursor:pointer}
 input{font:inherit}
