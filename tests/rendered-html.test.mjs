@@ -30,11 +30,24 @@ async function runAppScript() {
   });
 
   const store = new Map();
+  // Anchor "now" to a date inside the fixtures' week (2026-07-20..26) so the
+  // weekly-summary assertions are deterministic no matter when the suite runs.
+  // Without this, once the real clock rolls past that Sunday, 本周吃到 goes to
+  // 0 天 and the counts drift. Args still delegate to the real Date.
+  const FIXED_NOW = Date.parse("2026-07-23T12:00:00");
+  class FixedDate extends Date {
+    constructor(...args) {
+      if (args.length === 0) super(FIXED_NOW);
+      else super(...args);
+    }
+    static now() { return FIXED_NOW; }
+  }
   const context = {
     window: {},
     navigator: {},
     location: { protocol: "http:" },
     console: { log() {}, warn() {}, error() {} },
+    Date: FixedDate,
     crypto: { randomUUID: () => `id-${store.size}-${Math.random().toString(36).slice(2)}` },
     localStorage: {
       getItem: (key) => (store.has(key) ? store.get(key) : null),
@@ -390,7 +403,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v56"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v57"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
