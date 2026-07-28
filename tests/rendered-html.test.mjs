@@ -183,7 +183,7 @@ test("groups purchases into one card per receipt at runtime", async () => {
 test("renders the confirmed diet log by day", async () => {
   const { elements } = await runAppScript();
 
-  assert.equal(elements.get("dietLogMeta").textContent, "7 天");
+  assert.equal(elements.get("dietLogMeta").textContent, "8 天");
 
   const list = elements.get("dietLogList").innerHTML;
   assert.match(list, /2026-07-20/);
@@ -211,12 +211,12 @@ test("renders the confirmed diet log by day", async () => {
 
   // Every meal carries its own ＋ so food can be appended to that exact meal
   // without going back to a form and re-picking the date.
-  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 14);
-  assert.equal(list.match(/data-inline-for=/g).length, 14);
+  assert.equal(list.match(/data-add-item="2026-07-2\d\|(午餐|晚餐)"/g).length, 16);
+  assert.equal(list.match(/data-inline-for=/g).length, 17);
 
   // Each day offers the same device-local photo controls the receipts have,
   // but the privacy sentence is stated once per section, never per day.
-  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[0123456]"/g).length, 7);
+  assert.equal(list.match(/data-photo-owner="diet:2026-07-2[01234567]"/g).length, 8);
   assert.doesNotMatch(list, /仅保存在这台设备/);
 });
 
@@ -403,7 +403,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v59"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v60"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
