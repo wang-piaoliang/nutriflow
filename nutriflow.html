@@ -118,7 +118,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 }
 .view{display:none}
 .view.active{display:block}
-.stack{display:grid;gap:12px}
+/* 单列必须显式 1fr 铺满容器：不写列宽时是单个 auto 列，列宽随内容 max-content 收缩、
+   靠左对齐，右边留白。饮食页几乎全是可换行的中文（max-content 很小）就会明显变窄。 */
+.stack{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
 .card{
   background:var(--surface);
   border:1px solid var(--line);
