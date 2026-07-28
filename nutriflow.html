@@ -117,7 +117,8 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   box-shadow:var(--shadow);
 }
 .view{display:none}
-.view.active{display:block}
+/* 每个 tab 各自横向裁剪：万一某个元素比屏宽宽，也只在本 view 内裁掉，不会把整页顶出横向滚动。 */
+.view.active{display:block;overflow-x:hidden;overflow-x:clip}
 /* 单列必须显式 1fr 铺满容器：不写列宽时是单个 auto 列，列宽随内容 max-content 收缩、
    靠左对齐，右边留白。饮食页几乎全是可换行的中文（max-content 很小）就会明显变窄。 */
 .stack{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
@@ -620,11 +621,11 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .diet-day + .diet-day{margin-top:10px}
 #dietLogList{margin-top:12px}
 .diet-day-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
-.diet-day-head strong{font-size:16px}
-.diet-day-head span{color:var(--muted);font-size:12px}
+.diet-day-head strong{font-size:16px;min-width:0}
+.diet-day-head span{color:var(--muted);font-size:12px;min-width:0;text-align:right;overflow-wrap:anywhere}
 .meal-entry{padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
 .meal-entry b{display:block;font-size:14px}
-.meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5}
+.meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
 .meal-place{color:var(--text);font-weight:600}
 /* 手动补记的食物在食物列表里用主色轻微区分，能看出是自己加的，但不另起一行、不加边框叉号。 */
 .added-item{color:var(--green)}
