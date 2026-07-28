@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v58`
+- 当前离线缓存：`nutriflow-pwa-v59`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -300,6 +300,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-27：饮食页横向滚动/留白**加固**（用户反馈饮食页能左右滑、其他页不能）。当前代码 320–430px 全宽实测溢出都是 0，怀疑是用户端 SW 缓存没更新到 v58 的 `.stack` 修复。防御性再加：`.view.active{overflow-x:clip}`（每个 tab 各自横向裁剪，兜底任何未知溢出）、`.meal-entry small{overflow-wrap:anywhere}`、`.diet-day-head` 子元素 `min-width:0`。**判断用户在不在最新版**：最新版饮食列表顶部是 `2026-07-26`（麻辣牛蛙/红烧鸡翅）；若顶部还是 `2026-07-25` 就是旧缓存。离线缓存升至 v59。
 
 - 2026-07-27：**修饮食页卡片变窄、右边留白**（其他页正常）。根因：`.stack` 是 `display:grid` 但没写列宽，等于单个 `auto` 列——列宽随内容 `max-content` 收缩、`justify-content` 默认靠左。采购/首页/食材有不换行的内容（英文、日期、宝塔大图）把列撑满，饮食页几乎全是可任意换行的中文（max-content 极小）就缩成一条、靠左、右边空。修法：`.stack{grid-template-columns:minmax(0,1fr)}` 强制单列铺满。`.desktop-grid` 在 ≥820px 仍覆盖成 `1fr 1fr` 双列。实测：饮食卡片铺满、连一个只有「短」字的卡也铺满、桌面仍双列。离线缓存升至 v58。
 
