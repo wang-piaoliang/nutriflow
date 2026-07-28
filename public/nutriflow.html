@@ -656,6 +656,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:11px;
 }
 .nav-btn b{font-size:20px;line-height:1}
+/* 页脚版本号：用来一眼确认设备是否已经加载到最新版（排查 Service Worker 缓存）。 */
+.app-version{text-align:center;color:var(--muted);font-size:11px;padding:14px 0 2px;opacity:.55;letter-spacing:.3px}
 .nav-btn.active{background:var(--surface-2);color:var(--text)}
 @media (min-width:820px){
   .app{max-width:980px}
@@ -823,8 +825,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   </section>
 
   <section class="view active" id="dietLog">
-    <div class="stack">
-      <article class="card hero">
+    <div class="stack desktop-grid">
+      <article class="card hero desktop-span">
         <div class="section-title">
           <h2>本周吃到</h2>
           <span class="subtle" id="weekMeta"></span>
@@ -832,7 +834,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
         <div class="list" id="weekSummary"></div>
       </article>
 
-      <article class="card">
+      <article class="card desktop-span">
         <div class="section-title">
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
@@ -864,6 +866,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
       </article>
     </div>
   </section>
+
+  <footer class="app-version" id="appVersion">NutriFlow v62</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
