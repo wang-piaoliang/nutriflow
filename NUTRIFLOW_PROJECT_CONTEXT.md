@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v62`
+- 当前离线缓存：`nutriflow-pwa-v63`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -301,6 +301,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-29：录入 07-28 与 07-29 各两餐 + 两张盒马采购单。饮食：07-28 午餐（挂面+煎蛋+上海青，自己做）、07-28 晚餐（潮汕牛肉丸火锅：牛肉丸/黄牛肉片/金针菇/豆腐/上海青/白萝卜，自己做）、07-29 午餐（煎蛋/牛排[as 牛肉]/鸡胸肉/空心菜/土豆丝/牛奶，自己做）、07-29 晚餐（在外泰餐，`place:"泰餐"` 占位待补真实店名：咖喱虾/冬阴功汤/菠萝炒饭/空心菜）。采购：① 盒马长粒香米 5kg ¥22.9（原价32.9 优惠10，`receiptId:2026-07-28-hema-rice`，pantry）；② 盒马同一天另一单（`2026-07-28-hema`）油菜/上海青 约400g ¥1.98、黄牛牛嫩肉 400g ¥29.9、深层天然水 550ml×12 ¥9.9（商品小计 41.78）。新增 foodId `beefTender`（图标🥩、并入采购「肉类」分组）；油菜复用 `bokChoy`、水复用 `water`、米复用 `rice`。测试断言随之更新：采购 6 次 · 23 件、单价对比 16 种、饮食 10 天、data-add-item 20 / data-inline-for 21。离线缓存升至 v63，版本号 footer 同步为 v63。**待用户补**：泰餐店名、（如愿意）泰餐花费和之前满记 ¥15.4 是否记进「在外就餐」。
 
 - 2026-07-28：**饮食页直接套用其他页的结构 + 加页面版本号**（用户第 N 轮反馈「饮食页能左右滑、其他页不能，改了好几轮，就不能直接用别的页面的格式么」）。① 把饮食页外层从 `<div class="stack">` 改成 `<div class="stack desktop-grid">`、两张卡都加 `desktop-span`，和「目标」「采购」页**完全同构**。注意：`desktop-grid` 只在 ≥820px 生效，手机上（<820px）它和纯 `.stack` 渲染完全一样——所以这一步在手机上其实零差异，进一步佐证手机端的差异不是 wrapper 而是缓存。② `<main>` 末尾加 `<footer class="app-version">NutriFlow v62</footer>`（淡灰小字、每个 tab 底部都显示）。**这是关键诊断**：让用户一眼看到设备到底跑的是哪一版——看到 v62 就是最新版，看到旧号（或没有版本号）就是 SW 缓存没更新，需要彻底关掉 App/Safari 重开或删掉再加到主屏。当前代码 402px 实测溢出仍是 0（`docScrollW==bodyScrollW==vw`）。离线缓存升至 v62。
 

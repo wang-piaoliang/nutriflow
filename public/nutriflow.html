@@ -867,7 +867,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v62</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v63</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -968,6 +968,10 @@ const foods = [
 ];
 
 const purchases = [
+  {receiptId:"2026-07-28-hema-rice", id:"2026-07-28-hema-rice-01", date:"2026-07-28 09:39", foodId:"rice", item:"盒马 长粒香米", amount:"5kg", packageSpec:"5kg/袋", totalPrice:22.9, unitPrice:"22.9 元/袋（约 4.58 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true, note:"原价 32.9，优惠 10 元，实付 22.9"},
+  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-01", date:"2026-07-28 22:53", foodId:"bokChoy", item:"盒马日日鲜 油菜（上海青）", amount:"约400g", packageSpec:"约400g/袋", totalPrice:1.98, unitPrice:"1.98 元/袋（约 4.95 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-02", date:"2026-07-28 22:53", foodId:"beefTender", item:"鲜 国产谷饲黄牛牛嫩肉", amount:"400g", packageSpec:"400g/包", totalPrice:29.9, unitPrice:"29.9 元/包（约 74.75 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-03", date:"2026-07-28 22:53", foodId:"water", item:"盒马 深层天然水", amount:"1 箱", packageSpec:"550ml×12", totalPrice:9.9, unitPrice:"9.9 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true, note:"商品小计 41.78"},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-01", date:"2026-07-26 20:04", foodId:"sauce", item:"盒马 薄盐蚝油", amount:"1 瓶", packageSpec:"500g/瓶", totalPrice:7.9, unitPrice:"7.9 元/瓶", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-02", date:"2026-07-26 20:04", foodId:"ginger", item:"老姜（干姜）", amount:"1 包", packageSpec:"约200g/包", totalPrice:2.89, unitPrice:"2.89 元/包", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-03", date:"2026-07-26 20:04", foodId:"soda", item:"可口可乐 汽水（摩登罐）", amount:"1 提", packageSpec:"330ml×6", totalPrice:11.9, unitPrice:"11.9 元/提", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
@@ -992,6 +996,24 @@ const purchases = [
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
 const dietRecords = [
+  {
+    date:"2026-07-29",
+    meals:[
+      // 午餐（自己做）：三个煎蛋、牛排、鸡胸肉、清炒空心菜、土豆丝、牛奶。
+      {name:"午餐", items:["煎蛋",{name:"牛排", as:"牛肉"},"鸡胸肉","空心菜","土豆丝","牛奶"]},
+      // 晚餐在外面吃泰餐（店名没认出来，待用户补）：黄咖喱虾、冬阴功汤、菠萝炒饭、空心菜。
+      {name:"晚餐", place:"泰餐", items:["咖喱虾","冬阴功汤","菠萝炒饭","空心菜"]}
+    ]
+  },
+  {
+    date:"2026-07-28",
+    meals:[
+      // 午餐（自己做）：挂面配两个煎蛋和上海青。
+      {name:"午餐", items:["面条","煎蛋","上海青"]},
+      // 晚餐（自己做）潮汕牛肉丸火锅：牛肉丸、黄牛肉片、金针菇、豆腐、上海青、白萝卜。
+      {name:"晚餐", items:["潮汕牛肉丸","牛肉","金针菇","豆腐","上海青","白萝卜"]}
+    ]
+  },
   {
     date:"2026-07-27",
     meals:[
@@ -1561,6 +1583,7 @@ function iconForFood(foodId){
   const icons = {
     fattyFish:"🐟",
     beef:"🥩",
+    beefTender:"🥩",
     leanPork:"🥩",
     porkShoulder:"🥩",
     porkTenderloin:"🥩",
@@ -1633,7 +1656,7 @@ function iconForFood(foodId){
   return icons[foodId] || "🛒";
 }
 const purchaseGroupRules = [
-  {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
+  {name:"肉类", ids:["beef","beefTender","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
   {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
   {name:"豆类", ids:["tofu","soyMilk","edamame"]},
