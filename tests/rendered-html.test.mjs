@@ -268,6 +268,29 @@ test("summarises how many foods per category the week covered", async () => {
   assert.equal(context.sameWeek(iso), true);
 });
 
+test("summarises every recorded week, not just the current one", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+  context.renderWeekSummary();
+
+  // Records span two natural weeks (Monday-start). The current one stays in the
+  // green hero; every earlier week gets its own section below it.
+  const weeks = evaluate("weeksFromRecords()");
+  assert.equal(weeks.length, 2);
+  assert.equal(elements.get("pastWeeksMeta").textContent, "1 周");
+
+  const past = elements.get("pastWeeks").innerHTML;
+  assert.equal(past.match(/<section class="week-block">/g).length, 1);
+  // The past week keeps its own range and its own per-category tally, rather
+  // than reusing the current week's numbers.
+  // The clock is pinned to 2026-07-23, so 7/20–7/26 is "this week" and lives in
+  // the hero; the 7/27 week is the other one and gets its own section with its
+  // own tally rather than reusing the current week's numbers.
+  assert.match(past, /7\/27–8\/2/);
+  assert.match(past, /24 种 · 4 天/);
+  // The current week is not repeated in the past list.
+  assert.doesNotMatch(past, /7\/20–7\/26/);
+});
+
 test("orders meal items by food category", async () => {
   const { context } = await runAppScript();
   const sort = context.sortMealItems;
@@ -420,7 +443,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v67"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v68"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

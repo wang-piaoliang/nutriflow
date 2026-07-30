@@ -319,6 +319,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   text-align:left;
 }
 .week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+/* 往期每周：一周一段，段与段之间一条细线隔开，最近的在最前。 */
+.week-block + .week-block{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.week-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.week-block-head strong{font-size:14px;font-weight:600}
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
@@ -877,6 +881,14 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 
       <article class="card desktop-span">
         <div class="section-title">
+          <h2>往期每周</h2>
+          <span class="subtle" id="pastWeeksMeta"></span>
+        </div>
+        <div id="pastWeeks"></div>
+      </article>
+
+      <article class="card desktop-span">
+        <div class="section-title">
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
@@ -908,7 +920,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v67</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v68</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1888,34 +1900,76 @@ function render(){
   renderWeekSummary();
   void renderDietLog();
 }
-function renderWeekSummary(){
-  const {monday, next} = currentWeek();
-  const sunday = new Date(next);
-  sunday.setDate(next.getDate() - 1);
+// 把某天归到它所在自然周的周一（和 currentWeek 一样以周一为起点）。
+function weekMondayOf(dateText){
+  const date = localDate(dateText);
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+function weekLabel(monday){
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
   const label = date => `${date.getMonth() + 1}/${date.getDate()}`;
-  const records = allDietRecords().filter(record => sameWeek(record.date));
-
-  // 按分类收集本周吃到的不同食物。用 itemTag 去重：烤鸭和鸭肉是同一种。
+  return `${label(monday)}–${label(sunday)}`;
+}
+// 按分类统计这批记录吃到的不同食物。用 itemTag 去重：烤鸭和鸭肉是同一种。
+function tallyByCategory(records){
   const eaten = dietItemCategoryRules.map(() => new Set());
   records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
     const rank = dietItemRank(item);
     if (rank < dietItemCategoryRules.length) eaten[rank].add(itemTag(item));
   })));
-
-  // 只做一行总结，不逐类展开——展开后这张卡片会占掉大半屏。
-  // 也不提示“还没吃到”：一周还没过完，缺什么都言之过早。
   const counts = dietItemCategoryRules
     .map((rule, index) => ({rule, count:eaten[index].size}))
     .filter(entry => entry.count > 0);
-  const total = counts.reduce((sum, entry) => sum + entry.count, 0);
+  return {counts, total: counts.reduce((sum, entry) => sum + entry.count, 0)};
+}
+function weekTiles(counts){
+  return `<div class="grid3 week-metrics">
+        ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
+      </div>`;
+}
+// 所有有记录的周，新到旧，每周带上自己的分类统计。
+function weeksFromRecords(){
+  const buckets = new Map();
+  allDietRecords().forEach(record => {
+    const monday = weekMondayOf(record.date);
+    const key = monday.getTime();
+    if (!buckets.has(key)) buckets.set(key, {monday, records:[]});
+    buckets.get(key).records.push(record);
+  });
+  return Array.from(buckets.values())
+    .sort((a, b) => b.monday - a.monday)
+    .map(bucket => Object.assign({}, bucket, tallyByCategory(bucket.records)));
+}
+function renderWeekSummary(){
+  const {monday} = currentWeek();
+  const records = allDietRecords().filter(record => sameWeek(record.date));
+  const {counts, total} = tallyByCategory(records);
 
   document.getElementById("weekMeta").textContent = total ? `${total} 种 · ${records.length} 天` : `${records.length} 天`;
+  // 本周只做一行总结，不逐类展开——展开后这张卡片会占掉大半屏。
+  // 也不提示“还没吃到”：一周还没过完，缺什么都言之过早。
   document.getElementById("weekSummary").innerHTML = total
-    ? `<div class="grid3 week-metrics">
-        ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
-      </div>
-      <p class="week-caption">${label(monday)}–${label(sunday)}，看看这几类是不是都吃到了。</p>`
+    ? `${weekTiles(counts)}
+      <p class="week-caption">${weekLabel(monday)}，看看这几类是不是都吃到了。</p>`
     : `<div class="note">本周还没有记录。</div>`;
+  renderPastWeeks();
+}
+// 往期每周：本周以外的每一周各占一段，最近的排在最前。
+function renderPastWeeks(){
+  const {monday} = currentWeek();
+  // 排除当前周即可，不要写成 `< monday`：那样万一记了个未来日期的餐，那一周会整个消失。
+  const past = weeksFromRecords().filter(week => week.monday.getTime() !== monday.getTime());
+  document.getElementById("pastWeeksMeta").textContent = `${past.length} 周`;
+  document.getElementById("pastWeeks").innerHTML = past.length
+    ? past.map(week => `<section class="week-block">
+      <div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>
+      ${weekTiles(week.counts)}
+    </section>`).join("")
+    : `<div class="note">还没有往期记录。</div>`;
 }
 function renderPriceComparison(){
   const groups = groupPricesByFood();
