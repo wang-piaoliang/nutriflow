@@ -319,10 +319,13 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   text-align:left;
 }
 .week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
-/* 往期每周：一周一段，段与段之间一条细线隔开，最近的在最前。 */
-.week-block + .week-block{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+/* 每周一段：这一周的汇总（日期范围 + 分类磁贴）排在这一周的每天上面，
+   段与段之间一条细线隔开，最近的在最前。 */
+.week-block + .week-block{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
 .week-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
 .week-block-head strong{font-size:14px;font-weight:600}
+/* 磁贴和这周第一天之间留口气，别粘在一起。 */
+.week-block .week-metrics + .diet-day{margin-top:12px}
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
@@ -506,9 +509,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .bar-head{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px}
 .price-group{display:grid;gap:10px;padding:12px;border-radius:8px;background:var(--surface-2)}
 .price-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
-.price-group-head strong{font-size:15px;min-width:0;overflow-wrap:anywhere}
+.price-group-head strong{font-size:15px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .price-group-head span{white-space:nowrap}
-.bar-head span{min-width:0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+/* 「日期 门店 · 品名」必须一行显示完（用户要求）：不换行，超长用省略号截断。 */
+.bar-head span{min-width:0;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar-head b{white-space:nowrap;font-size:14px}
 .bar-note{color:var(--muted);font-size:12px;line-height:1.35}
 .track{height:8px;background:var(--surface-2);border-radius:8px;overflow:hidden}
@@ -843,11 +847,12 @@ h3{margin:0;font-size:15px;letter-spacing:0}
       </article>
 
       <article class="card desktop-span">
-        <div class="section-title">
+        <div class="section-title has-sticky-tabs">
           <h2>食材单价对比</h2>
           <span class="subtle" id="priceMeta">0 种</span>
         </div>
         <div class="note">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
+        <div class="tabs" id="priceTabs"></div>
         <div class="bars" id="priceCompare"></div>
       </article>
 
@@ -877,14 +882,6 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>本周吃到<span id="weekMeta"></span></h2>
         </div>
         <div class="list" id="weekSummary"></div>
-      </article>
-
-      <article class="card desktop-span">
-        <div class="section-title">
-          <h2>往期每周</h2>
-          <span class="subtle" id="pastWeeksMeta"></span>
-        </div>
-        <div id="pastWeeks"></div>
       </article>
 
       <article class="card desktop-span">
@@ -920,7 +917,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v70</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v71</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1401,6 +1398,7 @@ const activePhotoUrls = {shopping:[], diet:[], dining:[]};
 let shoppingRenderVersion = 0;
 let dietRenderVersion = 0;
 let activeFoodCategory = "animalProtein";
+let activePriceCategory = "all";
 let consumed = load("nutriflow_consumed_v1", {});
 
 function clone(value){return JSON.parse(JSON.stringify(value))}
@@ -1764,12 +1762,12 @@ function iconForFood(foodId){
   return icons[foodId] || "🛒";
 }
 const purchaseGroupRules = [
-  {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
-  {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
-  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
-  {name:"豆类", ids:["tofu","soyMilk","edamame"]},
-  {name:"主食", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
-  {name:"水果坚果", ids:["avocado","apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
+  {name:"肉类", icon:"🥩", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
+  {name:"水产", icon:"🍤", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
+  {name:"蔬菜", icon:"🥦", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
+  {name:"豆类", icon:"🫘", ids:["tofu","soyMilk","edamame"]},
+  {name:"主食", icon:"🍚", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
+  {name:"水果坚果", icon:"🍎", ids:["avocado","apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
 ];
 function parseTarget(target){
   const text = String(target || "");
@@ -1962,26 +1960,62 @@ function renderWeekSummary(){
     ? `${weekTiles(counts)}
       <p class="week-caption">${weekLabel(monday)}，看看这几类是不是都吃到了。</p>`
     : `<div class="note">本周还没有记录。</div>`;
-  renderPastWeeks();
 }
-// 往期每周：本周以外的每一周各占一段，最近的排在最前。
-function renderPastWeeks(){
-  const {monday} = currentWeek();
-  // 排除当前周即可，不要写成 `< monday`：那样万一记了个未来日期的餐，那一周会整个消失。
-  const past = weeksFromRecords().filter(week => week.monday.getTime() !== monday.getTime());
-  document.getElementById("pastWeeksMeta").textContent = `${past.length} 周`;
-  document.getElementById("pastWeeks").innerHTML = past.length
-    ? past.map(week => `<section class="week-block">
-      <div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>
-      ${weekTiles(week.counts)}
-    </section>`).join("")
-    : `<div class="note">还没有往期记录。</div>`;
+// 单价对比的分组名用「食材本名」，不带品牌——「盒马日日鲜 冰鲜鸡小胸」这种在标题里
+// 又长又全是修饰词，一眼看不出在比什么。食材目录里的 name 是品类级的（mushroom→菌菇类），
+// 太粗，所以这里单列一份短名表；查不到就退回目录名、再退回原始品名。
+const priceFoodNames = {
+  shellfish:"虾滑", beef:"牛肉", porkShoulder:"梅花肉", edamame:"毛豆米",
+  chicken:"鸡翅根", chickenTender:"鸡小胸", noodle:"乌冬面", wholeWheatBread:"全麦吐司",
+  gourd:"丝瓜", pepper:"尖椒", cauliflower:"松花菜", leafy:"生菜", mushroom:"香菇",
+  enoki:"金针菇", tomato:"西红柿", corn:"玉米", bokChoy:"油菜", rice:"大米",
+  carrot:"胡萝卜", pumpkin:"南瓜", potato:"土豆", tofu:"豆腐", radish:"白萝卜",
+  avocado:"牛油果"
+};
+function priceFoodName(entry){
+  if (priceFoodNames[entry.foodId]) return priceFoodNames[entry.foodId];
+  const food = foods.find(item => item.id === entry.foodId);
+  return food ? food.name : entry.item;
+}
+// 门店和具体品名都压到最短，好让「日期 门店 · 品名」挤进一行。
+function shortStore(store){
+  const text = String(store || "");
+  if (text.includes("盒马")) return "盒马";
+  if (/fudi/i.test(text)) return "fudi";
+  return text.split("（")[0];
+}
+function shortItem(item){
+  return String(item || "")
+    .replace(/^(盒马日日鲜|盒马烘焙|盒马树上熟|盒适|盒马)\s*/, "")
+    .replace(/^鲜\s+/, "")
+    .replace(/（[^）]*）/g, "")
+    .trim();
+}
+function priceCategoryOf(foodId){
+  const rule = purchaseGroupRules.find(item => item.ids.includes(foodId));
+  return rule ? rule.name : "";
 }
 function renderPriceComparison(){
-  const groups = groupPricesByFood();
+  const allGroups = groupPricesByFood();
+  // 只列真有数据的分类，免得点进去是空的。选中的分类若因数据变动没了，退回「全部」。
+  const present = purchaseGroupRules.filter(rule => allGroups.some(group => rule.ids.includes(group.latest.foodId)));
+  if (activePriceCategory !== "all" && !present.some(rule => rule.name === activePriceCategory)) activePriceCategory = "all";
+  const tabs = document.getElementById("priceTabs");
+  tabs.innerHTML = [{name:"全部", icon:"🧺"}].concat(present)
+    .map(rule => `<button class="tab-chip ${rule.name === "全部" && activePriceCategory === "all" || rule.name === activePriceCategory ? "active" : ""}" data-price-cat="${rule.name === "全部" ? "all" : rule.name}">${rule.icon} ${rule.name}</button>`)
+    .join("");
+  tabs.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => {
+      activePriceCategory = button.dataset.priceCat;
+      renderPriceComparison();
+    });
+  });
+  const groups = activePriceCategory === "all"
+    ? allGroups
+    : allGroups.filter(group => priceCategoryOf(group.latest.foodId) === activePriceCategory);
   // 条宽按全局最贵单价缩放，这样不同食材之间也能直接比长短；
   // 若按组内最大值缩放，只买过一次的便宜食材也会顶满一整条，看着像很贵。
-  const ceiling = groups.reduce((max, group) => Math.max(max, group.high), 0);
+  const ceiling = allGroups.reduce((max, group) => Math.max(max, group.high), 0);
   document.getElementById("priceMeta").textContent = `${groups.length} 种`;
   document.getElementById("priceCompare").innerHTML = groups.length ? groups.map(group => {
     const repeated = group.items.length > 1;
@@ -1991,14 +2025,14 @@ function renderPriceComparison(){
         ? (entry.perKilo === group.high ? " hot" : entry.perKilo === group.low ? "" : " warn")
         : "";
       return `<div class="bar-row">
-        <div class="bar-head"><span>${entry.date.slice(0,10)} · ${entry.store}</span><b>${entry.perKilo.toFixed(1)} 元/kg</b></div>
+        <div class="bar-head"><span>${entry.date.slice(5,10)} ${shortStore(entry.store)} · ${shortItem(entry.item)}</span><b>${entry.perKilo.toFixed(1)} 元/kg</b></div>
         <div class="track"><div class="fill${tone}" style="width:${width}%"></div></div>
         <small class="bar-note">${formatWeight(entry.grams)} · ¥${entry.totalPrice.toFixed(2)}</small>
       </div>`;
     }).join("");
     return `<div class="price-group">
       <div class="price-group-head">
-        <strong>${iconForFood(group.latest.foodId)} ${group.latest.item}</strong>
+        <strong>${iconForFood(group.latest.foodId)} ${priceFoodName(group.latest)}</strong>
         <span class="subtle">${repeated ? `${group.items.length} 次 · ${group.low.toFixed(1)}–${group.high.toFixed(1)}` : "1 次"}</span>
       </div>
       ${rows}
@@ -2105,7 +2139,7 @@ async function renderDietLog(){
   const list = document.getElementById("dietLogList");
   const records = allDietRecords();
   document.getElementById("dietLogMeta").textContent = `${records.length} 天`;
-  const days = records.map(record => {
+  const dayMarkup = record => {
     const meals = record.meals.map(meal => {
       // 只有手动补的那几样能删，同步包写进代码的删不掉。删除入口收进下面的编辑框里，
       // 平时不在食物列表旁边露出叉号。
@@ -2139,7 +2173,13 @@ async function renderDietLog(){
       ${meals}
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
-  }).join("");
+  };
+  // 按自然周分段：每周的汇总排在这一周的每天上面，而不是把所有周的汇总堆在页面最上面。
+  const days = weeksFromRecords().map(week => `<section class="week-block">
+      <div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>
+      ${weekTiles(week.counts)}
+      ${week.records.map(dayMarkup).join("")}
+    </section>`).join("");
   list.innerHTML = `${dietDayFormMarkup()}${days || `<div class="note">还没有饮食记录。用右上角的 ＋ 直接补记，或把餐食照片发给 Claude 让它整理。</div>`}`;
   bindPhotoControls(list, () => void renderDietLog());
   bindDietForm(list);
