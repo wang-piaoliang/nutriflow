@@ -249,7 +249,7 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  assert.match(elements.get("weekMeta").textContent, /共 40 种 · 7 天/);
+  assert.match(elements.get("weekMeta").textContent, /40 种 · 7 天/);
   assert.match(summary, /<b>🥩 15<\/b><span>鱼禽瘦肉<\/span>/);
   assert.match(summary, /<b>🥦 10<\/b><span>蔬菜<\/span>/);
   assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
@@ -382,16 +382,21 @@ test("compares unit prices per food", async () => {
 
   const compare = elements.get("priceCompare").innerHTML;
 
-  // Twenty-three weighed items. The shopping bag is sold per piece, and the free
+  // Twenty-two weighed items. The shopping bag is sold per piece, and the free
   // garlic costs 0, so converting either to 元/kg is meaningless — both stay out.
-  assert.equal(elements.get("priceMeta").textContent, "23 种");
+  assert.equal(elements.get("priceMeta").textContent, "22 种");
   assert.doesNotMatch(compare, /购物袋/);
 
   // 24.28 for 300g of 虾滑 is 80.9 元/kg, now the dearest; 24.90 for 400g of
   // beef is 62.2 元/kg and both are printed. Beef still outranks 胡萝卜.
   assert.match(compare, /80\.9 元\/kg/);
   assert.match(compare, /62\.2 元\/kg/);
-  assert.ok(compare.indexOf("牛腱肉") < compare.indexOf("胡萝卜"));
+
+  // 牛腱肉 and 牛嫩肉 are both 国产谷饲黄牛, just different cuts, so they share the
+  // beef key and compare as one food instead of two near-identical rows. The group
+  // is titled by its most recent purchase, so only that name is printed.
+  assert.match(compare, /2 次 · 62\.2–74\.7/);
+  assert.ok(compare.indexOf("牛嫩肉") < compare.indexOf("胡萝卜"));
 
   // The printed 元/kg tracks the unit price on the receipt itself.
   assert.match(compare, /27\.6 元\/kg/);
@@ -404,8 +409,8 @@ test("compares unit prices per food", async () => {
   context.renderPriceComparison();
 
   const regrouped = elements.get("priceCompare").innerHTML;
-  assert.equal(elements.get("priceMeta").textContent, "23 种");
-  assert.match(regrouped, /2 次 · 40\.0–62\.2/);
+  assert.equal(elements.get("priceMeta").textContent, "22 种");
+  assert.match(regrouped, /3 次 · 40\.0–74\.7/);
   assert.match(regrouped, /class="fill hot"/);
 });
 
@@ -415,7 +420,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v66"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v67"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v66`
+- 当前离线缓存：`nutriflow-pwa-v67`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -301,6 +301,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-30：四项用户反馈。① **「本周吃到」的种类数挪到标题后面并放大**：原来是 `.section-title` 里被 `justify-content:space-between` 推到最右端的 13px `.subtle` 小字（用户「主页的24，写大一点」「直接写在本周吃到后面」）。改成把 `#weekMeta` 放进 `<h2>` 内、`#weekMeta{margin-left:8px;font-size:16px;font-weight:600;color:var(--hero-copy)}`；文案去掉「共」字（`24 种 · 4 天`）。② **「现有食材」每条加剩余量滑条**：`REMAINING_KEY = nutriflow_remaining_v1`，`remainingFor()` 默认 100%，`remainingTrack()` 用 `--track` 内联渐变画「已用/还剩」。**滑条必须放在 `<label class="buy-row">` 外面**——label 内任何点击都会切换「吃完」复选框，放里面一拖就误勾；因此新增外层 `.buy-item` 承载底色和圆角，`.buy-row` 改透明。拖动时只改 `--track` 和数字文案、**不调 `renderShopping()`**（重渲染会替换掉手指下的滑块）。已吃完的条目不显示滑条。按用户既定规则「手动录入的数据默认接入云同步」，已登记进 `SYNC_DOCS`（key `remaining`）。③ **单价对比合并相近食材**：用户指出「有两个谷饲黄牛肉，区别不大」，把 `beefTender` 并回 `beef`（牛腱肉/牛嫩肉同为国产谷饲黄牛，仅部位不同），删掉 `beefTender` 的图标与采购分组条目；单价对比 23 → 22 种。注意分组标题只显示 `group.latest.item`，所以合并后只出现「牛嫩肉」，测试里原先那条 `indexOf("牛腱肉")` 断言已失效、改成「牛嫩肉」。④ **小票不再写金额拆解**：去掉 07-30 的 `receiptNote`（商品小计/包装费/优惠/实付/称重退差）与 07-28 两条 `note`、以及单价里的「（原价 25.8）」——用户明确「这种不用写，之前那样挺好的」。离线缓存与版本号升至 v67。
+  - **遗留待定**：`mushroom` 把金针菇（5.7 元/kg）和鲜香菇（16.0 元/kg）并成了一组，方向与本次相反、会让「最贵/最便宜」着色误导，是否拆开待用户定；`chicken`（鸡翅根）与 `chickenTender`（鸡小胸）目前分开，是否也按牛肉的逻辑合并同样待定。
 
 - 2026-07-30：录入当天两餐（均自己做，用的正是当天上午那单盒马的食材）。午餐：香煎鸡胸肉、丝瓜蛋汤（丝瓜/蛋）、内酯豆腐炒蛋（豆腐/蛋）、杂粮饭。晚餐麻辣火锅：牛肉片、鸡肉、生菜、金针菇、土豆片、面饼，配杂粮饭。饮食记录升到 11 天；测试断言 `data-add-item` 的正则从 `2026-07-2\d` 放宽成 `2026-07-\d\d`（否则 07-30 的餐次匹配不到）并改为 22、`data-inline-for` 改为 23。离线缓存与版本号升至 v66。
 

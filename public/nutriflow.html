@@ -152,6 +152,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 #home h2{font-size:16px}
 #home .hero h2,#dietLog .hero h2{font-size:20px}
 #home .hero p,#dietLog .hero p{font-size:12px}
+/* 「本周吃到」的种类数原来是标题行最右端的 13px 小字，又小又远（用户反馈）。
+   改成紧跟标题排在同一行、字号放大到 16px，比标题略轻以免抢主标题。 */
+#weekMeta{margin-left:8px;font-size:16px;font-weight:600;color:var(--hero-copy)}
 .hero .subtle{color:var(--hero-copy)}
 #home .metric b{font-size:18px}
 #home .metric span{font-size:11px}
@@ -386,6 +389,37 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   border-radius:8px;
 }
 .buy-row input{width:20px;height:20px;accent-color:var(--green)}
+/* 「现有食材」每条下面的剩余量细条。背景和圆角从 .buy-row 挪到外层 .buy-item，
+   滑条才能和条目共用同一块底色、看起来是一整条；滑条本身在 label 外面，避免误勾「吃完」。
+   轨道只有 4px 高，输入框撑到 18px 只是为了好按，整体多占约 22px。 */
+.buy-item{background:var(--surface-2);border-radius:8px}
+.buy-item > .buy-row{background:transparent;border-radius:0}
+.buy-item.done{opacity:.56}
+.buy-item.done > .buy-row.done{opacity:1}
+.buy-left{display:flex;align-items:center;gap:10px;padding:0 10px 9px 40px}
+.buy-range{
+  flex:1;
+  min-width:0;
+  -webkit-appearance:none;
+  appearance:none;
+  height:18px;
+  background:transparent;
+  outline:none;
+}
+.buy-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:var(--track)}
+.buy-range::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px;
+  height:14px;
+  margin-top:-5px;
+  border-radius:50%;
+  background:var(--green);
+  border:2px solid var(--surface);
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+.buy-range::-moz-range-track{height:4px;border-radius:999px;background:var(--track)}
+.buy-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--green);border:2px solid var(--surface)}
+.buy-left-value{font-size:11px;color:var(--muted);min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
 .buy-row{padding:10px}
 .buy-row.done{opacity:.56}
 .buy-row.done strong{text-decoration:line-through}
@@ -836,8 +870,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     <div class="stack desktop-grid">
       <article class="card hero desktop-span">
         <div class="section-title">
-          <h2>本周吃到</h2>
-          <span class="subtle" id="weekMeta"></span>
+          <h2>本周吃到<span id="weekMeta"></span></h2>
         </div>
         <div class="list" id="weekSummary"></div>
       </article>
@@ -875,7 +908,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v66</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v67</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -976,7 +1009,7 @@ const foods = [
 ];
 
 const purchases = [
-  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-01", date:"2026-07-30 10:18", foodId:"avocado", item:"盒马树上熟 秘鲁即食宝石牛油果", amount:"1 盒", packageSpec:"4 个/份", totalPrice:22.7, unitPrice:"22.7 元/盒（原价 25.8）", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-01", date:"2026-07-30 10:18", foodId:"avocado", item:"盒马树上熟 秘鲁即食宝石牛油果", amount:"1 盒", packageSpec:"4 个/份", totalPrice:22.7, unitPrice:"22.7 元/盒", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-02", date:"2026-07-30 10:18", foodId:"mushroom", item:"金针菇", amount:"150g", packageSpec:"150g/份", totalPrice:0.86, unitPrice:"0.86 元/份（约 5.73 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-03", date:"2026-07-30 10:18", foodId:"water", item:"盒马 深层天然水", amount:"2 箱", packageSpec:"550ml×12/箱", totalPrice:17.42, unitPrice:"8.71 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-04", date:"2026-07-30 10:18", foodId:"potato", item:"土豆（黄心）", amount:"约1kg", packageSpec:"约1kg/份", totalPrice:3.5, unitPrice:"3.5 元/份（约 3.50 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
@@ -990,11 +1023,11 @@ const purchases = [
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-11", date:"2026-07-30 10:18", foodId:"chickenTender", item:"盒马日日鲜 冰鲜鸡小胸", amount:"300g", packageSpec:"300g/袋", totalPrice:3.62, unitPrice:"3.62 元/袋（约 12.07 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-12", date:"2026-07-30 10:18", foodId:"tomato", item:"盒适粉红西红柿", amount:"约1kg", packageSpec:"约1kg/份", totalPrice:5.26, unitPrice:"5.26 元/份（约 5.26 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-13", date:"2026-07-30 10:18", foodId:"leafy", item:"盒马日日鲜 生菜", amount:"约500g", packageSpec:"约500g/袋", totalPrice:2.97, unitPrice:"2.97 元/袋（约 5.94 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
-  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-14", date:"2026-07-30 10:18", foodId:"wholeWheatBread", item:"盒马烘焙 全麦吐司（8 片）", amount:"420g", packageSpec:"420g/袋", totalPrice:5.98, unitPrice:"5.98 元/袋（约 14.24 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true, receiptNote:"商品小计 89.72（按原价）· 环保包装费 1 · 优惠 -10.82 · 实付 79.90；另有称重退差补退合计 2.13 元"},
-  {receiptId:"2026-07-28-hema-rice", id:"2026-07-28-hema-rice-01", date:"2026-07-28 09:39", foodId:"rice", item:"盒马 长粒香米", amount:"5kg", packageSpec:"5kg/袋", totalPrice:22.9, unitPrice:"22.9 元/袋（约 4.58 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true, note:"原价 32.9，优惠 10 元，实付 22.9"},
+  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-14", date:"2026-07-30 10:18", foodId:"wholeWheatBread", item:"盒马烘焙 全麦吐司（8 片）", amount:"420g", packageSpec:"420g/袋", totalPrice:5.98, unitPrice:"5.98 元/袋（约 14.24 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
+  {receiptId:"2026-07-28-hema-rice", id:"2026-07-28-hema-rice-01", date:"2026-07-28 09:39", foodId:"rice", item:"盒马 长粒香米", amount:"5kg", packageSpec:"5kg/袋", totalPrice:22.9, unitPrice:"22.9 元/袋（约 4.58 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-01", date:"2026-07-28 22:53", foodId:"bokChoy", item:"盒马日日鲜 油菜（上海青）", amount:"约400g", packageSpec:"约400g/袋", totalPrice:1.98, unitPrice:"1.98 元/袋（约 4.95 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
-  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-02", date:"2026-07-28 22:53", foodId:"beefTender", item:"鲜 国产谷饲黄牛牛嫩肉", amount:"400g", packageSpec:"400g/包", totalPrice:29.9, unitPrice:"29.9 元/包（约 74.75 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
-  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-03", date:"2026-07-28 22:53", foodId:"water", item:"盒马 深层天然水", amount:"1 箱", packageSpec:"550ml×12", totalPrice:9.9, unitPrice:"9.9 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true, note:"商品小计 41.78"},
+  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-02", date:"2026-07-28 22:53", foodId:"beef", item:"鲜 国产谷饲黄牛牛嫩肉", amount:"400g", packageSpec:"400g/包", totalPrice:29.9, unitPrice:"29.9 元/包（约 74.75 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-28-hema", id:"2026-07-28-hema-03", date:"2026-07-28 22:53", foodId:"water", item:"盒马 深层天然水", amount:"1 箱", packageSpec:"550ml×12", totalPrice:9.9, unitPrice:"9.9 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-01", date:"2026-07-26 20:04", foodId:"sauce", item:"盒马 薄盐蚝油", amount:"1 瓶", packageSpec:"500g/瓶", totalPrice:7.9, unitPrice:"7.9 元/瓶", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-02", date:"2026-07-26 20:04", foodId:"ginger", item:"老姜（干姜）", amount:"1 包", packageSpec:"约200g/包", totalPrice:2.89, unitPrice:"2.89 元/包", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-26-hema", id:"2026-07-26-hema-03", date:"2026-07-26 20:04", foodId:"soda", item:"可口可乐 汽水（摩登罐）", amount:"1 提", packageSpec:"330ml×6", totalPrice:11.9, unitPrice:"11.9 元/提", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
@@ -1164,6 +1197,12 @@ const SYNC_DOCS = [
     get: () => diningEntries,
     set: (value) => { diningEntries = value; localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); },
     rerender: () => { void renderDining(); },
+  },
+  {
+    key: "remaining",
+    get: () => remaining,
+    set: (value) => { remaining = value; localStorage.setItem(REMAINING_KEY, JSON.stringify(remaining)); },
+    rerender: () => { void renderShopping(); },
   },
 ];
 function syncConfig(){
@@ -1359,6 +1398,23 @@ function load(key, fallback){
 }
 function saveConsumed(){
   localStorage.setItem("nutriflow_consumed_v1", JSON.stringify(consumed));
+}
+// 「现有食材」每条下面那根细进度条：手动拖，记还剩多少（0–100%）。没拖过就是 100%。
+// 按用户定的规则「手动录入的数据默认接入云同步」，它登记进 SYNC_DOCS。
+const REMAINING_KEY = "nutriflow_remaining_v1";
+let remaining = load(REMAINING_KEY, {});
+function saveRemaining(){
+  localStorage.setItem(REMAINING_KEY, JSON.stringify(remaining));
+  schedulePush("remaining");
+}
+function remainingFor(id){
+  const value = Number(remaining[id]);
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 100;
+}
+// 滑条轨道用渐变画出「已用 / 还剩」的分界，走内联自定义属性 --track，
+// 这样拖动时只改这一个值即可，不必重渲染整行（重渲染会把手指下的滑块换掉）。
+function remainingTrack(value){
+  return `linear-gradient(to right,var(--green) ${value}%,var(--line) ${value}%)`;
 }
 function openPhotoDatabase(){
   if (photoDatabase) return photoDatabase;
@@ -1616,7 +1672,6 @@ function iconForFood(foodId){
   const icons = {
     fattyFish:"🐟",
     beef:"🥩",
-    beefTender:"🥩",
     leanPork:"🥩",
     porkShoulder:"🥩",
     porkTenderloin:"🥩",
@@ -1691,7 +1746,7 @@ function iconForFood(foodId){
   return icons[foodId] || "🛒";
 }
 const purchaseGroupRules = [
-  {name:"肉类", ids:["beef","beefTender","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
+  {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
   {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
   {name:"豆类", ids:["tofu","soyMilk","edamame"]},
@@ -1854,7 +1909,7 @@ function renderWeekSummary(){
     .filter(entry => entry.count > 0);
   const total = counts.reduce((sum, entry) => sum + entry.count, 0);
 
-  document.getElementById("weekMeta").textContent = total ? `共 ${total} 种 · ${records.length} 天` : `${records.length} 天`;
+  document.getElementById("weekMeta").textContent = total ? `${total} 种 · ${records.length} 天` : `${records.length} 天`;
   document.getElementById("weekSummary").innerHTML = total
     ? `<div class="grid3 week-metrics">
         ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
@@ -1904,11 +1959,20 @@ async function renderShopping(){
     .sort((a,b) => consumedTimestamp(consumed[b.id]) - consumedTimestamp(consumed[a.id]) || b.date.localeCompare(a.date));
   const renderBoughtItem = (purchase, done) => {
     const icon = iconForFood(purchase.foodId);
-    return `<label class="buy-row ${done ? "done" : ""}">
-      <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
-      <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购于 ${purchase.date.slice(0,10)} ${purchase.store}${done ? ` · 吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
-      <span class="amount">${icon}</span>
-    </label>`;
+    const left = remainingFor(purchase.id);
+    // 剩余量滑条必须放在 label 外面：label 内的任何点击都会切换「吃完」复选框，
+    // 放里面一拖就会误勾。吃完的条目不再显示滑条，历史列表保持紧凑。
+    const meter = done ? "" : `<div class="buy-left">
+        <input class="buy-range" type="range" min="0" max="100" step="5" value="${left}" data-remaining="${purchase.id}" aria-label="${purchase.item} 还剩多少" style="--track:${remainingTrack(left)}">
+        <span class="buy-left-value" data-remaining-label="${purchase.id}">剩 ${left}%</span>
+      </div>`;
+    return `<div class="buy-item ${done ? "done" : ""}">
+      <label class="buy-row ${done ? "done" : ""}">
+        <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
+        <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购于 ${purchase.date.slice(0,10)} ${purchase.store}${done ? ` · 吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
+        <span class="amount">${icon}</span>
+      </label>${meter}
+    </div>`;
   };
   document.getElementById("boughtFoods").innerHTML = activeItems.map(purchase => renderBoughtItem(purchase, false)).join("") || `<div class="note">当前没有正在吃的食品。</div>`;
   const recentConsumed = consumedItems.slice(0,1);
@@ -1923,6 +1987,18 @@ async function renderShopping(){
       consumed[input.dataset.consumed] = input.checked ? new Date().toISOString() : false;
       saveConsumed();
       void renderShopping();
+    });
+  });
+  document.querySelectorAll("[data-remaining]").forEach(input => {
+    input.addEventListener("input", () => {
+      const id = input.dataset.remaining;
+      const value = Number(input.value);
+      remaining[id] = value;
+      // 只就地改数字和轨道，不调 renderShopping：重渲染会替换掉正在拖的滑块、手指立刻断掉。
+      input.style.setProperty("--track", remainingTrack(value));
+      const label = document.querySelector(`[data-remaining-label="${id}"]`);
+      if (label) label.textContent = `剩 ${value}%`;
+      saveRemaining();
     });
   });
 
