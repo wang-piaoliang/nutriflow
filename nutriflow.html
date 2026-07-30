@@ -529,7 +529,15 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
 .private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
-.photo-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+/* 隐藏的原生 file input。iOS Safari 的 input[type=file] 不吃 width:1px，会按固有宽度
+   （约 166px）铺开；而它是 position:absolute，祖先里若没有定位元素，包含块就是视口——
+   于是 .card / .view.active / .app / body 上那几层 overflow:clip 统统裁不到它，它直接
+   把页面顶出横向滚动。饮食页这个 📷 在每天标题行最右侧，所以只有饮食页能左右滑；采购页
+   的相机是卡片内靠左的按钮，溢出后仍在屏幕内，看起来正常。
+   修法：两个包裹 label 都设 position:relative，把包含块收回到 label 上，绝对定位的 input
+   就重新受 .card 的 clip 约束；再叠 clip-path 兜底，双保险。 */
+.photo-add,.photo-add-mini{position:relative}
+.photo-input{position:absolute;left:0;top:0;width:1px;height:1px;max-width:1px;opacity:0;pointer-events:none;overflow:hidden;clip-path:inset(50%)}
 .photo-add-mini{cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
 /* 添加按钮独占一行、靠右，分隔线在这一行上方。
    分隔线到按钮、按钮到缩略图都收得很紧，否则中间会像空出一整行。 */
@@ -867,7 +875,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v64</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v65</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
