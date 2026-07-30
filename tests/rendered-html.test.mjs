@@ -408,9 +408,9 @@ test("compares unit prices per food", async () => {
 
   const compare = elements.get("priceCompare").innerHTML;
 
-  // Twenty-two weighed items. The shopping bag is sold per piece, and the free
+  // Twenty-three weighed items. The shopping bag is sold per piece, and the free
   // garlic costs 0, so converting either to 元/kg is meaningless — both stay out.
-  assert.equal(elements.get("priceMeta").textContent, "22 种");
+  assert.equal(elements.get("priceMeta").textContent, "23 种");
   assert.doesNotMatch(compare, /购物袋/);
 
   // 24.28 for 300g of 虾滑 is 80.9 元/kg, now the dearest; 24.90 for 400g of
@@ -435,7 +435,7 @@ test("compares unit prices per food", async () => {
   context.renderPriceComparison();
 
   const regrouped = elements.get("priceCompare").innerHTML;
-  assert.equal(elements.get("priceMeta").textContent, "22 种");
+  assert.equal(elements.get("priceMeta").textContent, "23 种");
   assert.match(regrouped, /3 次 · 40\.0–74\.7/);
   assert.match(regrouped, /class="fill hot"/);
 });
@@ -446,7 +446,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v69"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v70"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

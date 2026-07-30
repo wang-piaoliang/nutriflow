@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v69`
+- 当前离线缓存：`nutriflow-pwa-v70`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -301,6 +301,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-30：**金针菇从 `mushroom` 拆出来，新建 foodId `enoki`**（用户答复「都分开」）。原先金针菇（5.7 元/kg）和鲜香菇（16.0 元/kg）共用 `mushroom`，被当成同一种食材的两次采购，「最贵标红/最便宜标绿」会误导成同一种菇价差 3 倍。拆开后各 1 次、各自成组。`enoki` 图标沿用 🍄，并入采购「蔬菜」分组。单价对比 22 → 23 种。**鸡翅根（`chicken`）与鸡小胸（`chickenTender`）本就是分开的，按用户答复保持不动**——牛肉那次是合并、这次是拆分，方向不同，别再来回改。离线缓存与版本号升至 v70。
 
 - 2026-07-30：**「现有食材」清单不再显示“约”**（用户要求）。新增 `plainAmount()` 只在 `renderBoughtItem` 里剥掉“约”字，`purchases` 的原始 `amount` 和「采购历史」保持小票原文不动——那里的“约”是有意义的近似标注。加了断言：`boughtFoods` 不含“约”、`purchaseHistory` 仍含“约”。离线缓存与版本号升至 v69。
 

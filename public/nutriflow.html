@@ -920,7 +920,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v69</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v70</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1022,7 +1022,7 @@ const foods = [
 
 const purchases = [
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-01", date:"2026-07-30 10:18", foodId:"avocado", item:"盒马树上熟 秘鲁即食宝石牛油果", amount:"1 盒", packageSpec:"4 个/份", totalPrice:22.7, unitPrice:"22.7 元/盒", store:"盒马鲜生（大钟寺店）", bought:true},
-  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-02", date:"2026-07-30 10:18", foodId:"mushroom", item:"金针菇", amount:"150g", packageSpec:"150g/份", totalPrice:0.86, unitPrice:"0.86 元/份（约 5.73 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
+  {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-02", date:"2026-07-30 10:18", foodId:"enoki", item:"金针菇", amount:"150g", packageSpec:"150g/份", totalPrice:0.86, unitPrice:"0.86 元/份（约 5.73 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-03", date:"2026-07-30 10:18", foodId:"water", item:"盒马 深层天然水", amount:"2 箱", packageSpec:"550ml×12/箱", totalPrice:17.42, unitPrice:"8.71 元/箱", store:"盒马鲜生（大钟寺店）", bought:true, pantry:true},
   {receiptId:"2026-07-30-hema", id:"2026-07-30-hema-04", date:"2026-07-30 10:18", foodId:"potato", item:"土豆（黄心）", amount:"约1kg", packageSpec:"约1kg/份", totalPrice:3.5, unitPrice:"3.5 元/份（约 3.50 元/kg）", store:"盒马鲜生（大钟寺店）", bought:true},
   // 赠品，0 元。pricePerKilo 见到 totalPrice 为 0 会返回 0，自动被单价对比排除。
@@ -1721,6 +1721,7 @@ function iconForFood(foodId){
     broccoli:"🥦",
     cauliflower:"🥦",
     mushroom:"🍄",
+    enoki:"🍄",
     tomato:"🍅",
     carrot:"🥕",
     radish:"🥬",
@@ -1765,7 +1766,7 @@ function iconForFood(foodId){
 const purchaseGroupRules = [
   {name:"肉类", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
-  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
+  {name:"蔬菜", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
   {name:"豆类", ids:["tofu","soyMilk","edamame"]},
   {name:"主食", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
   {name:"水果坚果", ids:["avocado","apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
