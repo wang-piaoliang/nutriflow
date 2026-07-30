@@ -272,26 +272,27 @@ test("summarises how many foods per category the week covered", async () => {
 });
 
 test("summarises every recorded week, not just the current one", async () => {
-  const { context, elements, evaluate } = await runAppScript();
-  context.renderWeekSummary();
+  const { elements, evaluate } = await runAppScript();
 
-  // Records span two natural weeks (Monday-start). The current one stays in the
-  // green hero; every earlier week gets its own section below it.
+  // Records span two natural weeks (Monday-start), and every one of them gets a
+  // summary — not just the latest.
   const weeks = evaluate("weeksFromRecords()");
   assert.equal(weeks.length, 2);
-  assert.equal(elements.get("pastWeeksMeta").textContent, "1 周");
 
-  const past = elements.get("pastWeeks").innerHTML;
-  assert.equal(past.match(/<section class="week-block">/g).length, 1);
-  // The past week keeps its own range and its own per-category tally, rather
-  // than reusing the current week's numbers.
-  // The clock is pinned to 2026-07-23, so 7/20–7/26 is "this week" and lives in
-  // the hero; the 7/27 week is the other one and gets its own section with its
-  // own tally rather than reusing the current week's numbers.
-  assert.match(past, /7\/27–8\/2/);
-  assert.match(past, /24 种 · 4 天/);
-  // The current week is not repeated in the past list.
-  assert.doesNotMatch(past, /7\/20–7\/26/);
+  // The summary sits inside the day list, immediately above that week's own
+  // days, rather than in a separate block stacked at the top of the page.
+  const list = elements.get("dietLogList").innerHTML;
+  assert.equal(list.match(/<section class="week-block">/g).length, 2);
+  assert.match(list, /7\/27–8\/2/);
+  assert.match(list, /7\/20–7\/26/);
+  assert.match(list, /40 种 · 7 天/);
+
+  // Each week's heading comes before its own days and after the previous week's.
+  const laterWeek = list.indexOf("7/27–8/2");
+  const earlierWeek = list.indexOf("7/20–7/26");
+  assert.ok(laterWeek < list.indexOf("2026-07-30"));
+  assert.ok(list.indexOf("2026-07-27") < earlierWeek);
+  assert.ok(earlierWeek < list.indexOf("2026-07-26"));
 });
 
 test("orders meal items by food category", async () => {
@@ -405,6 +406,7 @@ test("folds receipt-level fields across every line item", async () => {
 
 test("compares unit prices per food", async () => {
   const { context, elements, evaluate } = await runAppScript();
+  const html2 = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
   const compare = elements.get("priceCompare").innerHTML;
 
@@ -422,6 +424,12 @@ test("compares unit prices per food", async () => {
   // beef key and compare as one food instead of two near-identical rows. The group
   // is titled by its most recent purchase, so only that name is printed.
   assert.match(compare, /2 次 · 62\.2–74\.7/);
+
+  // 分组标题只写食材本名，品牌和修饰词挪到明细行的门店后面，整行不换行。
+  assert.match(compare, /<strong>🥩 牛肉<\/strong>/);
+  assert.doesNotMatch(compare, /<strong>[^<]*盒马[^<]*<\/strong>/);
+  assert.match(compare, /07-28 盒马 · 国产谷饲黄牛牛嫩肉/);
+  assert.match(html2, /\.bar-head span\{[^}]*white-space:nowrap/);
   assert.ok(compare.indexOf("牛嫩肉") < compare.indexOf("胡萝卜"));
 
   // The printed 元/kg tracks the unit price on the receipt itself.
@@ -440,13 +448,37 @@ test("compares unit prices per food", async () => {
   assert.match(regrouped, /class="fill hot"/);
 });
 
+test("filters the unit-price comparison by purchase category", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+
+  // 只列真有数据的分类，外加「全部」。
+  const chips = elements.get("priceTabs").innerHTML;
+  assert.match(chips, /data-price-cat="all"/);
+  assert.match(chips, /data-price-cat="肉类"/);
+  assert.equal(elements.get("priceMeta").textContent, "23 种");
+
+  evaluate('activePriceCategory = "肉类"');
+  context.renderPriceComparison();
+  const meat = elements.get("priceCompare").innerHTML;
+  assert.equal(meat.match(/<div class="price-group">/g).length, 4);
+  assert.equal(elements.get("priceMeta").textContent, "4 种");
+  assert.match(meat, /🥩 牛肉/);
+  assert.doesNotMatch(meat, /白萝卜/);
+
+  // 选中的分类若没有数据了，退回「全部」而不是留在空列表上。
+  evaluate('activePriceCategory = "不存在的分类"');
+  context.renderPriceComparison();
+  assert.equal(evaluate("activePriceCategory"), "all");
+  assert.equal(elements.get("priceMeta").textContent, "23 种");
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v70"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v71"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });
