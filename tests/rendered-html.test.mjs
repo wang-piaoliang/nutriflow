@@ -144,6 +144,18 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /<section class="view active" id="dietLog">/);
   assert.match(html, /data-view="home"><b>◎<\/b><span>目标<\/span>/);
 
+  // The hidden native file input is position:absolute. iOS Safari refuses to
+  // shrink input[type=file] to width:1px and lays it out at its intrinsic ~166px,
+  // and an absolutely positioned box is only clipped by ancestors on its
+  // containing-block chain — so without a positioned wrapper it escapes every
+  // overflow:clip on .card/.view/.app/body and drags the whole page sideways.
+  // The 饮食 tab put that 📷 at the right edge of each day header, which is why
+  // only that tab could be swiped horizontally. Both wrapper labels must stay
+  // positioned so the input's containing block is the label, not the viewport.
+  assert.match(html, /\.photo-add,\.photo-add-mini\{[^}]*position:relative/);
+  assert.match(html, /\.photo-input\{[^}]*position:absolute/);
+  assert.match(html, /\.photo-input\{[^}]*clip-path:inset\(50%\)/);
+
   // A standalone/dock app can sit on the old cached shell, so the page reloads
   // once when a new service worker takes control and re-checks on foreground.
   assert.match(html, /addEventListener\("controllerchange"/);
@@ -403,7 +415,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v64"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v65"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

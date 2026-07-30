@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v64`
+- 当前离线缓存：`nutriflow-pwa-v65`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -301,6 +301,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-30：**真正修好饮食页横向滚动**（拖了 v57–v64 好几轮，之前几次都改错了地方）。**根因不是布局，是隐藏的 file input**：`.photo-input` 是 `position:absolute; width:1px`，但祖先里没有任何定位元素，所以它的**包含块是视口**——绝对定位盒只被包含块链上的祖先裁剪，于是 `.card` / `.view.active` / `.app` / `body` 上那四层 `overflow:clip` **对它完全无效**。iOS Safari 的 `input[type=file]` 又不吃 `width:1px`，会按固有宽度（约 166px）铺开。饮食页那个 📷（`photoAddLabel`/`.photo-add-mini`）正好在每天标题行**最右侧**，往右溢出 → 只有饮食页能左右滑；采购页的 `.photo-add` 是卡片内靠左的 36px 按钮，溢出后仍在屏幕内，所以看着正常。**为什么 headless 一直测不出来**：Linux Chromium 老实把 file input 压成 1px。**复现方法**：CDP 注入 `.photo-input{width:auto!important;height:auto!important}` 模拟 iOS，390px 下饮食页 `documentElement.scrollWidth - clientWidth` = **191**（采购页 0）。**修法**：`.photo-add,.photo-add-mini{position:relative}` 把包含块收回到 label 上，input 重新受 `.card` 的 clip 约束；再给 input 加 `left:0;top:0;max-width:1px;overflow:hidden;clip-path:inset(50%)` 兜底。修后模拟 iOS 下四个 tab × 六种宽度（320/360/375/390/402/430）**溢出全为 0**，label 点击仍能触发 input。已加回归断言（`.photo-add,.photo-add-mini` 的 `position:relative`、input 的 `position:absolute` 与 `clip-path`）。**教训：查横向溢出不能只看 `getBoundingClientRect().right > vw`，要同时查 `scrollWidth > clientWidth` 的自滚动元素，并且要意识到绝对定位元素能逃出 overflow:clip。** 离线缓存与版本号升至 v65。
 
 - 2026-07-30：录入盒马 07-30 大单（`receiptId:2026-07-30-hema`，签收 10:18，大钟寺店，14 件）：牛油果1盒22.7、金针菇150g 0.86、深层天然水2箱17.42(pantry)、土豆约1kg 3.5、大蒜30g赠0(pantry)、尖椒约300g 2.35、内酯豆腐350g 0.87、丝瓜约600g 7.02、玉米约850g 4.45、切片南瓜约500g 1.9、鸡小胸300g 3.62、西红柿约1kg 5.26、生菜约500g 2.97、全麦吐司420g 5.98(pantry)。记账合计 78.90 + 环保包装费 1 = **实付 79.90**（小票「商品小计 89.72」是按原价合计，优惠 -10.82；另有称重退差补退合计 2.13，记在 `receiptNote`）。新增 foodId `avocado`(🥑，并入采购「水果坚果」组)、`potato`(🥔，并入「主食」组)；赠品大蒜 `totalPrice:0`，`pricePerKilo` 返回 0 会自动被单价对比排除。测试断言更新：采购 7 次 · 37 件、单价对比 23 种、test10 的合成小票数 8。离线缓存与版本号升至 v64。
   - **发布链路已完整验证过一次**（因用户反馈手机看不到新内容）：`main` ✓ → `gh-pages` 分支内容经 GitHub API 读回确认 ✓ → Actions `pages build and deployment` 对该 commit **构建成功** ✓ → 本地 VM 渲染确认数据在列表首位 ✓。结论是**线上没问题，是用户设备端 SW/缓存卡住**。注意：沙箱代理会 403 挡掉 `github.io`，`curl`/`WebFetch` 都抓不到线上页面，**要验证线上只能查 Actions 的 `pages build and deployment` 运行记录 + 用 GitHub API 读 `gh-pages` 分支文件**。另：`scripts/publish-pages.sh` 末尾的 `gh api .../pages/builds` 在本环境（无 `gh` CLI）跑不了，但 Pages 对 gh-pages 推送会自动构建，手工 `commit-tree` 发布同样会触发，无需担心。
