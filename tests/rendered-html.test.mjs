@@ -180,6 +180,9 @@ test("groups purchases into one card per receipt at runtime", async () => {
   // it is a pantry item kept out of the 现有食材 checklist below.
   assert.match(history, /乌冬面/);
   assert.doesNotMatch(elements.get("boughtFoods").innerHTML, /乌冬面/);
+  // 现有食材是一眼扫库存的清单，不显示小票上的“约”；采购历史保留原文。
+  assert.doesNotMatch(elements.get("boughtFoods").innerHTML, /约/);
+  assert.match(history, /约/);
   assert.doesNotMatch(history, /undefined/);
 
   // Receipt totals are shown as a plain amount, with no 已记 prefix.
@@ -443,7 +446,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v68"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v69"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

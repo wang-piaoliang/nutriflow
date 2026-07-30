@@ -920,7 +920,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v68</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v69</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1418,6 +1418,11 @@ let remaining = load(REMAINING_KEY, {});
 function saveRemaining(){
   localStorage.setItem(REMAINING_KEY, JSON.stringify(remaining));
   schedulePush("remaining");
+}
+// 「现有食材」清单里不显示“约”：那是小票上的近似标注，扫库存时只是噪音（用户要求）。
+// 只影响这份清单的显示，purchases 里的原始 amount 和采购历史保持原样。
+function plainAmount(amount){
+  return String(amount || "").replace(/约/g, "");
 }
 function remainingFor(id){
   const value = Number(remaining[id]);
@@ -2023,7 +2028,7 @@ async function renderShopping(){
     return `<div class="buy-item ${done ? "done" : ""}">
       <label class="buy-row ${done ? "done" : ""}">
         <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
-        <div><strong>${purchase.item}</strong><small>${purchase.amount} · 购于 ${purchase.date.slice(0,10)} ${purchase.store}${done ? ` · 吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
+        <div><strong>${purchase.item}</strong><small>${plainAmount(purchase.amount)} · 购于 ${purchase.date.slice(0,10)} ${purchase.store}${done ? ` · 吃完于 ${formatConsumedDate(consumed[purchase.id])}` : ""}</small></div>
         <span class="amount">${icon}</span>
       </label>${meter}
     </div>`;
