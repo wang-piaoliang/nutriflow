@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v65`
+- 当前离线缓存：`nutriflow-pwa-v66`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -301,6 +301,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-07-30：录入当天两餐（均自己做，用的正是当天上午那单盒马的食材）。午餐：香煎鸡胸肉、丝瓜蛋汤（丝瓜/蛋）、内酯豆腐炒蛋（豆腐/蛋）、杂粮饭。晚餐麻辣火锅：牛肉片、鸡肉、生菜、金针菇、土豆片、面饼，配杂粮饭。饮食记录升到 11 天；测试断言 `data-add-item` 的正则从 `2026-07-2\d` 放宽成 `2026-07-\d\d`（否则 07-30 的餐次匹配不到）并改为 22、`data-inline-for` 改为 23。离线缓存与版本号升至 v66。
 
 - 2026-07-30：**真正修好饮食页横向滚动**（拖了 v57–v64 好几轮，之前几次都改错了地方）。**根因不是布局，是隐藏的 file input**：`.photo-input` 是 `position:absolute; width:1px`，但祖先里没有任何定位元素，所以它的**包含块是视口**——绝对定位盒只被包含块链上的祖先裁剪，于是 `.card` / `.view.active` / `.app` / `body` 上那四层 `overflow:clip` **对它完全无效**。iOS Safari 的 `input[type=file]` 又不吃 `width:1px`，会按固有宽度（约 166px）铺开。饮食页那个 📷（`photoAddLabel`/`.photo-add-mini`）正好在每天标题行**最右侧**，往右溢出 → 只有饮食页能左右滑；采购页的 `.photo-add` 是卡片内靠左的 36px 按钮，溢出后仍在屏幕内，所以看着正常。**为什么 headless 一直测不出来**：Linux Chromium 老实把 file input 压成 1px。**复现方法**：CDP 注入 `.photo-input{width:auto!important;height:auto!important}` 模拟 iOS，390px 下饮食页 `documentElement.scrollWidth - clientWidth` = **191**（采购页 0）。**修法**：`.photo-add,.photo-add-mini{position:relative}` 把包含块收回到 label 上，input 重新受 `.card` 的 clip 约束；再给 input 加 `left:0;top:0;max-width:1px;overflow:hidden;clip-path:inset(50%)` 兜底。修后模拟 iOS 下四个 tab × 六种宽度（320/360/375/390/402/430）**溢出全为 0**，label 点击仍能触发 input。已加回归断言（`.photo-add,.photo-add-mini` 的 `position:relative`、input 的 `position:absolute` 与 `clip-path`）。**教训：查横向溢出不能只看 `getBoundingClientRect().right > vw`，要同时查 `scrollWidth > clientWidth` 的自滚动元素，并且要意识到绝对定位元素能逃出 overflow:clip。** 离线缓存与版本号升至 v65。
 

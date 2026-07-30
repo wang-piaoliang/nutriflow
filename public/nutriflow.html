@@ -875,7 +875,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v65</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v66</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1019,6 +1019,16 @@ const purchases = [
 
 // 后续收到餐食照片后，按日期把识别并确认过的记录加入这里。
 const dietRecords = [
+  {
+    date:"2026-07-30",
+    meals:[
+      // 午餐（自己做）：丝瓜蛋汤、香煎鸡胸肉、内酯豆腐炒蛋（葱花芡汁）、杂粮饭。
+      // 丝瓜/内酯豆腐/鸡小胸都来自当天上午那单盒马。
+      {name:"午餐", items:["鸡胸肉","丝瓜","蛋","豆腐",{name:"七色糙米饭（＋大米·藜麦·小米）", as:"杂粮饭"}]},
+      // 晚餐（自己做）麻辣火锅：牛肉片、鸡肉、生菜、金针菇、土豆片、面饼，配杂粮饭。
+      {name:"晚餐", items:["牛肉","鸡肉","生菜","金针菇","土豆","面",{name:"七色糙米饭（＋大米·藜麦·小米）", as:"杂粮饭"}]}
+    ]
+  },
   {
     date:"2026-07-29",
     meals:[
