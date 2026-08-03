@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v78`
+- 当前离线缓存：`nutriflow-pwa-v79`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**云同步改成合并式，彻底断掉"加进去又没了"**。用户第三次报数据丢失（"我刚记录了 8 月 3 日的晚餐，现在又没了"），前一版只堵住了"防抖期间刷新"那条路径，显然还有别的。与其继续猜，直接把整类问题消灭掉：**`syncPull` 不再用服务端数据替换本地，改成按 `id` 做并集合并（`mergeById`），拉取永远不会让本地记录消失**；同一个 id 两边都有时以本地为准（用户刚在这台设备上改过）。代价是"服务端没有这条"不再等于"要删掉它"，所以**删除改成显式墓碑**：`nutriflow_sync_deleted` 存被删的 id、单独作为 `deleted` 文档同步（`pullSeparately: true`，它是 id 数组不是记录数组，不能走合并那套），合并后统一过滤掉。三个删除函数（`removeDietEntry` / `removeDining` / `removeManualReceipt`）都要 `markDeleted`——**以后新增任何删除操作，忘了标墓碑的话，下次合并会把它捡回来**。实测三条路径：记完立刻刷新（保住并推上去）、服务端有别的设备的旧数据（两边都留）、删除后连拉两次（不会复活）。离线缓存与版本号升至 v79。
+  - 顺手把 `callQwen` / `callGemini` 的 prompt 提成参数（原来写死 `RECOGNIZE_PROMPT`），为「小票识别」做准备。改完必须确认 `recognizePhoto` 显式传了 `RECOGNIZE_PROMPT`，否则 prompt 会是 `undefined`。
 
 - 2026-08-03：**采购历史可以自己录了**（详见「采购」小节）。用户要"当成一个正常的 app 来使用"，不再靠发同步包给我改代码。手动小票存 localStorage + 进云同步，结构和硬编码 `purchases` 完全一致，所以四处渲染器只把数据源换成 `allPurchases()` 即可。品名会自动往 `foods` 目录里匹配 `foodId`，匹配上就和以前买的同一样东西归进单价对比同一组。**重量选填**——填了进单价对比，不填只进采购历史（用户在手机上录，全字段必填每件要点四五下，不现实）。只有自己录的小票给删除按钮。离线缓存与版本号升至 v78。
 

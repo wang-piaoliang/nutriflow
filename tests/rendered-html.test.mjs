@@ -434,14 +434,21 @@ test("never lets a pull overwrite local edits that have not been pushed", async 
   assert.equal(evaluate("diningEntries.length"), 1, "本地这条不能被服务端旧数据覆盖");
   assert.equal(server.dining.length, 1, "反过来要把本地推上去");
   assert.ok(requests.includes("PUT dining"));
-  assert.ok(!requests.includes("GET dining"), "脏文档根本不该去拉");
-  assert.equal(evaluate("dirtyDocs()").length, 0, "推成功后清标记");
 
-  // A device that has nothing local still pulls normally.
-  server.dining = [{ id: "x", date: "2026-08-01", place: "别家", price: 50 }];
-  evaluate("diningEntries.length = 0");
+  // The stronger invariant: a pull merges by id, so records the server has not
+  // heard of yet survive it. Losing a just-typed entry bit the user three times.
+  server.dining = [{ id: "other-device", date: "2026-08-01", place: "别家", price: 50 }];
   await context.syncPull();
-  assert.equal(evaluate("diningEntries[0].place"), "别家");
+  const places = evaluate("diningEntries.map(e => e.place)").sort();
+  assert.deepEqual([...places], ["别家", "寿司郎"], "两边的记录都要留下，不是二选一");
+
+  // Deleting is explicit: the id goes on a tombstone list that syncs too, so the
+  // record stays deleted instead of being resurrected by the next merge.
+  const doomed = evaluate("diningEntries.find(e => e.place === '别家').id");
+  context.removeDining(doomed);
+  await context.syncPull();
+  assert.deepEqual([...evaluate("diningEntries.map(e => e.place)")], ["寿司郎"]);
+  assert.ok(evaluate("tombstones").includes(doomed), "删掉的 id 要记进墓碑");
 });
 
 test("records a purchase you typed in yourself", async () => {
@@ -655,7 +662,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v78"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v79"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

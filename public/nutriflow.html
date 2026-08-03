@@ -1045,7 +1045,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v78</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v79</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1322,6 +1322,7 @@ function addDietEntry(date, meal, items, place, diningId){
 }
 function removeDietEntry(id){
   dietEntries = dietEntries.filter(entry => entry.id !== id);
+  markDeleted(id);
   saveDietEntries();
 }
 
@@ -1390,7 +1391,7 @@ function parseRecognition(text){
   const meal = MEAL_ORDER.includes(parsed.meal) ? parsed.meal : "午餐";
   return {meal, items};
 }
-async function callQwen(key, base64, mime){
+async function callQwen(key, base64, mime, prompt){
   const response = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
     method: "POST",
     headers: {"Content-Type": "application/json", "Authorization": `Bearer ${key}`},
@@ -1400,7 +1401,7 @@ async function callQwen(key, base64, mime){
       model: "qwen3-vl-plus",
       messages: [{role: "user", content: [
         {type: "image_url", image_url: {url: `data:${mime};base64,${base64}`}},
-        {type: "text", text: RECOGNIZE_PROMPT},
+        {type: "text", text: prompt},
       ]}],
     }),
   });
@@ -1414,7 +1415,7 @@ async function callQwen(key, base64, mime){
 // 注意 ListModels 会把已经退役的模型也列出来，不能拿它判断可用性——只能真发一次请求。
 const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
 const GEMINI_MODEL_KEY = "nutriflow_ai_gemini_model";
-async function callGemini(key, base64, mime){
+async function callGemini(key, base64, mime, prompt){
   // 上次成功用的那个排前面，省得每次都先撞一遍 404。
   const remembered = localStorage.getItem(GEMINI_MODEL_KEY);
   const models = remembered
@@ -1431,7 +1432,7 @@ async function callGemini(key, base64, mime){
         body: JSON.stringify({
           contents: [{parts: [
             {inline_data: {mime_type: mime, data: base64}},
-            {text: RECOGNIZE_PROMPT},
+            {text: prompt},
           ]}],
           generationConfig: {responseMimeType: "application/json"},
         }),
@@ -1472,7 +1473,9 @@ async function recognizePhoto(blob){
   if (!key) throw new Error("还没填 API key，去首页最下面的「🔍 照片识别」配置。");
   const base64 = await blobToBase64(blob);
   const mime = blob.type || "image/jpeg";
-  const raw = provider === "gemini" ? await callGemini(key, base64, mime) : await callQwen(key, base64, mime);
+  const raw = provider === "gemini"
+    ? await callGemini(key, base64, mime, RECOGNIZE_PROMPT)
+    : await callQwen(key, base64, mime, RECOGNIZE_PROMPT);
   const result = parseRecognition(raw);
   if (!result.items.length) throw new Error("模型没认出食物，可能是照片太糊或不是餐食照片。");
   return result;
@@ -1499,6 +1502,15 @@ const SYNC_DOCS = [
     get: () => diningEntries,
     set: (value) => { diningEntries = value; persist(DINING_KEY, diningEntries); },
     rerender: () => { void renderDining(); },
+  },
+  {
+    // 删除墓碑。它是一串 id、不是记录数组，所以 syncPull 里单独处理（pullSeparately），
+    // 不能走那套按 id 合并的逻辑。
+    key: "deleted",
+    pullSeparately: true,
+    get: () => tombstones,
+    set: (value) => { tombstones = value; persist(TOMBSTONE_KEY, tombstones); },
+    rerender: () => {},
   },
   {
     key: "purchases",
@@ -1572,28 +1584,62 @@ function schedulePush(key){
   clearTimeout(syncPushTimers[key]);
   syncPushTimers[key] = setTimeout(() => { void pushDoc(doc, rev); }, 600);
 }
+// 删除墓碑。合并式同步下，"服务端没有这条"不再等于"要删掉它"——否则拉取又会
+// 吃掉本地刚加的。所以删除必须显式记下来，单独同步一份 id 列表。
+const TOMBSTONE_KEY = "nutriflow_sync_deleted";
+let tombstones = load(TOMBSTONE_KEY, []);
+function markDeleted(...ids){
+  const add = ids.flat().filter(Boolean).filter(id => !tombstones.includes(id));
+  if (!add.length) return;
+  // 只留最近 2000 条，够用又不会无限涨。
+  tombstones = tombstones.concat(add).slice(-2000);
+  persist(TOMBSTONE_KEY, tombstones);
+  schedulePush("deleted");
+}
+// **拉取只做并集，永远不删本地记录。** 用户已经被"加进去又没了"坑了三次，
+// 宁可偶尔多出一条（自己再删一次即可），也绝不能让刚录的东西凭空消失。
+// 真正的删除靠 tombstones，比对 id 之后统一过滤掉。
+function mergeById(local, remote){
+  const out = [];
+  const seen = new Set();
+  // 本地优先：同一个 id 两边都有时，用本地这份（用户刚在这台设备上改过）。
+  for (const item of local.concat(remote)){
+    const id = item && item.id;
+    if (!id){ out.push(item); continue; }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out.filter(item => !(item && item.id && tombstones.includes(item.id)));
+}
 async function syncPull(){
   if (!syncConfig()) return;
   setSyncStatus("同步中…");
   try{
-    const dirty = dirtyDocs();
+    // 墓碑要先拉，否则这一轮合并会把别的设备已经删掉的记录又捡回来。
+    const deleted = await syncRequest("deleted", "GET").catch(() => null);
+    if (deleted && Array.isArray(deleted.value)){
+      const merged = Array.from(new Set(tombstones.concat(deleted.value))).slice(-2000);
+      if (merged.length !== tombstones.length){
+        tombstones = merged;
+        persist(TOMBSTONE_KEY, tombstones);
+      }
+    }
     for (const doc of SYNC_DOCS){
-      if (dirty.includes(doc.key)){
-        // 本地这份还没推上去，服务端那份必然更旧——推上去，绝不能拉下来盖掉。
-        await pushDoc(doc);
-        continue;
-      }
+      if (doc.pullSeparately) continue;
       const data = await syncRequest(doc.key, "GET");
-      if (!data || !Array.isArray(data.value)) continue;
       const local = doc.get();
-      // 服务端是空的、本地却有东西：多半是这台设备刚开同步，或者服务端被重置了。
-      // 这时候拉下来就是把本地清空，宁可反过来推上去。
-      if (!data.value.length && Array.isArray(local) && local.length){
-        await pushDoc(doc);
-        continue;
-      }
-      doc.set(data.value);
+      if (!Array.isArray(local)) continue;   // remaining 是对象，不参与合并
+      const remote = data && Array.isArray(data.value) ? data.value : [];
+      const merged = mergeById(local, remote);
+      // 合并结果和服务端不一致（本地有新东西、或有该删的），就把结果推回去。
+      const changedLocally = merged.length !== local.length
+        || merged.some((item, index) => item !== local[index]);
+      doc.set(merged);
       doc.rerender();
+      if (merged.length !== remote.length || dirtyDocs().includes(doc.key) || changedLocally){
+        await pushDoc(doc);
+      }
     }
     setSyncStatus("已同步");
   }catch(err){ setSyncStatus(err.message); }
@@ -1645,6 +1691,7 @@ function updateDiningPrice(id, price){
 }
 function removeDining(id){
   diningEntries = diningEntries.filter(e => e.id !== id);
+  markDeleted(id);
   saveDining();
 }
 // ---- 自己录的采购（本机 + 云同步）----
@@ -1689,6 +1736,7 @@ function addPurchaseReceipt({date, store, items}){
   return {receiptId, rows};
 }
 function removeManualReceipt(receiptId){
+  markDeleted(manualPurchases.filter(row => row.receiptId === receiptId).map(row => row.id));
   manualPurchases = manualPurchases.filter(row => row.receiptId !== receiptId);
   saveManualPurchases();
 }
