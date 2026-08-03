@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v76`
+- 当前离线缓存：`nutriflow-pwa-v77`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -333,6 +333,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：三项用户反馈。① **当周的周汇总不再写两遍**：绿色 hero 的「本周吃到」本来就是当周，而时间线按周分段时又给当周出了一份汇总，同样的内容写了两遍。现在时间线**只给已过完的周出汇总**，当周只列每天——等这周过完它自然变成往期、汇总才出现。这也接回用户 2026-07-24 定的调子「一周没过完先不用写」。② **在外就餐添加时就能选照片**：这条记录还没 id，所以先把 File 攥在 `pendingPhotos` 里，点「添加」拿到 id 之后再写进 IndexedDB；`addDining` 因此改成返回新记录。③ **本地存储写失败不再静默**：新增 `persist(key, value)`，`localStorage.setItem` 抛异常（配额满、iOS 隐私模式）**或者写完读不回来**时，页面底部亮一条红色警告。以前这种失败完全无声——条目在界面上好好地出现、一刷新就没，和「同步覆盖」的症状一模一样，根本分不清是哪一种。所有数据类写入都改走 `persist`（配置类的 key/token 仍是裸 setItem）。离线缓存与版本号升至 v77。
 
 - 2026-08-03：**修云同步会吃掉刚录入的数据**（用户："我添加寿司郎，刷新一下就没了"）。`schedulePush` 有 600ms 防抖，而 `syncPull()` 开页面时**无条件**用服务端数据覆盖本地——加完立刻刷新，推送还没发出去，新页面一拉取就把本地刚写的盖没了。已复现：本地 2 条 → `syncPull()` → 0 条，期间一次 PUT 都没发生。**这个坑对 `diet_entries` 一样成立**，识别出来的餐食同样会这么丢。修法：① 新增 `nutriflow_sync_dirty`（**存 localStorage，才扛得住刷新**），改动的一瞬间就标脏；② `syncPull` 遇到脏文档改成**推上去**而不是拉下来；③ 推成功才清标记，失败就留着下次重推（用 `syncRevs` 防止推的过程中又改了被误清）；④ 服务端为空而本地有数据时也反推，防止刚开同步的设备被清空；⑤ `pagehide` 时用 `keepalive: true` 立刻把脏文档发出去。加了回归测试，已用 `git stash` 确认它在修复前会失败。离线缓存与版本号升至 v76。
   - 顺带给测试的 vm stub 补了 `window.addEventListener` 和 `setTimeout/clearTimeout`——同步模块要用，缺了整个脚本在测试里直接抛错（这也正是这套 vm 测试的价值：纯正则断言发现不了）。

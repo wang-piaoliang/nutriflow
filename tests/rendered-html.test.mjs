@@ -275,28 +275,28 @@ test("summarises how many foods per category the week covered", async () => {
   assert.equal(context.sameWeek(iso), true);
 });
 
-test("summarises every recorded week, not just the current one", async () => {
+test("summarises past weeks in the timeline but never the current one twice", async () => {
   const { elements, evaluate } = await runAppScript();
 
-  // Records span two natural weeks (Monday-start), and every one of them gets a
-  // summary — not just the latest.
+  // Records span two natural weeks (Monday-start); both get their own block.
   const weeks = evaluate("weeksFromRecords()");
   assert.equal(weeks.length, 2);
 
-  // The summary sits inside the day list, immediately above that week's own
-  // days, rather than in a separate block stacked at the top of the page.
   const list = elements.get("dietLogList").innerHTML;
   assert.equal(list.match(/<section class="week-block">/g).length, 2);
-  assert.match(list, /7\/27–8\/2/);
-  assert.match(list, /7\/20–7\/26/);
-  assert.match(list, /40 种 · 7 天/);
 
-  // Each week's heading comes before its own days and after the previous week's.
-  const laterWeek = list.indexOf("7/27–8/2");
-  const earlierWeek = list.indexOf("7/20–7/26");
-  assert.ok(laterWeek < list.indexOf("2026-07-30"));
-  assert.ok(list.indexOf("2026-07-27") < earlierWeek);
-  assert.ok(earlierWeek < list.indexOf("2026-07-26"));
+  // A week that is over gets its summary right above its own days.
+  assert.match(list, /7\/27–8\/2/);
+  assert.ok(list.indexOf("7/27–8/2") < list.indexOf("2026-07-30"));
+
+  // The current week (the fixed clock sits in 7/20–7/26) does NOT — the green
+  // hero above already shows it, and printing it here said the same thing twice.
+  // It reappears here on its own once the week is over and it becomes a past week.
+  assert.doesNotMatch(list, /7\/20–7\/26/);
+  assert.ok(list.indexOf("2026-07-27") < list.indexOf("2026-07-26"));
+
+  // Shown exactly once, in the hero.
+  assert.match(elements.get("weekMeta").textContent, /40 种 · 7 天/);
 });
 
 test("orders meal items by food category", async () => {
@@ -616,7 +616,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v76"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v77"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
