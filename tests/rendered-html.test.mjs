@@ -490,6 +490,27 @@ test("records a purchase you typed in yourself", async () => {
   assert.equal(evaluate("allPurchases().length"), before);
 });
 
+test("saves a receipt that is only a photo", async () => {
+  const { context, evaluate } = await runAppScript();
+
+  // "上传了图片还是没法保存，一定要我填内容" — with no API key configured,
+  // nothing gets auto-filled, and the form used to refuse to save at all, so
+  // the receipt photo had nowhere to live.
+  const before = evaluate("allPurchases().length");
+  context.addPurchaseReceipt({
+    date: "2026-08-03",
+    store: "未记录地点",
+    items: [{ name: "待补充", amount: "", price: null, placeholder: true }],
+  });
+  assert.equal(evaluate("allPurchases().length"), before + 1);
+
+  // The placeholder must not turn into a食材 you supposedly have in the fridge.
+  const row = evaluate("manualPurchases[0]");
+  assert.equal(row.bought, false);
+  await context.renderShopping();
+  assert.doesNotMatch(context.document.getElementById("boughtFoods").innerHTML, /待补充/);
+});
+
 test("keeps the recognition prompt's hard-won rules", async () => {
   const html = await readFile(
     new URL("../public/nutriflow.html", import.meta.url),
@@ -662,7 +683,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v80"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v81"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

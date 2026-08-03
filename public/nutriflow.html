@@ -1069,7 +1069,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v80</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v81</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1831,8 +1831,11 @@ function addPurchaseReceipt({date, store, items}){
     totalPrice: item.price == null ? 0 : Number(item.price),
     unitPrice: unitPriceText(item.amount, item.price),
     store,
-    bought: true,
+    // 占位行（只传了照片、还没填内容）不算"买到手的食材"，
+    // 否则「现有食材」里会冒出一条叫"待补充"的东西。
+    bought: !item.placeholder,
     manual: true,
+    ...(item.placeholder ? {placeholder: true} : {}),
   }));
   manualPurchases.push(...rows);
   saveManualPurchases();
@@ -3125,9 +3128,14 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   photoEl?.addEventListener("change", async () => {
     pendingPhotos = Array.from(photoEl.files || []);
     showPending();
-    if (!pendingPhotos.length || !aiConfig().key) return;
+    if (!pendingPhotos.length) return;
     const hintEl = document.querySelector(".buy-add-hint");
     const hintText = hintEl?.textContent;
+    // 没配 key 就直说，别让人对着一张空表单猜为什么没自动填。
+    if (!aiConfig().key){
+      if (hintEl) hintEl.textContent = "照片已选上，但还没配 API key，识别不了——去「目标」页最下面配一个，或者直接手填。只填照片也能保存。";
+      return;
+    }
     if (hintEl) hintEl.textContent = "正在识别小票…";
     try{
       const receipt = await recognizeReceipt(pendingPhotos[0]);
@@ -3155,10 +3163,16 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       amount: (row.querySelector(".buy-amount").value || "").trim(),
       price: row.querySelector(".buy-price").value.trim() === "" ? null : Number(row.querySelector(".buy-price").value),
     })).filter(item => item.name);
-    if (!items.length){ linesEl.querySelector(".buy-name")?.focus(); return; }
+    // 光有照片也得能存。用户："上传了图片还是没法保存，一定要我填内容"——
+    // 识别没配 key、或者模型没认出来的时候，总不能把小票照片也一起卡在门外。
+    // 存成一条占位行，照片有地方挂、这次采购在历史里露得出来，回头再补。
+    if (!items.length && !pendingPhotos.length){ linesEl.querySelector(".buy-name")?.focus(); return; }
     const date = (dateEl?.value || new Date().toISOString().slice(0, 10));
     const store = (storeEl?.value || "").trim() || "未记录地点";
-    const {receiptId} = addPurchaseReceipt({date, store, items});
+    const {receiptId} = addPurchaseReceipt({
+      date, store,
+      items: items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}],
+    });
     const files = pendingPhotos;
     resetForm();
     await renderShopping();
