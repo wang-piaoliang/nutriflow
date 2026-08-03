@@ -339,6 +339,33 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   color:#fff;
 }
 .week-block-head strong{font-size:17px;font-weight:700;letter-spacing:.3px}
+/* 整周可折叠，默认展开。折叠指示做得很轻——用户明确说"折叠按钮不要太明显"：
+   只有一个半透明的小箭头，展开时朝下、收起时朝右，整条标头都可点。 */
+summary.week-block-head{cursor:pointer;list-style:none}
+summary.week-block-head::-webkit-details-marker{display:none}
+summary.week-block-head::after{
+  content:"⌄";
+  order:3;
+  margin-left:-2px;
+  color:rgba(255,255,255,.55);
+  font-size:15px;
+  line-height:1;
+  transition:transform .15s ease;
+}
+.week-block:not([open]) > summary.week-block-head::after{transform:rotate(-90deg)}
+/* 收起时把下边距去掉，免得留一条空白。 */
+.week-block:not([open]) > summary.week-block-head{margin-bottom:0}
+/* 「全部折叠」也是轻量的文字按钮，不跟 ＋ 抢注意力。 */
+.week-fold-all{
+  margin-right:8px;
+  padding:0;
+  border:none;
+  background:none;
+  color:var(--muted);
+  font-size:12px;
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
 /* 右边那个「N 种 · M 天」用半透明胶囊，别再是一团灰字。 */
 .week-block-head span{
   flex:0 0 auto;
@@ -1039,7 +1066,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
       <article class="card desktop-span">
         <div class="section-title">
           <h2>每天吃了什么</h2>
-          <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
+          <span class="subtle"><button class="week-fold-all" type="button" id="weekFoldAll" hidden>全部折叠</button><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
         <div class="note">点开餐食照片点「识别」记录，照片存本地不传 GitHub。</div>
         <div id="dietLogList"></div>
@@ -1069,7 +1096,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v81</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v82</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2817,12 +2844,21 @@ async function renderDietLog(){
   const thisMonday = currentWeek().monday.getTime();
   const days = weeksFromRecords().map(week => {
     const isCurrent = week.monday.getTime() === thisMonday;
-    const summary = isCurrent ? "" : `<div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>${weekTiles(week.counts)}`;
-    return `<section class="week-block">${summary}${week.records.map(dayMarkup).join("")}</section>`;
+    // 当周没有标头（绿色 hero 已经是它了），所以也没什么可折叠的。
+    if (isCurrent) return `<section class="week-block">${week.records.map(dayMarkup).join("")}</section>`;
+    // 往期整周可折叠，默认展开。「N 天」写成「记了 N 天」——它数的是有记录的
+    // 天数，不是这一周有几天，光写「5 天」会被读成这周只有 5 天。
+    return `<details class="week-block" open>
+      <summary class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · 记了 ${week.records.length} 天</span></summary>
+      ${weekTiles(week.counts)}
+      ${week.records.map(dayMarkup).join("")}
+    </details>`;
   }).join("");
   list.innerHTML = `${dietDayFormMarkup()}${days || `<div class="note">还没有饮食记录。用右上角的 ＋ 直接补记，或把餐食照片发给 Claude 让它整理。</div>`}`;
   bindPhotoControls(list, () => void renderDietLog());
   bindDietForm(list);
+  // 每次重渲染都会重建 details，按钮的显示与文案要跟着重新算一次。
+  if (typeof syncWeekFoldButton === "function") syncWeekFoldButton();
 }
 // 整天/整顿都还没有记录时才用得上这个表单，平时收起来。
 // 已经存在的那一顿直接用它自己那一行的 ＋，不必回到这里选日期。
@@ -2944,6 +2980,24 @@ document.getElementById("dietAddDay").addEventListener("click", () => {
   form.hidden = !form.hidden;
   if (!form.hidden) form.querySelector("#dietFormItems").focus();
 });
+// 「全部折叠 / 全部展开」。同样在列表外面，只绑一次。
+// 有可折叠的往期周时才显示——只有当周记录的时候，这个按钮没有意义。
+function syncWeekFoldButton(){
+  const button = document.getElementById("weekFoldAll");
+  if (!button) return;
+  const blocks = document.querySelectorAll("#dietLogList details.week-block");
+  button.hidden = blocks.length === 0;
+  const anyOpen = Array.from(blocks).some(block => block.open);
+  button.textContent = anyOpen ? "全部折叠" : "全部展开";
+}
+document.getElementById("weekFoldAll")?.addEventListener("click", () => {
+  const blocks = Array.from(document.querySelectorAll("#dietLogList details.week-block"));
+  const collapse = blocks.some(block => block.open);
+  blocks.forEach(block => { block.open = !collapse; });
+  syncWeekFoldButton();
+});
+// 单独折叠某一周之后，按钮文案要跟着变。details 的 toggle 不冒泡，用捕获。
+document.getElementById("dietLogList")?.addEventListener("toggle", syncWeekFoldButton, true);
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-btn").forEach(item => item.classList.remove("active"));
