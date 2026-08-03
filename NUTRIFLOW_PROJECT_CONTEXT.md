@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v73`
+- 当前离线缓存：`nutriflow-pwa-v74`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -106,10 +106,12 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 用户的目标原话：“我想从手机端发照片，模型识别，然后手机里就有了”——即不必再开一个 Claude 会话、等人改代码。
 
 - **没有后端，浏览器直连模型 API（BYOK）**。key 存本机 `localStorage` 的 `nutriflow_ai_key` / `nutriflow_ai_provider`，不进 Git、不进同步包。之所以敢这么做，是先在浏览器里实测过：DashScope（百炼）、Gemini、Kimi 国内外站、智谱五家的 CORS 预检**全部放行**，跨域直调返回的是正常的 401，不是被浏览器拦掉。**这一条是实测结论，不要凭博客或印象推翻它**——我先前只凭一篇博客断言"DashScope 不允许浏览器直调"，是错的。
+- ⚠️ **Gemini 在国内直连不通，必须挂梯子**。2026-08-03 实测：`curl --noproxy '*'` 打 `generativelanguage.googleapis.com` 20 秒超时（HTTP 000），百炼同样条件 54ms 返回 401。**先前文档里写的「实测 Gemini 可达 728ms」是错的**——那次测量悄悄走了这台机器上 `127.0.0.1:7890` 的代理（`HTTP_PROXY` 环境变量 + 系统代理都开着），我没意识到。所以：① 用户手机不挂梯子时 Gemini 选项根本用不了，下拉文案已写明「要挂梯子」，`callGemini` 里 fetch 抛异常时也直接提示这一点，不要退回成 `Failed to fetch`；② 默认 provider 是 `qwen` 不能改；③ **以后在这台机器上测任何境外服务的连通性，都要用 `--noproxy '*'` 或 `env -u HTTPS_PROXY`，否则结论是假的**。
 - 两家可选，用户要求都要（2026-08-03 用用户真实 key 在浏览器里实跑过，两家都通，CORS 无碍）：
   - `qwen` → `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`，模型 **`qwen3-vl-plus`**，OpenAI 格式，图片走 `image_url` 的 data URI。**快**：实测 1.2s。上一代 `qwen-vl-plus` 要 8.5s 且认出的东西更少，已弃用。
-  - `gemini` → `https://generativelanguage.googleapis.com/v1beta/models/**gemini-flash-latest**:generateContent?key=…`，图片走 `inline_data`，`generationConfig.responseMimeType` 设成 `application/json`。**慢但认得全**：实测 8.9s，同一张图 Qwen 认出 3 样、它认出 5 样。
-  - **Gemini 的模型名必须用 `-latest` 别名，不许钉版本号**。原先钉的 `gemini-2.5-flash` 到 2026-08 已对新建的 key 返回 404「no longer available to new users」——注意 ListModels **仍然列着它**，列表是过时的，不能作为可用性依据。这个 app 没人长期维护，钉死版本号迟早坏。已加测试断言挡住 `models/gemini-<数字>`。
+  - `gemini` → `https://generativelanguage.googleapis.com/v1beta/models/<模型>:generateContent?key=…`，图片走 `inline_data`，`generationConfig.responseMimeType` 设成 `application/json`。**慢但认得全**：实测 8.1s，同一张图 Qwen 认出 3~4 样、它稳定 5 样全中。
+  - **Gemini 用「最新 + 别名兜底」的模型链**：`GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"]`，**只在 404 时**才试下一个（401/429 换模型没意义），成功的那个记进 `nutriflow_ai_gemini_model` 下次直接用。单钉版本号会坏（`gemini-2.5-flash` 到 2026-08 已对新 key 返回 404「no longer available to new users」），单用别名又拿不到最新的，所以两者都要。**ListModels 会把已退役的模型一起列出来**（`gemini-2.5-flash` 至今还在列表里），不能拿它判断可用性——只能真发一次请求。
+  - **Qwen 用 `qwen3-vl-plus`，这已经是该账号下最新可用的视觉模型**。更新的 `qwen3.5-omni-*`（2026-03）需要付费账号，免费额度调用直接 403「Access denied … overdue-payment」，别换过去。`qwen3-vl-flash` 更快但认得更少。
   - `qwen2.5-vl-72b-instruct`、`gemini-2.0-flash` 这类在用户账号下是 403/429，别选。
 - **百炼的 key 可能是工作空间级的**（`sk-ws-` 开头，CSV 里还给一个 `llm-xxx.cn-beijing.maas.aliyuncs.com` 的专属域名）。实测这种 key 在**通用域名** `dashscope.aliyuncs.com` 上一样能用，所以代码里的通用地址不用改、也不用让用户填 endpoint。
 - **隐私边界变了一点，但只变了一点**：上传照片仍然只写 IndexedDB、绝不外发；**只有在某张照片上主动点「识别」，那一张才发给模型**。设置卡片里已经写明这句，不要改成含糊的说法。
@@ -324,6 +326,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**换最新模型 + 发现 Gemini 国内直连不通**。用户问「这两个模型是不是都很老」，查下来：Qwen 那边 `qwen3-vl-plus` 已经是账号下最新可用的视觉模型（更新的 `qwen3.5-omni-*` 要付费账号，免费额度 403），不用换；Gemini 换成模型链 `["gemini-3.6-flash","gemini-flash-latest"]`，只在 404 时回落，成功的记进 `nutriflow_ai_gemini_model` 下次直接用。用户又问「Gemini 不该这么慢吧」，排查发现 **8~10s 里绝大部分是代理开销**，而且更严重：**Gemini 在国内根本直连不通**（`--noproxy` 实测 20s 超时），我之前那句「实测可达 728ms」是走了这台机器的 `127.0.0.1:7890` 代理，结论是假的。已在下拉文案、错误提示、文档三处写明要挂梯子。离线缓存与版本号升至 v74。
 
 - 2026-08-03：**换模型 + 用真 key 实跑验证**。用户拿到百炼和 Gemini 的 key 后实测，发现两处硬编码是坏的：① `gemini-2.5-flash` 对新建 key 返回 404「no longer available to new users」，改用 `gemini-flash-latest` 别名并加断言禁止再钉版本号；② `qwen-vl-plus` 要 8.5s 且只认出 2 样，换成 `qwen3-vl-plus`（1.2s、认出 3 样）。同一张测试图 Gemini 认出 5 样但要 8.9s——两家各有取舍，下拉文案改成「国内直连 / 认得更全」。另确认百炼的工作空间级 key（`sk-ws-`）在通用域名上照样能用，不必让用户填 endpoint。两家都在浏览器里用真 key 跑通了完整流程（CORS 无碍）。离线缓存与版本号升至 v73。
 

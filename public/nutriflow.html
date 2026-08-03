@@ -862,8 +862,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
         <div class="note">配置后，点开饮食页的餐食照片就能识别食物、直接写进当天记录。<strong>只有你在某张照片上主动点「识别」，那一张才会发出去</strong>，其余照片和 key 都只留在这台设备。</div>
         <div class="sync-form">
           <select id="aiProvider" aria-label="模型提供商">
-            <option value="qwen">通义千问 · 国内直连</option>
-            <option value="gemini">Google Gemini · 认得更全</option>
+            <option value="qwen">通义千问 · 国内直连，快</option>
+            <option value="gemini">Google Gemini · 认得更全，但要挂梯子</option>
           </select>
           <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" id="aiSave">保存</button>
@@ -969,7 +969,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v73</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v74</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1311,7 +1311,8 @@ async function callQwen(key, base64, mime){
     method: "POST",
     headers: {"Content-Type": "application/json", "Authorization": `Bearer ${key}`},
     body: JSON.stringify({
-      // qwen3-vl-plus 实测 1.2s，上一代 qwen-vl-plus 要 8.5s 且认出的东西更少。
+      // 2026-08 查过：qwen3-vl-plus 是这个账号下最新可用的视觉模型（实测 1.2s）。
+      // 更新的 qwen3.5-omni-* 需要付费账号，免费额度调用直接 403，别换过去。
       model: "qwen3-vl-plus",
       messages: [{role: "user", content: [
         {type: "image_url", image_url: {url: `data:${mime};base64,${base64}`}},
@@ -1323,25 +1324,49 @@ async function callQwen(key, base64, mime){
   const data = await response.json();
   return data?.choices?.[0]?.message?.content || "";
 }
+// 先用当前最新的，退不动了再回落到永远存在的别名。
+// 单钉版本号会坏（gemini-2.5-flash 到 2026-08 已对新 key 返回 404
+// 「no longer available to new users」），单用别名又拿不到最新的模型，所以两者都要。
+// 注意 ListModels 会把已经退役的模型也列出来，不能拿它判断可用性——只能真发一次请求。
+const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+const GEMINI_MODEL_KEY = "nutriflow_ai_gemini_model";
 async function callGemini(key, base64, mime){
-  // 必须用 gemini-flash-latest 这种别名，不要钉死版本号。
-  // 原来钉的 gemini-2.5-flash 到 2026-08 已经对新 key 返回 404
-  // 「no longer available to new users」——这个 app 没人长期维护，别名才不会哪天突然坏掉。
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(key)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      contents: [{parts: [
-        {inline_data: {mime_type: mime, data: base64}},
-        {text: RECOGNIZE_PROMPT},
-      ]}],
-      generationConfig: {responseMimeType: "application/json"},
-    }),
-  });
-  if (!response.ok) throw new Error(await describeApiError(response, "Gemini"));
-  const data = await response.json();
-  return (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("");
+  // 上次成功用的那个排前面，省得每次都先撞一遍 404。
+  const remembered = localStorage.getItem(GEMINI_MODEL_KEY);
+  const models = remembered
+    ? [remembered, ...GEMINI_MODELS.filter(m => m !== remembered)]
+    : GEMINI_MODELS.slice();
+  let lastError = null;
+  for (const model of models){
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+    let response;
+    try{
+      response = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          contents: [{parts: [
+            {inline_data: {mime_type: mime, data: base64}},
+            {text: RECOGNIZE_PROMPT},
+          ]}],
+          generationConfig: {responseMimeType: "application/json"},
+        }),
+      });
+    }catch(error){
+      // fetch 直接抛＝根本没连上。Gemini 的域名在国内直连不通（实测 20s 超时），
+      // 手机不挂梯子就是这个下场，说清楚比报一句 Failed to fetch 有用。
+      throw new Error("连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
+    }
+    if (response.ok){
+      localStorage.setItem(GEMINI_MODEL_KEY, model);
+      const data = await response.json();
+      return (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("");
+    }
+    lastError = await describeApiError(response, "Gemini");
+    // 只有「这个模型没了」才值得换下一个，401/429 换了也一样。
+    if (response.status !== 404) break;
+  }
+  throw new Error(lastError || "Gemini 调用失败");
 }
 // 把 API 的错误体翻成人话——401 最常见，就是 key 填错或没开通。
 async function describeApiError(response, label){
