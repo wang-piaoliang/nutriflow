@@ -376,6 +376,33 @@ test("remembers which photos were already recognized", async () => {
   assert.equal(context.recognizedIds().join(","), "photo-1,photo-2");
 });
 
+test("shows what was eaten on an eating-out record", async () => {
+  const { context, evaluate } = await runAppScript();
+
+  // 在外就餐 only stored {date, place, price, note} — a 寿司郎 row said nothing
+  // about the food, and its photos had no recognise button at all because the
+  // viewer only accepted diet: owners. Both were the same gap.
+  context.addDining({ date: "2026-08-02", place: "寿司郎", price: 168 });
+  // `let diningEntries` stays in the vm's lexical scope, not on `context`.
+  const dining = evaluate("diningEntries[diningEntries.length - 1]");
+  assert.equal(context.diningItems(dining).join(" · "), "");
+
+  context.addDietEntry("2026-08-02", "晚餐", ["三文鱼", { name: "味噌汤", as: "豆腐" }], "寿司郎", dining.id);
+  assert.equal(context.diningItems(dining).join(" · "), "三文鱼 · 味噌汤");
+
+  // The same entry carries the restaurant into the diet log, and the hidden tag
+  // still drives the category so 味噌汤 counts as 蛋奶豆, not uncategorised.
+  const day = context.allDietRecords().find(r => r.date === "2026-08-02");
+  const dinner = day.meals.find(m => m.name === "晚餐");
+  assert.equal(dinner.place, "寿司郎");
+  const rank = context.dietItemRank({ name: "味噌汤", as: "豆腐" });
+  assert.equal(evaluate(`dietItemCategoryRules[${rank}].name`), "蛋奶豆");
+
+  // Linking by id, not by restaurant name — an eating-out row need not have one.
+  const anon = { id: "no-place", date: "2026-08-02" };
+  assert.equal(context.diningItems(anon).join(" · "), "");
+});
+
 test("keeps the recognition prompt's hard-won rules", async () => {
   const html = await readFile(
     new URL("../public/nutriflow.html", import.meta.url),
@@ -548,7 +575,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v74"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v75"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

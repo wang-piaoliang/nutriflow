@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v74`
+- 当前离线缓存：`nutriflow-pwa-v75`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -101,6 +101,13 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - “虾”和“肉丸”在采购记录里没有对应条目。用户确认饮食记录照实保留、不为它们补造采购记录。饮食记录与采购记录本来就相互独立，出现这种不匹配时不要自动补数据，也不要反复追问。
 - 同步包的「消耗」与页面上的“吃完”不是一个含义：消耗指当天用掉了一些，吃完指整件用尽。花菜、胡萝卜、毛豆在 07-20 和 07-21 两天的消耗列表里都出现过，说明它们当时并没有吃完。记住这个区别是为了不误读数据，但库存状态本身由用户自己维护，不要据此给出操作建议。
 
+#### 在外就餐记录也能识别（2026-08-03 加）
+
+- 「在外就餐」原本只存 `{date, place, price, note}`，**没有食物字段**，所以一条「寿司郎」记录只有店名、日期、价格，看不出吃了什么（用户反馈"寿司郎后面没写具体吃了什么"）。
+- 现在这张卡片下面的照片也能识别。结果走 `addDietEntry(date, meal, items, place, diningId)` 写进**饮食记录**——不在 dining 记录里另存一份，避免两处对不上、删了一边另一边还在。
+- 卡片上显示的菜名由 `diningItems(entry)` 从 `dietEntries` 里按 **`diningId`** 反查。**必须按 id 不能按店名**：在外就餐那条记录可以不填店名。
+- `addDietEntry` 因此多了 `place` 和 `diningId` 两个可选参数，`allDietRecords()` 会把 `entry.place` 合并到餐次上，所以餐厅名在饮食页也照常以 `店名：` 前缀显示。
+
 #### 照片识别（2026-08-03 加）
 
 用户的目标原话：“我想从手机端发照片，模型识别，然后手机里就有了”——即不必再开一个 Claude 会话、等人改代码。
@@ -115,7 +122,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
   - `qwen2.5-vl-72b-instruct`、`gemini-2.0-flash` 这类在用户账号下是 403/429，别选。
 - **百炼的 key 可能是工作空间级的**（`sk-ws-` 开头，CSV 里还给一个 `llm-xxx.cn-beijing.maas.aliyuncs.com` 的专属域名）。实测这种 key 在**通用域名** `dashscope.aliyuncs.com` 上一样能用，所以代码里的通用地址不用改、也不用让用户填 endpoint。
 - **隐私边界变了一点，但只变了一点**：上传照片仍然只写 IndexedDB、绝不外发；**只有在某张照片上主动点「识别」，那一张才发给模型**。设置卡片里已经写明这句，不要改成含糊的说法。
-- 入口在大图查看器底部（`#photoViewerActions`），**只对饮食照片显示**，小票照片没有识别按钮（`openViewerFor` 靠 `owner` 是否以 `diet:` 开头判断）。
+- 入口在大图查看器底部（`#photoViewerActions`），**对饮食照片和「在外就餐」照片显示**，小票照片没有识别按钮。`openViewerFor` 看 `owner` 前缀：`diet:<日期>` 取日期；`dining:<id>` 去 `diningEntries` 里查出日期和店名。**在外就餐这条是补的**——最初只认 `diet:`，用户把餐厅照片传到「在外就餐」那张卡片上，点开没有识别按钮，反馈"上传了，没识别"。
 - 识别成功后走 `addDietEntry(date, meal, items)`，即和手动补记同一条通路——所以结果是可删的胶囊，且会自动进云同步。
 - **已识别过的照片会被记住**（`nutriflow_ai_recognized`，最多存 500 条）。重开查看器时按钮变成「🔍 再识别一次」并提示会重复记一次。这不是洁癖：测试时对同一张照片点两次，晚餐就变成了“烤鸭 · 罗宋汤 · 烤鸭 · 罗宋汤 · 蛋 · 蛋 · 米饭 · 米饭”。
 - **prompt 里的四条规则是踩坑踩出来的，不要当成通用提示词优化掉**：①蛋一律写「蛋」，绝不写「鸡蛋」（`鸡` 关键词会把它错分到鱼禽瘦肉，见上一节）；②主食必须写全（模型漏了三顿的米饭）；③写具体菜名不写类别（「烤鸭」不是「鸭肉」），配合 `{name, as}` 的隐藏标签形式；④不许编造克数。测试 `keeps the recognition prompt's hard-won rules` 就是钉这四条的。
@@ -326,6 +333,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**在外就餐也能识别照片 + 下拉刷新**。用户反馈两件事，其实是同一处缺口：「上传了，没识别」和「寿司郎后面没写具体吃了什么」——照片传到了「在外就餐」卡片上，而那里既没有识别按钮（`openViewerFor` 只认 `diet:` 前缀）也没有食物字段。现在 `dining:<id>` 的照片也能识别，结果带店名写进饮食记录，卡片按 `diningId` 反查显示菜名（**按 id 不按店名**，因为那条记录可以不填店名）。另加**下拉刷新**（`initPullToRefresh`）：加到主屏后是 standalone 模式，Safari 自带的下拉刷新没有了，想换新版本只能杀掉 app 重开；现在滚到顶再下拉、松手即刷，并且先 `registration.update()` 催 service worker 去取新壳。`touchmove` 必须 `passive:false` 才拦得住 iOS 整页橡皮筋。离线缓存与版本号升至 v75。
+  - **测试踩的坑**：`html` 上有 `scroll-behavior:smooth`，所以 `scrollTop = 400` 之后立刻读还是 0，我因此误判「滚到中间还会触发下拉刷新」。测滚动相关行为前先把 `scrollBehavior` 设成 `auto`。
 
 - 2026-08-03：**换最新模型 + 发现 Gemini 国内直连不通**。用户问「这两个模型是不是都很老」，查下来：Qwen 那边 `qwen3-vl-plus` 已经是账号下最新可用的视觉模型（更新的 `qwen3.5-omni-*` 要付费账号，免费额度 403），不用换；Gemini 换成模型链 `["gemini-3.6-flash","gemini-flash-latest"]`，只在 404 时回落，成功的记进 `nutriflow_ai_gemini_model` 下次直接用。用户又问「Gemini 不该这么慢吧」，排查发现 **8~10s 里绝大部分是代理开销**，而且更严重：**Gemini 在国内根本直连不通**（`--noproxy` 实测 20s 超时），我之前那句「实测可达 728ms」是走了这台机器的 `127.0.0.1:7890` 代理，结论是假的。已在下拉文案、错误提示、文档三处写明要挂梯子。离线缓存与版本号升至 v74。
 

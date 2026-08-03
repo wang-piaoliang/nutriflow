@@ -65,6 +65,8 @@ html{
   overflow-x:clip;
   /* 关掉横向橡皮筋回弹：内容本身不溢出，但 iOS 轻扫时会弹出一条背景边，去掉它。 */
   overscroll-behavior-x:none;
+  /* 纵向也关掉，好让自己那套下拉刷新说了算——否则浏览器模式下会和系统的下拉刷新打架。 */
+  overscroll-behavior-y:contain;
   scroll-behavior:smooth;
   -webkit-text-size-adjust:100%;
   text-size-adjust:100%;
@@ -373,6 +375,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .dining-price{width:112px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:16px}
 .dining-del{margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--muted);font-size:13px;cursor:pointer}
 .dining-note{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5}
+/* 这顿吃了什么。比备注显眼一点，用正文色。 */
+.dining-items{display:block;margin-top:6px;color:var(--text);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
 .hero .metric span{color:#5f6e63}
 /* 本周吃到磁贴：图标和数字放一起当主体，分类名放大一点、更清楚。 */
 #dietLog .metric b{font-size:17px}
@@ -687,6 +691,26 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   padding:52px 12px calc(12px + env(safe-area-inset-bottom));
   background:rgba(0,0,0,.9);
 }
+/* 下拉刷新的小胶囊。加到主屏后是 standalone 模式，Safari 自带的下拉刷新没有了，
+   想换到新版本只能彻底杀掉 app 重开，所以自己做一个。 */
+.pull-refresh{
+  position:fixed;
+  top:calc(env(safe-area-inset-top) + 6px);
+  left:50%;
+  z-index:90;
+  padding:7px 15px;
+  border-radius:999px;
+  background:var(--surface);
+  box-shadow:0 2px 10px rgba(0,0,0,.16);
+  color:var(--muted);
+  font-size:13px;
+  white-space:nowrap;
+  opacity:0;
+  transform:translate(-50%,-16px);
+  pointer-events:none;
+}
+/* 只在松手回弹时才要过渡，手指拖动时必须跟手。 */
+.pull-refresh.settling{transition:transform .18s ease,opacity .18s ease}
 [hidden]{display:none!important}
 .photo-viewer img{display:block;max-width:min(100%,900px);max-height:100%;margin:auto;object-fit:contain;cursor:zoom-out}
 .photo-viewer-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:#fff;color:#111;font-size:22px;line-height:1}
@@ -969,7 +993,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v74</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v75</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -987,6 +1011,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     <p class="photo-viewer-note" id="recognizeNote"></p>
   </div>
 </div>
+
+<div class="pull-refresh" id="pullRefresh" aria-hidden="true"><span id="pullRefreshText">下拉刷新</span></div>
 
 <script>
 const categories = [
@@ -1229,10 +1255,15 @@ function saveDietEntries(){
   localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
   schedulePush("diet_entries");
 }
-function addDietEntry(date, meal, items){
+function addDietEntry(date, meal, items, place, diningId){
   dietEntries.push({
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    date, meal, items
+    date, meal, items,
+    // 在外就餐的照片识别出来时带上店名，和 dietRecords 里手写的 place 一个含义。
+    ...(place ? {place} : {}),
+    // 记住是哪笔在外就餐带出来的，「在外就餐」卡片靠它把菜名显示回去。
+    // 不能靠店名匹配——那笔记录可以不填店名。
+    ...(diningId ? {diningId} : {})
   });
   saveDietEntries();
 }
@@ -1494,6 +1525,15 @@ function removeDining(id){
   saveDining();
 }
 function diningOwner(id){ return `dining:${id}`; }
+// 这笔在外就餐吃了什么。不在 dining 记录里另存一份，直接从 dietEntries 里按
+// diningId 找回来，免得识别结果和「每天吃了什么」两处对不上、删了一边另一边还在。
+function diningItems(entry){
+  if (!entry?.id) return [];
+  const items = dietEntries
+    .filter(record => record.diningId === entry.id)
+    .flatMap(record => record.items || []);
+  return sortMealItems(items).map(itemLabel);
+}
 async function renderDining(){
   const list = document.getElementById("diningList");
   if (!list) return;
@@ -1515,6 +1555,10 @@ async function renderDining(){
         <label class="dining-price-field">¥<input type="number" inputmode="decimal" class="dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="补价格"></label>
         <button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>
       </div>
+      ${(() => {
+        const eaten = diningItems(entry);
+        return eaten.length ? `<small class="dining-items">${eaten.join(" · ")}</small>` : "";
+      })()}
       ${entry.note ? `<small class="dining-note">${entry.note}</small>` : ""}
       ${photoSectionMarkup("dining", owner, photos, label)}
     </div>`;
@@ -1572,6 +1616,7 @@ function allDietRecords(){
     const meal = ensureMeal(ensure(entry.date), entry.meal);
     meal.items.push(...entry.items);
     meal.added.push({id:entry.id, items:entry.items});
+    if (entry.place) meal.place = entry.place;
   });
   return Array.from(byDate.values())
     .map(record => ({
@@ -2532,8 +2577,17 @@ function openViewerFor(owner, photoId, rerender){
   const actions = document.getElementById("photoViewerActions");
   const note = document.getElementById("recognizeNote");
   const button = document.getElementById("recognizePhoto");
-  const date = typeof owner === "string" && owner.startsWith("diet:") ? owner.slice(5) : "";
-  viewerPhoto = date ? {date, photoId, rerender} : null;
+  // 两种照片能识别：饮食页每天那组（owner 是 diet:日期），
+  // 以及「在外就餐」每笔消费下面那组（owner 是 dining:<id>，日期和店名从那笔记录里取）。
+  // 小票照片不给识别按钮。
+  viewerPhoto = null;
+  if (typeof owner === "string" && owner.startsWith("diet:")){
+    viewerPhoto = {date: owner.slice(5), photoId, rerender};
+  } else if (typeof owner === "string" && owner.startsWith("dining:")){
+    const entry = diningEntries.find(item => item.id === owner.slice(7));
+    if (entry?.date) viewerPhoto = {date: entry.date, place: entry.place || "", diningId: entry.id, photoId, rerender};
+  }
+  const date = viewerPhoto?.date || "";
   const done = viewerPhoto && recognizedIds().includes(photoId);
   // 已识别过的照片仍然可以再识别（比如上次认错、你删了记录想重来），
   // 但按钮要先说清楚，免得手滑记两遍。
@@ -2555,7 +2609,7 @@ document.getElementById("recognizePhoto").addEventListener("click", async () => 
   if (!viewerPhoto) return;
   const button = document.getElementById("recognizePhoto");
   const note = document.getElementById("recognizeNote");
-  const {date, photoId, rerender} = viewerPhoto;
+  const {date, place, diningId, photoId, rerender} = viewerPhoto;
   button.disabled = true;
   button.textContent = "识别中…";
   note.textContent = "照片正在发送给模型";
@@ -2564,9 +2618,9 @@ document.getElementById("recognizePhoto").addEventListener("click", async () => 
     const photo = photos.find(entry => entry.id === photoId);
     if (!photo?.blob) throw new Error("找不到这张照片了，可能刚被删掉。");
     const {meal, items} = await recognizePhoto(photo.blob);
-    addDietEntry(date, meal, items);
+    addDietEntry(date, meal, items, place, diningId);
     markRecognized(photoId);
-    note.textContent = `已写入 ${date} ${meal}：${items.map(itemLabel).join(" · ")}`;
+    note.textContent = `已写入 ${date} ${meal}${place ? `（${place}）` : ""}：${items.map(itemLabel).join(" · ")}`;
     button.textContent = "✅ 已记录";
     render();
     if (typeof rerender === "function") rerender();
@@ -2633,6 +2687,81 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     saveBtn.textContent = "已保存";
     setTimeout(() => { saveBtn.textContent = "保存"; }, 1500);
   });
+})();
+
+// 下拉刷新。加到主屏后是 standalone 模式，Safari 自带的下拉刷新就没了，
+// 想换到新版本只能彻底杀掉 app 重开——这条太难用，所以自己做一个：
+// 滚到顶再往下拉，松手就刷新，并且先让 service worker 去取一次新壳。
+(function initPullToRefresh(){
+  const bar = document.getElementById("pullRefresh");
+  const label = document.getElementById("pullRefreshText");
+  if (!bar || !label) return;
+  const TRIGGER = 70;   // 拉过这么多像素，松手才真刷新
+  const MAX = 120;      // 再往下拉也不跟了，避免拉出一大片空白
+  let startY = 0, distance = 0, pulling = false, busy = false;
+
+  const scroller = () => document.scrollingElement || document.documentElement;
+  const atTop = () => scroller().scrollTop <= 0;
+  const draw = () => {
+    // 阻尼系数 0.42：手指走 100px 胶囊只下来 42px，手感才像原生的。
+    bar.style.opacity = String(Math.min(distance / TRIGGER, 1));
+    bar.style.transform = `translate(-50%, ${Math.min(distance, MAX) * 0.42 - 16}px)`;
+    label.textContent = distance >= TRIGGER ? "松手刷新" : "下拉刷新";
+  };
+  const settle = () => {
+    bar.classList.add("settling");
+    bar.style.opacity = "0";
+    bar.style.transform = "translate(-50%,-16px)";
+  };
+
+  document.addEventListener("touchstart", event => {
+    pulling = false;
+    if (busy || event.touches.length !== 1 || !atTop()) return;
+    // 大图查看器开着的时候不抢手势，那上面还要能关闭和点识别。
+    if (!document.getElementById("photoViewer")?.hidden) return;
+    pulling = true;
+    startY = event.touches[0].clientY;
+    distance = 0;
+    bar.classList.remove("settling");
+  }, {passive: true});
+
+  // 这里必须 passive:false，不然拦不住 iOS 整页橡皮筋，胶囊会跟着页面一起晃。
+  document.addEventListener("touchmove", event => {
+    if (!pulling) return;
+    distance = event.touches[0].clientY - startY;
+    if (distance <= 0 || !atTop()){
+      // 往上滑或者已经滚起来了，就把手势交还给页面。
+      pulling = false;
+      distance = 0;
+      settle();
+      return;
+    }
+    event.preventDefault();
+    draw();
+  }, {passive: false});
+
+  const release = async () => {
+    if (!pulling) return;
+    pulling = false;
+    if (distance < TRIGGER){ settle(); return; }
+    busy = true;
+    bar.classList.add("settling");
+    bar.style.opacity = "1";
+    bar.style.transform = "translate(-50%,14px)";
+    label.textContent = "正在刷新…";
+    try{
+      // 先催一次 service worker，否则刷出来的还是缓存里那份旧壳。
+      const registration = await navigator.serviceWorker?.getRegistration();
+      await registration?.update();
+    }catch{ /* 拿不到注册就直接刷，不值得为此卡住 */ }
+    location.reload();
+  };
+  document.addEventListener("touchend", release, {passive: true});
+  document.addEventListener("touchcancel", () => {
+    if (!pulling) return;
+    pulling = false;
+    settle();
+  }, {passive: true});
 })();
 
 // 云同步：填充已存配置、绑定保存、（已配置时）打开与回前台各拉取一次。
