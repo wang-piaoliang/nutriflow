@@ -338,6 +338,66 @@ test("shows the real dish name but categorises by its hidden tag", async () => {
   assert.equal(context.dietItemRank({ name: "罗宋汤", as: "牛肉" }), 0);
 });
 
+test("parses a recognition reply into diet-log items", async () => {
+  const { context } = await runAppScript();
+  const parse = context.parseRecognition;
+
+  // Plain JSON, plus the tagged-dish form the prompt asks for.
+  const clean = parse('{"meal":"晚餐","items":["虾","烤鸭",{"name":"罗宋汤","as":"牛肉"}]}');
+  assert.equal(clean.meal, "晚餐");
+  assert.equal(clean.items.map(context.itemLabel).join("/"), "虾/烤鸭/罗宋汤");
+  assert.equal(context.itemTag(clean.items[2]), "牛肉");
+
+  // Models wrap JSON in markdown fences or add a sentence around it.
+  const fenced = parse('这是识别结果：\n```json\n{"meal":"早餐","items":["牛奶","蛋"]}\n```\n希望有用');
+  assert.equal(fenced.meal, "早餐");
+  assert.equal(fenced.items.join("/"), "牛奶/蛋");
+
+  // A tag equal to the name carries no information — collapse it to a string.
+  assert.equal(parse('{"meal":"午餐","items":[{"name":"牛肉","as":"牛肉"}]}').items[0], "牛肉");
+
+  // Junk entries are dropped rather than rendered as [object Object] / empty chips.
+  assert.equal(parse('{"meal":"午餐","items":["米饭",null,"",{"as":"x"},42]}').items.join("/"), "米饭");
+
+  // An unknown meal name falls back rather than creating a fifth meal slot.
+  assert.equal(parse('{"meal":"夜宵","items":["面"]}').meal, "午餐");
+  assert.throws(() => parse("模型今天不想返回 JSON"), /没有返回 JSON/);
+});
+
+test("remembers which photos were already recognized", async () => {
+  const { context } = await runAppScript();
+
+  // Tapping 识别 twice on one photo logged the meal twice during testing.
+  // The button still allows a redo, but only after saying so.
+  assert.equal(context.recognizedIds().join(","), "");
+  context.markRecognized("photo-1");
+  context.markRecognized("photo-1");
+  context.markRecognized("photo-2");
+  assert.equal(context.recognizedIds().join(","), "photo-1,photo-2");
+});
+
+test("keeps the recognition prompt's hard-won rules", async () => {
+  const html = await readFile(
+    new URL("../public/nutriflow.html", import.meta.url),
+    "utf8",
+  );
+
+  // These four rules are project scar tissue, not generic prompt advice:
+  // 蛋 vs 鸡蛋 (the 鸡 keyword misfiles it), staples went missing for three
+  // meals, dish names must stay specific, and grams must never be invented.
+  assert.match(html, /绝对不要写"鸡蛋"/);
+  assert.match(html, /主食必须写全/);
+  assert.match(html, /不要写"鸭肉"/);
+  assert.match(html, /不要编造重量或克数/);
+
+  // The key lives only in this device's localStorage — never committed.
+  assert.match(html, /nutriflow_ai_key/);
+  assert.doesNotMatch(html, /sk-[a-zA-Z0-9]{16}/);
+
+  // Recognition is opt-in per photo. Uploading still never transmits anything.
+  assert.match(html, /只有你在某张照片上主动点「识别」/);
+});
+
 test("merges manually added meals into the day", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
@@ -478,7 +538,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v71"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v72"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 });

@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v71`
+- 当前离线缓存：`nutriflow-pwa-v72`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -64,7 +64,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - 目前的 `dietRecords` 仍是硬编码数组，尚未做设备间自动同步。
 - 记录格式：`{date, summary, meals:[{name, items:[], note}]}`。`date` 用 `YYYY-MM-DD`，页面按它倒序排列；`summary` 省略时自动显示“N 餐”，现在所有记录都省略它。
 - 同步包没给估算克数时不要编造，但**也不要在界面上写“未提供估算量”之类的说明**——用户明确要求去掉这类文字。没有克数就只列食物名，日期右侧只显示“N 餐”。
-- 页面标题是「每天吃了什么」，不是「每天实际吃了什么」。说明文字（2026-07-24 改）为“每顿饭发给 Claude 识别，自动整理成记录；照片仅存本地不上传。”——用户要求简短，不要再加回“轻点看大图，长按可删除”之类的操作说明。
+- 页面标题是「每天吃了什么」，不是「每天实际吃了什么」。说明文字（2026-08-03 改）为“点开餐食照片点「识别」记录，照片存本地不传 GitHub。”——用户要求简短，不要再加回“轻点看大图，长按可删除”之类的操作说明。
 
 #### 本周吃到
 
@@ -100,6 +100,23 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - `renderDietLog` 因为要读 IndexedDB 已改为 `async`，并像 `renderShopping` 一样用 `dietRenderVersion` 做并发渲染保护。`render()` 用 `void renderDietLog()` 调用它；测试里要 `await` 它，否则运行时异常会变成静默的 rejected promise。
 - “虾”和“肉丸”在采购记录里没有对应条目。用户确认饮食记录照实保留、不为它们补造采购记录。饮食记录与采购记录本来就相互独立，出现这种不匹配时不要自动补数据，也不要反复追问。
 - 同步包的「消耗」与页面上的“吃完”不是一个含义：消耗指当天用掉了一些，吃完指整件用尽。花菜、胡萝卜、毛豆在 07-20 和 07-21 两天的消耗列表里都出现过，说明它们当时并没有吃完。记住这个区别是为了不误读数据，但库存状态本身由用户自己维护，不要据此给出操作建议。
+
+#### 照片识别（2026-08-03 加）
+
+用户的目标原话：“我想从手机端发照片，模型识别，然后手机里就有了”——即不必再开一个 Claude 会话、等人改代码。
+
+- **没有后端，浏览器直连模型 API（BYOK）**。key 存本机 `localStorage` 的 `nutriflow_ai_key` / `nutriflow_ai_provider`，不进 Git、不进同步包。之所以敢这么做，是先在浏览器里实测过：DashScope（百炼）、Gemini、Kimi 国内外站、智谱五家的 CORS 预检**全部放行**，跨域直调返回的是正常的 401，不是被浏览器拦掉。**这一条是实测结论，不要凭博客或印象推翻它**——我先前只凭一篇博客断言"DashScope 不允许浏览器直调"，是错的。
+- 两家可选，用户要求都要：
+  - `qwen` → `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`，模型 `qwen-vl-plus`，OpenAI 格式，图片走 `image_url` 的 data URI。国内直连快，免费额度是 90 天试用，之后按量（很便宜）。
+  - `gemini` → `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=…`，图片走 `inline_data`，`generationConfig.responseMimeType` 设成 `application/json`。每天 1500 次**永久**免费。实测从用户机器可达（728ms）——先前"国内连不上"的说法也是我没测就说的，同样是错的。
+- **隐私边界变了一点，但只变了一点**：上传照片仍然只写 IndexedDB、绝不外发；**只有在某张照片上主动点「识别」，那一张才发给模型**。设置卡片里已经写明这句，不要改成含糊的说法。
+- 入口在大图查看器底部（`#photoViewerActions`），**只对饮食照片显示**，小票照片没有识别按钮（`openViewerFor` 靠 `owner` 是否以 `diet:` 开头判断）。
+- 识别成功后走 `addDietEntry(date, meal, items)`，即和手动补记同一条通路——所以结果是可删的胶囊，且会自动进云同步。
+- **已识别过的照片会被记住**（`nutriflow_ai_recognized`，最多存 500 条）。重开查看器时按钮变成「🔍 再识别一次」并提示会重复记一次。这不是洁癖：测试时对同一张照片点两次，晚餐就变成了“烤鸭 · 罗宋汤 · 烤鸭 · 罗宋汤 · 蛋 · 蛋 · 米饭 · 米饭”。
+- **prompt 里的四条规则是踩坑踩出来的，不要当成通用提示词优化掉**：①蛋一律写「蛋」，绝不写「鸡蛋」（`鸡` 关键词会把它错分到鱼禽瘦肉，见上一节）；②主食必须写全（模型漏了三顿的米饭）；③写具体菜名不写类别（「烤鸭」不是「鸭肉」），配合 `{name, as}` 的隐藏标签形式；④不许编造克数。测试 `keeps the recognition prompt's hard-won rules` 就是钉这四条的。
+- `parseRecognition()` 要能吃下 ```json 围栏和前后的废话，只取第一个 `{…}`；`as` 和 `name` 相同就塌缩成字符串；认不出的餐次名回落到「午餐」而不是新建第五个餐次。
+- 照片瓦片上的属性是 `data-photo-belongs`，**不能叫 `data-photo-owner`**——后者被 `bindPhotoControls` 用来绑上传 input，同名会被一起扫走。
+- 顺带修了一个旧 bug：删除胶囊原来写 `entry.items.join(" · ")`，遇到 `{name, as}` 会渲染成 `[object Object]`。识别功能会大量产出这种带标签的条目，才把它暴露出来。已改成 `.map(itemLabel)`。
 
 ### 采购
 
@@ -157,6 +174,8 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - 用户已明确同意公开展示采购和饮食记录。
 - 即使如此，也不要公开付款信息、手机号、会员号、条码、精确住址或医疗原文。
 - 本机私密照片属于例外：它们只能通过当前设备的浏览器 IndexedDB 展示，不得加入公开数据、同步包、源码或 Git 提交。
+- 2026-08-03 起有一个**用户主动触发的**外发口子：在某张餐食照片上点「识别」，会把**那一张**发给用户自己配置的模型 API。上传照片本身仍然不外发，也没有任何后台批量上传。这条边界要保持——不要加"全部识别"、"上传后自动识别"之类会让照片在用户没点的情况下离开设备的功能。
+- 模型 API key 同样只存本机 `localStorage`，不进 Git、不进同步包。代码和文档里都不许出现真实 key，测试有一条断言专门挡 `sk-…` 字面量。
 
 ## 4. 营养依据
 
@@ -301,6 +320,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**照片识别落地，Qwen 和 Gemini 都支持**（详见「饮食 › 照片识别」）。用户目标是不用再开 Claude 会话等人改代码。浏览器直连模型 API，无后端、key 存本机；先实测了五家的 CORS 才敢这么做。「目标」页加「🔍 照片识别」设置卡片，大图查看器加「识别这张」按钮（只对饮食照片显示）。识别结果走 `addDietEntry`，和手动补记同一条通路，因此可删、且自动进云同步。加了重复识别防护（`nutriflow_ai_recognized`）——测试时对同一张点两次，晚餐直接变成双份。顺带修了删除胶囊对 `{name, as}` 条目渲染成 `[object Object]` 的旧 bug。离线缓存与版本号升至 v72。
+  - **这次的教训**：本地 main 停在 v47 就动手了，改完才发现远端已经到 v71（26 个提交）。**动手前先 `git fetch github && git log HEAD..github/main`**，这个仓库有别的会话在并行改。rebase 时发现远端已用 `FixedDate` 把测试时钟锚在 2026-07-23，比我那版「断言增量」的写法更好，故弃用我的改法、保留远端的。
 
 - 2026-07-30：三项。① **周汇总嵌进时间线**（用户：「这个放在对应的时间段，然后下面放对应那周的每天，不要放在最上面」）。上一版加的独立「往期每周」卡片整张删掉、`renderPastWeeks` 一并删除；改为在 `renderDietLog` 里用 `weeksFromRecords()` 按自然周分段，每周一个 `<section class="week-block">`：先是该周汇总（日期范围 + `N 种 · M 天` + 分类磁贴），紧跟着**这一周自己的每天**。原来的 `days = records.map(...)` 抽成 `dayMarkup(record)` 供分段复用。绿色 hero「本周吃到」保持不动。② **单价对比的标题去掉品牌**：分组名改用新增的 `priceFoodNames` 短名表（`mushroom→香菇`、`chickenTender→鸡小胸`；食材目录里的 name 是品类级的「菌菇类」太粗，故另立一份），具体品名挪到明细行的门店后面：`07-28 盒马 · 国产谷饲黄牛牛嫩肉`。日期压成 `MM-DD`，门店用 `shortStore()` 压成「盒马 / fudi」，品名用 `shortItem()` 剥掉「盒马日日鲜/盒马烘焙/盒适/鲜」等前缀和括号。`.bar-head span` 与 `.price-group-head strong` 改成 `white-space:nowrap + text-overflow:ellipsis`，**保证一行显示完**（用户明确要求）。③ **单价对比加分类筛选**：仿「食材营养价值」的 `.tabs`，新增 `#priceTabs` + `activePriceCategory`，分类取自 `purchaseGroupRules`（顺带给它们加了 `icon` 字段），只列真有数据的分类外加「全部」；选中的分类若没数据了自动退回「全部」。条宽仍按**全部**的最贵单价缩放，切分类时长度不跳变、跨分类可比。标题加 `has-sticky-tabs` 避免与吸顶筛选栏叠一起。测试增至 14 项。离线缓存与版本号升至 v71。
 

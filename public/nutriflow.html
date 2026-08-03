@@ -326,6 +326,38 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .week-block-head strong{font-size:14px;font-weight:600}
 /* 磁贴和这周第一天之间留口气，别粘在一起。 */
 .week-block .week-metrics + .diet-day{margin-top:12px}
+/* 大图查看器底部的识别按钮。定位在图片下方、查看器内，点它不能穿透到背景的关闭手势。 */
+.photo-viewer-actions{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:calc(16px + env(safe-area-inset-bottom));
+  display:grid;
+  gap:8px;
+  justify-items:center;
+  padding:0 16px;
+}
+.photo-viewer-actions button{
+  padding:12px 22px;
+  border:0;
+  border-radius:999px;
+  background:#fff;
+  color:#111;
+  font-size:15px;
+  font-weight:650;
+}
+.photo-viewer-actions button[disabled]{opacity:.6}
+.photo-viewer-note{
+  margin:0;
+  max-width:min(100%,420px);
+  color:#fff;
+  font-size:13px;
+  line-height:1.45;
+  text-align:center;
+  text-shadow:0 1px 3px rgba(0,0,0,.6);
+  overflow-wrap:anywhere;
+}
+.sync-form select{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:15px}
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
@@ -817,6 +849,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <button type="button" id="syncSave">保存并同步</button>
         </div>
       </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>🔍 照片识别</h2>
+          <span class="subtle" id="aiStatus">未配置</span>
+        </div>
+        <div class="note">配置后，点开饮食页任意一张餐食照片，就能让模型认出里面的食物、直接写进当天记录。<strong>照片默认仍然只存本机</strong>——只有你在某张照片上主动点「识别」，那一张才会发给模型。key 存在这台设备，不进 GitHub。</div>
+        <div class="sync-form">
+          <select id="aiProvider" aria-label="模型提供商">
+            <option value="qwen">通义千问 Qwen-VL（阿里云百炼 · 国内直连 · 有免费额度）</option>
+            <option value="gemini">Google Gemini（每天 1500 次永久免费）</option>
+          </select>
+          <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="button" id="aiSave">保存</button>
+        </div>
+      </article>
     </div>
   </section>
 
@@ -889,7 +937,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>每天吃了什么</h2>
           <span class="subtle"><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">每顿饭发给 Claude 识别记录，照片存本地不传 GitHub。</div>
+        <div class="note">点开餐食照片点「识别」记录，照片存本地不传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -930,6 +978,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 <div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="小票照片大图" hidden>
   <button class="photo-viewer-close" type="button" aria-label="关闭大图">×</button>
   <img id="photoViewerImage" alt="小票照片大图">
+  <div class="photo-viewer-actions" id="photoViewerActions" hidden>
+    <button type="button" id="recognizePhoto">🔍 识别这张</button>
+    <p class="photo-viewer-note" id="recognizeNote"></p>
+  </div>
 </div>
 
 <script>
@@ -1183,6 +1235,130 @@ function addDietEntry(date, meal, items){
 function removeDietEntry(id){
   dietEntries = dietEntries.filter(entry => entry.id !== id);
   saveDietEntries();
+}
+
+// ---- 照片识别（可选，浏览器直连模型 API，key 存本机）----
+// 两家都实测过允许浏览器跨域直连（带 Authorization 的 POST，preflight 也放行），
+// 所以不需要任何后端。key 只存这台设备的 localStorage，不进仓库、不进 GitHub。
+const AI_PROVIDER_KEY = "nutriflow_ai_provider";
+const AI_KEY_KEY = "nutriflow_ai_key";
+// 记住哪些照片已经识别过。少了这个，重复点一次就把同一顿饭记两遍。
+const AI_DONE_KEY = "nutriflow_ai_recognized";
+function recognizedIds(){
+  const stored = load(AI_DONE_KEY, []);
+  return Array.isArray(stored) ? stored : [];
+}
+function markRecognized(photoId){
+  const ids = recognizedIds();
+  if (ids.includes(photoId)) return;
+  ids.push(photoId);
+  localStorage.setItem(AI_DONE_KEY, JSON.stringify(ids.slice(-500)));
+}
+function aiConfig(){
+  return {
+    provider: localStorage.getItem(AI_PROVIDER_KEY) || "qwen",
+    key: (localStorage.getItem(AI_KEY_KEY) || "").trim(),
+  };
+}
+// 这段规则是这个项目实际踩出来的，不是通用提示词，改动前先看 NUTRIFLOW_PROJECT_CONTEXT.md。
+const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这张餐食照片，列出你能认出的每一样食物。
+
+严格按这些规则：
+1. 写具体菜名，不要笼统的类别。看到烤鸭就写"烤鸭"，不要写"鸭肉"；看到梅花肉写"梅花肉"，不要写"猪肉"。
+2. 如果具体菜名里不含食材类别词（比如"罗宋汤""狮子头"），用 {"name":"具体菜名","as":"归类词"} 的形式，as 填能代表食材大类的词（如"牛肉"）。菜名本身已含类别词的（如"烤鸭"含"鸭"）直接写字符串即可。
+3. 蛋一律写"蛋"或"煎蛋""蒸蛋"，**绝对不要写"鸡蛋"**——"鸡"字会让它被错误归到禽肉类。
+4. **主食必须写全**：米饭、杂粮饭、面条、米线、馒头、红薯等，只要照片里有就一定要列出来。这一条经常被漏，特别注意。
+5. 不要编造重量或克数，只写食物名称。
+6. 认不出的东西就不写，不要猜。
+7. 判断这是哪一餐：早餐、午餐、晚餐、加餐 四选一。
+
+只返回 JSON，不要解释、不要 markdown 代码块：
+{"meal":"午餐","items":["虾","烤鸭",{"name":"罗宋汤","as":"牛肉"},"米饭"]}`;
+
+function blobToBase64(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("读不出这张照片"));
+    reader.readAsDataURL(blob);
+  });
+}
+// 模型有时会把 JSON 包在 ```json 围栏里，或前后带一句话。取第一个完整的 {...}。
+function parseRecognition(text){
+  const match = String(text).match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("模型没有返回 JSON");
+  const parsed = JSON.parse(match[0]);
+  const items = (Array.isArray(parsed.items) ? parsed.items : [])
+    .map(item => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item.name === "string"){
+        const name = item.name.trim();
+        const as = typeof item.as === "string" ? item.as.trim() : "";
+        return as && as !== name ? {name, as} : name;
+      }
+      return "";
+    })
+    .filter(Boolean);
+  const meal = MEAL_ORDER.includes(parsed.meal) ? parsed.meal : "午餐";
+  return {meal, items};
+}
+async function callQwen(key, base64, mime){
+  const response = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "Authorization": `Bearer ${key}`},
+    body: JSON.stringify({
+      model: "qwen-vl-plus",
+      messages: [{role: "user", content: [
+        {type: "image_url", image_url: {url: `data:${mime};base64,${base64}`}},
+        {type: "text", text: RECOGNIZE_PROMPT},
+      ]}],
+    }),
+  });
+  if (!response.ok) throw new Error(await describeApiError(response, "百炼"));
+  const data = await response.json();
+  return data?.choices?.[0]?.message?.content || "";
+}
+async function callGemini(key, base64, mime){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      contents: [{parts: [
+        {inline_data: {mime_type: mime, data: base64}},
+        {text: RECOGNIZE_PROMPT},
+      ]}],
+      generationConfig: {responseMimeType: "application/json"},
+    }),
+  });
+  if (!response.ok) throw new Error(await describeApiError(response, "Gemini"));
+  const data = await response.json();
+  return (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("");
+}
+// 把 API 的错误体翻成人话——401 最常见，就是 key 填错或没开通。
+async function describeApiError(response, label){
+  let detail = "";
+  try{
+    const body = await response.json();
+    detail = body?.error?.message || body?.message || "";
+  }catch{ /* 错误体不是 JSON 就算了 */ }
+  if (response.status === 401 || response.status === 403){
+    return `${label} 拒绝了这个 key（HTTP ${response.status}）。检查是否填错、或该模型还没开通。`;
+  }
+  if (response.status === 429){
+    return `${label} 限流了（HTTP 429），免费额度可能用完或请求太频繁，过一会再试。`;
+  }
+  return `${label} 返回 HTTP ${response.status}${detail ? `：${detail}` : ""}`;
+}
+async function recognizePhoto(blob){
+  const {provider, key} = aiConfig();
+  if (!key) throw new Error("还没填 API key，去首页最下面的「🔍 照片识别」配置。");
+  const base64 = await blobToBase64(blob);
+  const mime = blob.type || "image/jpeg";
+  const raw = provider === "gemini" ? await callGemini(key, base64, mime) : await callQwen(key, base64, mime);
+  const result = parseRecognition(raw);
+  if (!result.items.length) throw new Error("模型没认出食物，可能是照片太糊或不是餐食照片。");
+  return result;
 }
 // ---- 云同步（可选，用户自建 Cloudflare Worker + D1，见 api/README.md）----
 // 同步「所有手动录入的数据」（目前：手动补记的餐食 + 在外就餐记录）。不配置就完全不影响：
@@ -1595,7 +1771,7 @@ function photoSectionMarkup(scope, ownerId, photos, label){
   // 添加按钮排在缩略图之后，作为网格的最后一格。
   const tiles = photos.map(photo => {
     const url = photoUrl(scope, photo.blob);
-    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
+    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-belongs="${ownerId}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
   const grid = tiles ? `<div class="photo-grid">${tiles}</div>` : "";
   // 饮食页每天的加照片入口移到了标题行的小相机（photoAddLabel），这里就不再放大相机按钮，
@@ -1666,6 +1842,7 @@ function bindPhotoControls(container, rerender){
       image.src = button.dataset.openPhoto;
       image.alt = button.dataset.photoAlt || "本机照片大图";
       photoViewerTrigger = button;
+      openViewerFor(button.dataset.photoBelongs, button.dataset.deletePhoto, rerender);
       viewer.hidden = false;
       viewer.querySelector(".photo-viewer-close").focus();
     });
@@ -2144,7 +2321,7 @@ async function renderDietLog(){
       // 只有手动补的那几样能删，同步包写进代码的删不掉。删除入口收进下面的编辑框里，
       // 平时不在食物列表旁边露出叉号。
       const removable = (meal.added || []).map(entry =>
-        `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.join(" · ")} ✕</button>`
+        `<button class="chip-remove" type="button" data-remove-entry="${entry.id}" title="删除这条手动记录">${entry.items.map(itemLabel).join(" · ")} ✕</button>`
       ).join("");
       // 手动补记的食物在下面的食物列表里用主色轻微标一下，不再单独做成带边框叉号的胶囊。
       const addedLabels = new Set((meal.added || []).flatMap(entry => entry.items.map(itemLabel)));
@@ -2315,12 +2492,58 @@ document.querySelectorAll(".nav-btn").forEach(button => {
 });
 const photoViewer = document.getElementById("photoViewer");
 let photoViewerTrigger = null;
+// 当前大图对应的照片：只有饮食页的照片（owner 形如 diet:2026-07-24）能识别，
+// 小票照片没有「哪一餐」的概念，不显示识别按钮。
+let viewerPhoto = null;
+function openViewerFor(owner, photoId, rerender){
+  const actions = document.getElementById("photoViewerActions");
+  const note = document.getElementById("recognizeNote");
+  const button = document.getElementById("recognizePhoto");
+  const date = typeof owner === "string" && owner.startsWith("diet:") ? owner.slice(5) : "";
+  viewerPhoto = date ? {date, photoId, rerender} : null;
+  const done = viewerPhoto && recognizedIds().includes(photoId);
+  // 已识别过的照片仍然可以再识别（比如上次认错、你删了记录想重来），
+  // 但按钮要先说清楚，免得手滑记两遍。
+  note.textContent = done ? "这张已经识别过了，再点会重复记一次。" : "";
+  button.disabled = false;
+  button.textContent = done ? "🔍 再识别一次" : "🔍 识别这张";
+  actions.hidden = !viewerPhoto;
+}
 function closePhotoViewer(){
   photoViewer.hidden = true;
   document.getElementById("photoViewerImage").removeAttribute("src");
+  document.getElementById("photoViewerActions").hidden = true;
+  viewerPhoto = null;
   photoViewerTrigger?.focus();
   photoViewerTrigger = null;
 }
+// 识别当前大图。照片只在这一刻发出去，其余时间都只躺在本机 IndexedDB 里。
+document.getElementById("recognizePhoto").addEventListener("click", async () => {
+  if (!viewerPhoto) return;
+  const button = document.getElementById("recognizePhoto");
+  const note = document.getElementById("recognizeNote");
+  const {date, photoId, rerender} = viewerPhoto;
+  button.disabled = true;
+  button.textContent = "识别中…";
+  note.textContent = "照片正在发送给模型";
+  try{
+    const photos = await listPrivatePhotos();
+    const photo = photos.find(entry => entry.id === photoId);
+    if (!photo?.blob) throw new Error("找不到这张照片了，可能刚被删掉。");
+    const {meal, items} = await recognizePhoto(photo.blob);
+    addDietEntry(date, meal, items);
+    markRecognized(photoId);
+    note.textContent = `已写入 ${date} ${meal}：${items.map(itemLabel).join(" · ")}`;
+    button.textContent = "✅ 已记录";
+    render();
+    if (typeof rerender === "function") rerender();
+  }catch(error){
+    console.error(error);
+    note.textContent = error.message || "识别失败";
+    button.disabled = false;
+    button.textContent = "🔍 重试";
+  }
+});
 photoViewer.querySelector(".photo-viewer-close").addEventListener("click", closePhotoViewer);
 document.getElementById("photoViewerImage").addEventListener("click", closePhotoViewer);
 photoViewer.addEventListener("click", event => {
@@ -2355,6 +2578,30 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       .catch(() => {});
   });
 }
+// 照片识别：填充已存配置并绑定保存。key 只写 localStorage，不发给任何地方。
+(function initAi(){
+  const providerInput = document.getElementById("aiProvider");
+  const keyInput = document.getElementById("aiKey");
+  const saveBtn = document.getElementById("aiSave");
+  const status = document.getElementById("aiStatus");
+  if (!providerInput || !keyInput || !saveBtn || !status) return;
+  const label = () => {
+    const {provider, key} = aiConfig();
+    const name = provider === "gemini" ? "Gemini" : "Qwen-VL";
+    status.textContent = key ? `已配置 · ${name}` : "未配置";
+  };
+  providerInput.value = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
+  keyInput.value = localStorage.getItem(AI_KEY_KEY) || "";
+  label();
+  saveBtn.addEventListener("click", () => {
+    localStorage.setItem(AI_PROVIDER_KEY, providerInput.value);
+    localStorage.setItem(AI_KEY_KEY, keyInput.value.trim());
+    label();
+    saveBtn.textContent = "已保存";
+    setTimeout(() => { saveBtn.textContent = "保存"; }, 1500);
+  });
+})();
+
 // 云同步：填充已存配置、绑定保存、（已配置时）打开与回前台各拉取一次。
 (function initSync(){
   const urlInput = document.getElementById("syncUrl");
