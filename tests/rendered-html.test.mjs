@@ -283,7 +283,10 @@ test("summarises past weeks in the timeline but never the current one twice", as
   assert.equal(weeks.length, 2);
 
   const list = elements.get("dietLogList").innerHTML;
-  assert.equal(list.match(/<section class="week-block">/g).length, 2);
+  // A finished week is a collapsible <details open>; the current one is a plain
+  // <section> because the green hero above already is its summary.
+  assert.equal(list.match(/<details class="week-block" open>/g).length, 1);
+  assert.equal(list.match(/<section class="week-block">/g).length, 1);
 
   // A week that is over gets its summary right above its own days.
   assert.match(list, /7\/27–8\/2/);
@@ -683,7 +686,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v81"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v82"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
