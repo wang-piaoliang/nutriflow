@@ -993,7 +993,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v75</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v76</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1470,33 +1470,94 @@ async function syncRequest(key, method, body){
   if (!res.ok) throw new Error(res.status === 401 ? "口令不对" : `同步失败 (${res.status})`);
   return res.json();
 }
+// 「本地有改动还没推上去」的标记。**必须写进 localStorage**，因为它要扛住刷新：
+// 推送有 600ms 防抖，用户加完一条立刻刷新的话，这一轮推送根本没发出去，
+// 而新页面一打开就 syncPull()，服务端那份旧数据会把本地刚写的盖掉——数据就没了。
+// 有了这个标记，syncPull 看到某个文档是脏的，就改成"把本地推上去"而不是"拉下来覆盖"。
+const SYNC_DIRTY_KEY = "nutriflow_sync_dirty";
 const syncPushTimers = {};
+const syncRevs = {};
+function dirtyDocs(){
+  const stored = load(SYNC_DIRTY_KEY, []);
+  return Array.isArray(stored) ? stored : [];
+}
+function markDirty(key){
+  const list = dirtyDocs();
+  if (list.includes(key)) return;
+  list.push(key);
+  localStorage.setItem(SYNC_DIRTY_KEY, JSON.stringify(list));
+}
+function clearDirty(key){
+  localStorage.setItem(SYNC_DIRTY_KEY, JSON.stringify(dirtyDocs().filter(item => item !== key)));
+}
+function currentRev(key){ return syncRevs[key] || 0; }
+async function pushDoc(doc, rev){
+  const at = rev === undefined ? currentRev(doc.key) : rev;
+  try{
+    await syncRequest(doc.key, "PUT", {value: doc.get()});
+    // 推的过程中又改了就别清标记，等后面那次推完再清。
+    if (currentRev(doc.key) === at) clearDirty(doc.key);
+    setSyncStatus("已同步");
+  }catch(err){
+    // 失败就把标记留着，下次打开或下次改动时重推，别把本地当成已同步。
+    setSyncStatus(err.message);
+  }
+}
 function schedulePush(key){
   if (!syncConfig()) return;
   const doc = SYNC_DOCS.find(d => d.key === key);
   if (!doc) return;
+  markDirty(key);
+  const rev = (syncRevs[key] = currentRev(key) + 1);
   setSyncStatus("同步中…");
   clearTimeout(syncPushTimers[key]);
-  syncPushTimers[key] = setTimeout(() => {
-    syncRequest(key, "PUT", {value: doc.get()})
-      .then(() => setSyncStatus("已同步"))
-      .catch(err => setSyncStatus(err.message));
-  }, 600);
+  syncPushTimers[key] = setTimeout(() => { void pushDoc(doc, rev); }, 600);
 }
 async function syncPull(){
   if (!syncConfig()) return;
   setSyncStatus("同步中…");
   try{
+    const dirty = dirtyDocs();
     for (const doc of SYNC_DOCS){
-      const data = await syncRequest(doc.key, "GET");
-      if (data && Array.isArray(data.value)){
-        doc.set(data.value);
-        doc.rerender();
+      if (dirty.includes(doc.key)){
+        // 本地这份还没推上去，服务端那份必然更旧——推上去，绝不能拉下来盖掉。
+        await pushDoc(doc);
+        continue;
       }
+      const data = await syncRequest(doc.key, "GET");
+      if (!data || !Array.isArray(data.value)) continue;
+      const local = doc.get();
+      // 服务端是空的、本地却有东西：多半是这台设备刚开同步，或者服务端被重置了。
+      // 这时候拉下来就是把本地清空，宁可反过来推上去。
+      if (!data.value.length && Array.isArray(local) && local.length){
+        await pushDoc(doc);
+        continue;
+      }
+      doc.set(data.value);
+      doc.rerender();
     }
     setSyncStatus("已同步");
   }catch(err){ setSyncStatus(err.message); }
 }
+// 关页面或切后台时，把还没推的立刻发出去。keepalive 让请求在页面卸载之后也能送达。
+// 不在这里清标记——发没发到无从确认，留着让下次打开重推一遍（PUT 是幂等的）。
+window.addEventListener("pagehide", () => {
+  const cfg = syncConfig();
+  if (!cfg) return;
+  for (const key of dirtyDocs()){
+    const doc = SYNC_DOCS.find(item => item.key === key);
+    if (!doc) continue;
+    clearTimeout(syncPushTimers[key]);
+    try{
+      fetch(`${cfg.url}/doc/${key}`, {
+        method: "PUT",
+        headers: {"Authorization": `Bearer ${cfg.token}`, "Content-Type": "application/json"},
+        body: JSON.stringify({value: doc.get()}),
+        keepalive: true,
+      });
+    }catch{ /* 卸载途中发不出去也没办法，标记还在，下次打开会重推 */ }
+  }
+});
 function setSyncStatus(msg){
   const el = document.getElementById("syncStatus");
   if (el) el.textContent = msg;
