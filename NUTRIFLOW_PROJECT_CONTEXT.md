@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v77`
+- 当前离线缓存：`nutriflow-pwa-v78`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -132,6 +132,14 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - **大图查看器改成两行网格**（`grid-template-rows:minmax(0,1fr) auto`），上面放图、下面放操作条。操作条原来是 `position:absolute; bottom:16px`，竖构图照片（手机截图那种 9:19.5）会顶满 `max-height`，底部 95px 被按钮盖住——实测出来的。图片的 `max-height` 也从 `calc(100vh - 64px)` 改成 `100%`（相对所在行）。**必须是 `minmax(0,1fr)` 不能是 `1fr`**：`1fr` 的最小尺寸是内容高度，图片行压不下去，操作条会被顶到视口外（实测 824→914，而屏高 812）。小票没有操作条时第二行为 0，图片照常占满。
 
 ### 采购
+
+- **自己录采购（2026-08-03 加）**。用户明确要求："采购历史一样，需要能够手动添加，以后我不会再发给你让你来弄了，我要自己加，当成一个正常的 app 来使用"。
+  - 存 `nutriflow_purchases_v1`（`manualPurchases`），**结构和硬编码的 `purchases` 完全一样的扁平行**：`{receiptId, id, date, foodId, item, amount, packageSpec, totalPrice, unitPrice, store, bought, manual:true}`。这样「现有食材」「采购历史」「单价对比」「本周已买」四处渲染器一行逻辑都不用改，只把数据源从 `purchases` 换成 `allPurchases()`（= 硬编码 + 手动）。**以后再动这几处，记得用 `allPurchases()`，直接读 `purchases` 会漏掉用户自己录的。**
+  - `foodIdForItem(name)` 先在 `foods` 目录里按名字互相包含匹配，命中就复用目录的 `foodId`（例如输入「牛肉」→ `beef`），这样和以前买的同一样东西能归进单价对比的同一组；匹配不上就用 `custom:<品名>`，同名之间仍能成组。
+  - `unitPriceText()` 按硬编码那批的文案生成「29.9 元 · 约 74.75 元/kg」，`pricePerKilo` 靠 `amount` 解析，所以**重量填了才进单价对比**，不填只进采购历史。这是有意的取舍：全字段必填每件要点四五下，用户是在手机上录。
+  - 表单在「采购历史」卡片顶部，`<details>` 默认收起。一次采购 = 一张小票 = 多行商品，`＋ 再加一件` 加行，最后一行删不掉（否则表单空了没处填）。照片和「在外就餐」一个套路：先攥在 `pendingPhotos`，保存拿到 `receiptId` 再写 IndexedDB（owner 直接就是 `receiptId`，和硬编码小票的照片 owner 规则一致）。
+  - **只有手动录的才给「删掉这次采购」按钮**（`receipt.items.every(item => item.manual)`）。硬编码那批删了下次发版又回来，反而让人困惑——和饮食页「只有手动补记的胶囊能删」是同一条规矩。
+  - 已登记进 `SYNC_DOCS`（key `purchases`），按用户既定规则「手动录入的数据默认接入云同步」。
 
 - 当前示例来自 2026-07-17 的 fudi 超市五道口店小票：7 件，合计 65.73 元。
 - 小票以一次采购为一个默认折叠区块；店名、时间、件数、分类重量和总价只在小票级别显示一次。
@@ -333,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**采购历史可以自己录了**（详见「采购」小节）。用户要"当成一个正常的 app 来使用"，不再靠发同步包给我改代码。手动小票存 localStorage + 进云同步，结构和硬编码 `purchases` 完全一致，所以四处渲染器只把数据源换成 `allPurchases()` 即可。品名会自动往 `foods` 目录里匹配 `foodId`，匹配上就和以前买的同一样东西归进单价对比同一组。**重量选填**——填了进单价对比，不填只进采购历史（用户在手机上录，全字段必填每件要点四五下，不现实）。只有自己录的小票给删除按钮。离线缓存与版本号升至 v78。
 
 - 2026-08-03：三项用户反馈。① **当周的周汇总不再写两遍**：绿色 hero 的「本周吃到」本来就是当周，而时间线按周分段时又给当周出了一份汇总，同样的内容写了两遍。现在时间线**只给已过完的周出汇总**，当周只列每天——等这周过完它自然变成往期、汇总才出现。这也接回用户 2026-07-24 定的调子「一周没过完先不用写」。② **在外就餐添加时就能选照片**：这条记录还没 id，所以先把 File 攥在 `pendingPhotos` 里，点「添加」拿到 id 之后再写进 IndexedDB；`addDining` 因此改成返回新记录。③ **本地存储写失败不再静默**：新增 `persist(key, value)`，`localStorage.setItem` 抛异常（配额满、iOS 隐私模式）**或者写完读不回来**时，页面底部亮一条红色警告。以前这种失败完全无声——条目在界面上好好地出现、一刷新就没，和「同步覆盖」的症状一模一样，根本分不清是哪一种。所有数据类写入都改走 `persist`（配置类的 key/token 仍是裸 setItem）。离线缓存与版本号升至 v77。
 

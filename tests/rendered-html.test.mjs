@@ -444,6 +444,45 @@ test("never lets a pull overwrite local edits that have not been pushed", async 
   assert.equal(evaluate("diningEntries[0].place"), "别家");
 });
 
+test("records a purchase you typed in yourself", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+
+  // The user asked to stop mailing sync packages: "我要自己加，当成一个正常的
+  // app 来使用". Manual rows share the hardcoded shape so every renderer keeps
+  // working off allPurchases() without special cases.
+  const before = evaluate("allPurchases().length");
+  const { receiptId } = context.addPurchaseReceipt({
+    date: "2026-08-03",
+    store: "盒马鲜生（大钟寺店）",
+    items: [
+      { name: "牛肉", amount: "400g", price: 29.9 },
+      { name: "酸奶", amount: "", price: 12 },
+    ],
+  });
+  assert.equal(evaluate("allPurchases().length"), before + 2);
+
+  // A name matching the catalog reuses its foodId, so it groups with earlier
+  // buys of the same food instead of starting a lonely one-entry group.
+  const rows = evaluate("manualPurchases");
+  assert.equal(rows[0].foodId, "beef");
+  assert.match(rows[0].unitPrice, /74\.75 元\/kg/);
+
+  // No weight means no unit price — it still lands in the history, it just
+  // cannot join the price comparison.
+  assert.equal(rows[1].unitPrice, "");
+  const beef = context.comparablePurchases().filter((p) => p.key === "beef");
+  assert.ok(beef.some((p) => p.date === "2026-08-03"));
+  assert.ok(!context.comparablePurchases().some((p) => p.item === "酸奶"));
+
+  await context.renderShopping();
+  assert.match(elements.get("purchaseHistory").innerHTML, /删掉这次采购/);
+
+  // Only manual receipts are deletable; the hardcoded ones would come back on
+  // the next deploy, which would just confuse.
+  context.removeManualReceipt(receiptId);
+  assert.equal(evaluate("allPurchases().length"), before);
+});
+
 test("keeps the recognition prompt's hard-won rules", async () => {
   const html = await readFile(
     new URL("../public/nutriflow.html", import.meta.url),
@@ -616,7 +655,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v77"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v78"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
