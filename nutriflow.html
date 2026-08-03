@@ -711,6 +711,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 /* 只在松手回弹时才要过渡，手指拖动时必须跟手。 */
 .pull-refresh.settling{transition:transform .18s ease,opacity .18s ease}
+/* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
+.storage-error{
+  position:fixed;
+  left:8px;
+  right:8px;
+  bottom:calc(72px + env(safe-area-inset-bottom));
+  z-index:95;
+  padding:11px 14px;
+  border-radius:12px;
+  background:#7a1f1f;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);
+  color:#fff;
+  font-size:13px;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
 [hidden]{display:none!important}
 .photo-viewer img{display:block;max-width:min(100%,900px);max-height:100%;margin:auto;object-fit:contain;cursor:zoom-out}
 .photo-viewer-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:#fff;color:#111;font-size:22px;line-height:1}
@@ -943,6 +959,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <div class="dining-add-row">
             <input type="date" id="diningDate" aria-label="日期">
             <input type="number" id="diningPrice" inputmode="decimal" placeholder="价格（元，可留空后补）" autocomplete="off">
+            <label class="photo-add-mini" id="diningPendingPhoto" title="选照片，点添加时一起存" aria-label="选照片，点添加时一起存">📷<input class="photo-input" type="file" accept="image/*" multiple id="diningPhotoInput"></label>
             <button type="button" id="diningAdd">添加</button>
           </div>
         </div>
@@ -993,7 +1010,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v76</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v77</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1013,6 +1030,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 </div>
 
 <div class="pull-refresh" id="pullRefresh" aria-hidden="true"><span id="pullRefreshText">下拉刷新</span></div>
+<div class="storage-error" id="storageError" role="alert" hidden></div>
 
 <script>
 const categories = [
@@ -1252,7 +1270,7 @@ const DIET_ENTRIES_KEY = "nutriflow_diet_entries_v1";
 const MEAL_ORDER = ["早餐","午餐","晚餐","加餐"];
 let dietEntries = load(DIET_ENTRIES_KEY, []);
 function saveDietEntries(){
-  localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries));
+  persist(DIET_ENTRIES_KEY, dietEntries);
   schedulePush("diet_entries");
 }
 function addDietEntry(date, meal, items, place, diningId){
@@ -1287,7 +1305,7 @@ function markRecognized(photoId){
   const ids = recognizedIds();
   if (ids.includes(photoId)) return;
   ids.push(photoId);
-  localStorage.setItem(AI_DONE_KEY, JSON.stringify(ids.slice(-500)));
+  persist(AI_DONE_KEY, ids.slice(-500));
 }
 function aiConfig(){
   return {
@@ -1438,19 +1456,19 @@ const SYNC_DOCS = [
   {
     key: "diet_entries",
     get: () => dietEntries,
-    set: (value) => { dietEntries = value; localStorage.setItem(DIET_ENTRIES_KEY, JSON.stringify(dietEntries)); },
+    set: (value) => { dietEntries = value; persist(DIET_ENTRIES_KEY, dietEntries); },
     rerender: () => { void renderDietLog(); renderWeekSummary(); },
   },
   {
     key: "dining",
     get: () => diningEntries,
-    set: (value) => { diningEntries = value; localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); },
+    set: (value) => { diningEntries = value; persist(DINING_KEY, diningEntries); },
     rerender: () => { void renderDining(); },
   },
   {
     key: "remaining",
     get: () => remaining,
-    set: (value) => { remaining = value; localStorage.setItem(REMAINING_KEY, JSON.stringify(remaining)); },
+    set: (value) => { remaining = value; persist(REMAINING_KEY, remaining); },
     rerender: () => { void renderShopping(); },
   },
 ];
@@ -1485,10 +1503,10 @@ function markDirty(key){
   const list = dirtyDocs();
   if (list.includes(key)) return;
   list.push(key);
-  localStorage.setItem(SYNC_DIRTY_KEY, JSON.stringify(list));
+  persist(SYNC_DIRTY_KEY, list);
 }
 function clearDirty(key){
-  localStorage.setItem(SYNC_DIRTY_KEY, JSON.stringify(dirtyDocs().filter(item => item !== key)));
+  persist(SYNC_DIRTY_KEY, dirtyDocs().filter(item => item !== key));
 }
 function currentRev(key){ return syncRevs[key] || 0; }
 async function pushDoc(doc, rev){
@@ -1567,13 +1585,16 @@ function setSyncStatus(msg){
 // 照片走现有私密照片系统，owner 用 `dining:<id>`。和"吃完""照片"一样只存本机，不进 Git、暂不走云同步。
 const DINING_KEY = "nutriflow_dining_v1";
 let diningEntries = load(DINING_KEY, []);
-function saveDining(){ localStorage.setItem(DINING_KEY, JSON.stringify(diningEntries)); schedulePush("dining"); }
+function saveDining(){ persist(DINING_KEY, diningEntries); schedulePush("dining"); }
 function addDining(entry){
-  diningEntries.push({
+  const record = {
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     date: entry.date, place: entry.place, price: entry.price, note: entry.note || ""
-  });
+  };
+  diningEntries.push(record);
   saveDining();
+  // 返回这条记录，好让调用方把刚选的照片挂到它的 id 上。
+  return record;
 }
 function updateDiningPrice(id, price){
   const entry = diningEntries.find(e => e.id === id);
@@ -1637,15 +1658,37 @@ function bindDiningForm(){
   const placeEl = document.getElementById("diningPlace");
   const dateEl = document.getElementById("diningDate");
   const priceEl = document.getElementById("diningPrice");
+  const photoEl = document.getElementById("diningPhotoInput");
+  const photoLabel = document.getElementById("diningPendingPhoto");
   if (!addBtn || !placeEl || !dateEl || !priceEl) return;
-  addBtn.addEventListener("click", () => {
+  // 添加的同时就能选照片：这条记录还不存在、没有 id，所以先把文件攥在手里，
+  // 等点了「添加」拿到 id 再写进 IndexedDB。
+  let pendingPhotos = [];
+  const showPending = () => {
+    if (!photoLabel) return;
+    photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
+    if (photoEl) photoLabel.appendChild(photoEl);
+  };
+  photoEl?.addEventListener("change", () => {
+    pendingPhotos = Array.from(photoEl.files || []);
+    showPending();
+  });
+  addBtn.addEventListener("click", async () => {
     const place = (placeEl.value || "").trim();
     const date = dateEl.value || new Date().toISOString().slice(0, 10);
     const price = priceEl.value.trim() === "" ? null : Number(priceEl.value);
-    if (!place && price == null){ placeEl.focus(); return; }
-    addDining({date, place, price});
+    if (!place && price == null && !pendingPhotos.length){ placeEl.focus(); return; }
+    const entry = addDining({date, place, price});
+    const files = pendingPhotos;
+    pendingPhotos = [];
+    if (photoEl) photoEl.value = "";
+    showPending();
     placeEl.value = ""; priceEl.value = "";
-    void renderDining();
+    await renderDining();
+    if (entry && files.length){
+      await Promise.all(files.map(file => savePrivatePhoto(diningOwner(entry.id), file)));
+      await renderDining();
+    }
   });
 }
 // 同一天、同一餐可能既有同步包写的、又有手动补的，合并成一条显示，
@@ -1721,15 +1764,35 @@ function load(key, fallback){
   try{return JSON.parse(localStorage.getItem(key)) || clone(fallback)}
   catch{return clone(fallback)}
 }
+// 所有本地写入都走这里。localStorage 写失败是**会抛异常**的（配额满、iOS 隐私模式、
+// 存储被系统清掉），以前抛了就静默吞掉：条目在界面上好好地出现，一刷新就没，
+// 完全看不出是哪一步坏了。现在写不进去会在顶部亮一条，至少知道是存储的问题。
+// 而且还要**读回来核对**——iOS 有时候 setItem 不报错但根本没落盘。
+function persist(key, value){
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  try{
+    localStorage.setItem(key, text);
+    if (localStorage.getItem(key) !== text) throw new Error("写进去了但读不回来");
+    return true;
+  }catch(error){
+    console.error("本地存储写入失败", key, error);
+    const bar = document.getElementById("storageError");
+    if (bar){
+      bar.textContent = `⚠️ 这台设备存不下了（${(error && error.name) || error}），刚才那条刷新后会丢。清点浏览器存储或删掉一些照片再试。`;
+      bar.hidden = false;
+    }
+    return false;
+  }
+}
 function saveConsumed(){
-  localStorage.setItem("nutriflow_consumed_v1", JSON.stringify(consumed));
+  persist("nutriflow_consumed_v1", consumed);
 }
 // 「现有食材」每条下面那根细进度条：手动拖，记还剩多少（0–100%）。没拖过就是 100%。
 // 按用户定的规则「手动录入的数据默认接入云同步」，它登记进 SYNC_DOCS。
 const REMAINING_KEY = "nutriflow_remaining_v1";
 let remaining = load(REMAINING_KEY, {});
 function saveRemaining(){
-  localStorage.setItem(REMAINING_KEY, JSON.stringify(remaining));
+  persist(REMAINING_KEY, remaining);
   schedulePush("remaining");
 }
 // 「现有食材」清单里不显示“约”：那是小票上的近似标注，扫库存时只是噪音（用户要求）。
@@ -2491,11 +2554,15 @@ async function renderDietLog(){
     </div>`;
   };
   // 按自然周分段：每周的汇总排在这一周的每天上面，而不是把所有周的汇总堆在页面最上面。
-  const days = weeksFromRecords().map(week => `<section class="week-block">
-      <div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>
-      ${weekTiles(week.counts)}
-      ${week.records.map(dayMarkup).join("")}
-    </section>`).join("");
+  // **当周只出每天、不出汇总**：上面绿色 hero 的「本周吃到」已经是这一周了，
+  // 这里再来一份就是同样的内容写两遍；而且用户早就定过调子——一周没过完，
+  // 现在就点评缺什么言之过早。等这周过完，它自然变成往期、汇总才出现。
+  const thisMonday = currentWeek().monday.getTime();
+  const days = weeksFromRecords().map(week => {
+    const isCurrent = week.monday.getTime() === thisMonday;
+    const summary = isCurrent ? "" : `<div class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · ${week.records.length} 天</span></div>${weekTiles(week.counts)}`;
+    return `<section class="week-block">${summary}${week.records.map(dayMarkup).join("")}</section>`;
+  }).join("");
   list.innerHTML = `${dietDayFormMarkup()}${days || `<div class="note">还没有饮食记录。用右上角的 ＋ 直接补记，或把餐食照片发给 Claude 让它整理。</div>`}`;
   bindPhotoControls(list, () => void renderDietLog());
   bindDietForm(list);
