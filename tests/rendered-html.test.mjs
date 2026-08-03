@@ -541,4 +541,15 @@ test("bumps the offline cache when the app shell changes", async () => {
   assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v72"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
+
+  // The footer version is how you tell from the phone which build you're on, so
+  // it has to track the cache name. Bumping only sw.js left the footer showing
+  // v71 while the cache said v72 — the page looked stale when it wasn't.
+  const html = await readFile(
+    new URL("../public/nutriflow.html", import.meta.url),
+    "utf8",
+  );
+  const cache = serviceWorker.match(/CACHE_NAME = "nutriflow-pwa-(v\d+)"/)?.[1];
+  const footer = html.match(/id="appVersion">NutriFlow (v\d+)</)?.[1];
+  assert.equal(footer, cache, "页脚版本号要和 sw.js 的缓存号一致");
 });

@@ -117,6 +117,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - `parseRecognition()` 要能吃下 ```json 围栏和前后的废话，只取第一个 `{…}`；`as` 和 `name` 相同就塌缩成字符串；认不出的餐次名回落到「午餐」而不是新建第五个餐次。
 - 照片瓦片上的属性是 `data-photo-belongs`，**不能叫 `data-photo-owner`**——后者被 `bindPhotoControls` 用来绑上传 input，同名会被一起扫走。
 - 顺带修了一个旧 bug：删除胶囊原来写 `entry.items.join(" · ")`，遇到 `{name, as}` 会渲染成 `[object Object]`。识别功能会大量产出这种带标签的条目，才把它暴露出来。已改成 `.map(itemLabel)`。
+- **大图查看器改成两行网格**（`grid-template-rows:minmax(0,1fr) auto`），上面放图、下面放操作条。操作条原来是 `position:absolute; bottom:16px`，竖构图照片（手机截图那种 9:19.5）会顶满 `max-height`，底部 95px 被按钮盖住——实测出来的。图片的 `max-height` 也从 `calc(100vh - 64px)` 改成 `100%`（相对所在行）。**必须是 `minmax(0,1fr)` 不能是 `1fr`**：`1fr` 的最小尺寸是内容高度，图片行压不下去，操作条会被顶到视口外（实测 824→914，而屏高 812）。小票没有操作条时第二行为 0，图片照常占满。
 
 ### 采购
 
@@ -323,6 +324,7 @@ python3 -m http.server 8000 -d public
 
 - 2026-08-03：**照片识别落地，Qwen 和 Gemini 都支持**（详见「饮食 › 照片识别」）。用户目标是不用再开 Claude 会话等人改代码。浏览器直连模型 API，无后端、key 存本机；先实测了五家的 CORS 才敢这么做。「目标」页加「🔍 照片识别」设置卡片，大图查看器加「识别这张」按钮（只对饮食照片显示）。识别结果走 `addDietEntry`，和手动补记同一条通路，因此可删、且自动进云同步。加了重复识别防护（`nutriflow_ai_recognized`）——测试时对同一张点两次，晚餐直接变成双份。顺带修了删除胶囊对 `{name, as}` 条目渲染成 `[object Object]` 的旧 bug。离线缓存与版本号升至 v72。
   - **这次的教训**：本地 main 停在 v47 就动手了，改完才发现远端已经到 v71（26 个提交）。**动手前先 `git fetch github && git log HEAD..github/main`**，这个仓库有别的会话在并行改。rebase 时发现远端已用 `FixedDate` 把测试时钟锚在 2026-07-23，比我那版「断言增量」的写法更好，故弃用我的改法、保留远端的。
+  - **机械解冲突 + 测试通过 ≠ 真的接上了**。rebase 完 17 个测试全绿，但实际打开界面才发现两处：页脚版本号还停在 v71（`sw.js` 和 `#appVersion` 是**两个**版本号，得一起改，现已加断言互相钉住），以及识别操作条在竖长照片上盖住图片。**改完 UI 一定要真的在浏览器里打开看**，别只看测试。
 
 - 2026-07-30：三项。① **周汇总嵌进时间线**（用户：「这个放在对应的时间段，然后下面放对应那周的每天，不要放在最上面」）。上一版加的独立「往期每周」卡片整张删掉、`renderPastWeeks` 一并删除；改为在 `renderDietLog` 里用 `weeksFromRecords()` 按自然周分段，每周一个 `<section class="week-block">`：先是该周汇总（日期范围 + `N 种 · M 天` + 分类磁贴），紧跟着**这一周自己的每天**。原来的 `days = records.map(...)` 抽成 `dayMarkup(record)` 供分段复用。绿色 hero「本周吃到」保持不动。② **单价对比的标题去掉品牌**：分组名改用新增的 `priceFoodNames` 短名表（`mushroom→香菇`、`chickenTender→鸡小胸`；食材目录里的 name 是品类级的「菌菇类」太粗，故另立一份），具体品名挪到明细行的门店后面：`07-28 盒马 · 国产谷饲黄牛牛嫩肉`。日期压成 `MM-DD`，门店用 `shortStore()` 压成「盒马 / fudi」，品名用 `shortItem()` 剥掉「盒马日日鲜/盒马烘焙/盒适/鲜」等前缀和括号。`.bar-head span` 与 `.price-group-head strong` 改成 `white-space:nowrap + text-overflow:ellipsis`，**保证一行显示完**（用户明确要求）。③ **单价对比加分类筛选**：仿「食材营养价值」的 `.tabs`，新增 `#priceTabs` + `activePriceCategory`，分类取自 `purchaseGroupRules`（顺带给它们加了 `icon` 字段），只列真有数据的分类外加「全部」；选中的分类若没数据了自动退回「全部」。条宽仍按**全部**的最贵单价缩放，切分类时长度不跳变、跨分类可比。标题加 `has-sticky-tabs` 避免与吸顶筛选栏叠一起。测试增至 14 项。离线缓存与版本号升至 v71。
 
