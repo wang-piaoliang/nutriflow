@@ -711,6 +711,25 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 }
 /* 只在松手回弹时才要过渡，手指拖动时必须跟手。 */
 .pull-refresh.settling{transition:transform .18s ease,opacity .18s ease}
+/* 自己记一次采购。默认收起来，别把采购历史挤下去。 */
+.buy-add{margin:0 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.buy-add>summary{padding:10px 12px;color:var(--muted);font-size:14px;cursor:pointer;list-style:none}
+.buy-add>summary::-webkit-details-marker{display:none}
+.buy-add[open]>summary{border-bottom:1px solid var(--line);color:var(--text);font-weight:600}
+.buy-add-body{padding:12px}
+/* 日期 / 店名 / 📷 必须挤在一行——用 flex-wrap 时 375px 下相机会被挤到第二行，很难看。 */
+.buy-add-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:8px}
+.buy-add-row input{min-width:0}
+.buy-add input,.buy-line input{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:15px}
+/* 一件商品一行：品名占大头，重量和价格各占一小格。手机上够点、不至于挤成一团。 */
+.buy-line{display:grid;grid-template-columns:1fr 74px 74px auto;gap:6px;margin-bottom:6px}
+.buy-line input{min-width:0}
+.buy-line-del{padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px}
+.buy-add-actions{display:flex;gap:8px;margin-top:10px}
+#buyAddLine{flex:0 0 auto;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:14px}
+#buySave{flex:1;padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+.buy-add-hint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+.receipt-del{margin:8px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:13px}
 /* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
 .storage-error{
   position:fixed;
@@ -935,6 +954,22 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <span class="subtle" id="purchaseMeta">0 条</span>
         </div>
         <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</p>
+        <details class="buy-add" id="buyAddBox">
+          <summary>＋ 记一次采购</summary>
+          <div class="buy-add-body">
+            <div class="buy-add-row">
+              <input type="date" id="buyDate" aria-label="日期">
+              <input type="text" id="buyStore" placeholder="在哪买的" autocomplete="off">
+              <label class="photo-add-mini" id="buyPendingPhoto" title="小票照片，点保存时一起存" aria-label="小票照片，点保存时一起存">📷<input class="photo-input" type="file" accept="image/*" multiple id="buyPhotoInput"></label>
+            </div>
+            <div id="buyLines"></div>
+            <div class="buy-add-actions">
+              <button type="button" id="buyAddLine">＋ 再加一件</button>
+              <button type="button" id="buySave">保存这次采购</button>
+            </div>
+            <p class="buy-add-hint">重量填了才能进「单价对比」（写 500g、1kg、约300g 都行），不填也能存，只是比不了价。</p>
+          </div>
+        </details>
         <div id="purchaseHistory"></div>
       </article>
 
@@ -1010,7 +1045,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v77</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v78</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1466,6 +1501,12 @@ const SYNC_DOCS = [
     rerender: () => { void renderDining(); },
   },
   {
+    key: "purchases",
+    get: () => manualPurchases,
+    set: (value) => { manualPurchases = value; persist(MANUAL_PURCHASES_KEY, manualPurchases); },
+    rerender: () => { void renderShopping(); renderFoods(); },
+  },
+  {
     key: "remaining",
     get: () => remaining,
     set: (value) => { remaining = value; persist(REMAINING_KEY, remaining); },
@@ -1605,6 +1646,51 @@ function updateDiningPrice(id, price){
 function removeDining(id){
   diningEntries = diningEntries.filter(e => e.id !== id);
   saveDining();
+}
+// ---- 自己录的采购（本机 + 云同步）----
+// 用户 2026-08-03 明确要求："以后我不会再发给你让你来弄了，我要自己加，当成一个正常的 app 来使用"。
+// 存成和硬编码 `purchases` **完全一样的扁平行结构**，这样「现有食材」「采购历史」
+// 「单价对比」三处渲染器一个都不用改逻辑，只要把数据源换成 allPurchases()。
+const MANUAL_PURCHASES_KEY = "nutriflow_purchases_v1";
+let manualPurchases = load(MANUAL_PURCHASES_KEY, []);
+function saveManualPurchases(){ persist(MANUAL_PURCHASES_KEY, manualPurchases); schedulePush("purchases"); }
+function allPurchases(){ return purchases.concat(manualPurchases); }
+// 没有目录里的 foodId 时，用品名当分组键。单价对比和「现有食材」都按 foodId 归组，
+// 同名的两次采购必须落进同一组才比得出涨跌，所以这里要稳定、可复现。
+function foodIdForItem(name){
+  const clean = (name || "").trim();
+  const known = foods.find(food => clean.includes(food.name) || food.name.includes(clean));
+  return known ? known.id : `custom:${clean}`;
+}
+// 单价那行文案照硬编码那批的写法生成，"约 X 元/kg" 让单价对比能解析。
+function unitPriceText(amount, price){
+  const grams = parseAmount(amount);
+  if (!grams || !price) return "";
+  return `${price} 元 · 约 ${(price / (grams / 1000)).toFixed(2)} 元/kg`;
+}
+function addPurchaseReceipt({date, store, items}){
+  const receiptId = `manual-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
+  const rows = items.map((item, index) => ({
+    receiptId,
+    id: `${receiptId}-${String(index + 1).padStart(2, "0")}`,
+    date,
+    foodId: foodIdForItem(item.name),
+    item: item.name,
+    amount: item.amount || "",
+    packageSpec: "",
+    totalPrice: item.price == null ? 0 : Number(item.price),
+    unitPrice: unitPriceText(item.amount, item.price),
+    store,
+    bought: true,
+    manual: true,
+  }));
+  manualPurchases.push(...rows);
+  saveManualPurchases();
+  return {receiptId, rows};
+}
+function removeManualReceipt(receiptId){
+  manualPurchases = manualPurchases.filter(row => row.receiptId !== receiptId);
+  saveManualPurchases();
 }
 function diningOwner(id){ return `dining:${id}`; }
 // 这笔在外就餐吃了什么。不在 dining 记录里另存一份，直接从 dietEntries 里按
@@ -2192,7 +2278,7 @@ function pricePerKilo(purchase){
   return total / (grams / 1000);
 }
 function comparablePurchases(){
-  return purchases
+  return allPurchases()
     .filter(purchase => purchase.foodId !== "bag" && isWeighedAmount(purchase.amount) && pricePerKilo(purchase) > 0)
     .map(purchase => ({
       key: purchase.foodId || purchase.item,
@@ -2254,7 +2340,7 @@ function sameWeek(dateText){
   return date >= monday && date < next;
 }
 function weeklyBought(food){
-  return purchases
+  return allPurchases()
     .filter(purchase => purchase.bought && purchase.foodId === food.id && sameWeek(purchase.date))
     .reduce((sum, purchase) => sum + parseAmount(purchase.amount), 0);
 }
@@ -2425,7 +2511,7 @@ async function renderShopping(){
   resetPhotoUrls("shopping");
   // 「现有食材」和「已吃完历史」都只列需要跟踪是否吃完的生鲜；购物袋和 pantry
   // 备货（主食/油/盐/米等）进入完整采购记录，但不在这份勾选清单里出现。
-  const boughtItems = purchases.filter(purchase => purchase.bought && purchase.foodId !== "bag" && !purchase.pantry);
+  const boughtItems = allPurchases().filter(purchase => purchase.bought && purchase.foodId !== "bag" && !purchase.pantry);
   const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
   const consumedItems = boughtItems
     .filter(purchase => consumed[purchase.id])
@@ -2475,8 +2561,9 @@ async function renderShopping(){
     });
   });
 
-  const total = purchases.reduce((sum, purchase) => sum + Number(purchase.totalPrice || 0), 0);
-  const receiptMap = purchases.reduce((map, purchase) => {
+  const rows = allPurchases();
+  const total = rows.reduce((sum, purchase) => sum + Number(purchase.totalPrice || 0), 0);
+  const receiptMap = rows.reduce((map, purchase) => {
     const key = purchase.receiptId || `${purchase.store || "未知地点"}-${purchase.date}`;
     const receipt = (map[key] ||= {key, store: purchase.store || "未记录地点", date: purchase.date, items: [], totalKnown:true, note:""});
     receipt.totalKnown = receipt.totalKnown && purchase.receiptTotalKnown !== false;
@@ -2485,7 +2572,7 @@ async function renderShopping(){
     return map;
   }, {});
   const receipts = Object.values(receiptMap).sort((a,b) => b.date.localeCompare(a.date));
-  document.getElementById("purchaseMeta").textContent = `${receipts.length} 次 · ${purchases.length} 件 · ¥${total.toFixed(2)}`;
+  document.getElementById("purchaseMeta").textContent = `${receipts.length} 次 · ${rows.length} 件 · ¥${total.toFixed(2)}`;
   document.getElementById("purchaseHistory").innerHTML = receipts.length ? receipts.map(receipt => {
     const receiptTotal = receipt.items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
     const boughtCount = receipt.items.filter(item => item.bought).length;
@@ -2505,9 +2592,18 @@ async function renderShopping(){
         <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
       </summary>
       <div class="receipt-lines">${lines}</div>
+      ${receipt.items.every(item => item.manual) ? `<button type="button" class="receipt-del" data-receipt-del="${receipt.key}">删掉这次采购</button>` : ""}
       ${photoSectionMarkup("shopping", receipt.key, attachedPhotos, `${receipt.store} 小票`)}
     </details>`;
   }).join("") : `<div class="note">暂无采购记录。</div>`;
+  // 只有自己录的才给删除按钮：写在代码里那批删了下次发版又回来，反而让人困惑。
+  document.getElementById("purchaseHistory").querySelectorAll("[data-receipt-del]").forEach(button => {
+    button.addEventListener("click", async () => {
+      removeManualReceipt(button.dataset.receiptDel);
+      await renderShopping();
+      renderFoods();
+    });
+  });
   bindPhotoControls(document.getElementById("purchaseHistory"), () => void renderShopping());
 }
 async function renderDietLog(){
@@ -2814,6 +2910,82 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     label();
     saveBtn.textContent = "已保存";
     setTimeout(() => { saveBtn.textContent = "保存"; }, 1500);
+  });
+})();
+
+// 自己记一次采购。一次采购 = 一张小票 = 若干件商品，所以是"一个头 + 多行"的表单。
+// 这一块只绑一次（元素在 renderShopping 重渲染的范围之外），别挪进渲染函数里，
+// 否则每次渲染都会再叠一个监听器。
+(function initBuyForm(){
+  const box = document.getElementById("buyAddBox");
+  const linesEl = document.getElementById("buyLines");
+  const dateEl = document.getElementById("buyDate");
+  const storeEl = document.getElementById("buyStore");
+  const addLineBtn = document.getElementById("buyAddLine");
+  const saveBtn = document.getElementById("buySave");
+  const photoEl = document.getElementById("buyPhotoInput");
+  const photoLabel = document.getElementById("buyPendingPhoto");
+  if (!box || !linesEl || !saveBtn) return;
+  let pendingPhotos = [];
+
+  const lineMarkup = () => `<div class="buy-line">
+      <input type="text" class="buy-name" placeholder="买了什么" autocomplete="off">
+      <input type="text" class="buy-amount" placeholder="重量" autocomplete="off" inputmode="text">
+      <input type="number" class="buy-price" placeholder="元" autocomplete="off" inputmode="decimal">
+      <button type="button" class="buy-line-del" title="删掉这一行" aria-label="删掉这一行">✕</button>
+    </div>`;
+  const addLine = () => {
+    linesEl.insertAdjacentHTML("beforeend", lineMarkup());
+    linesEl.lastElementChild.querySelector(".buy-name").focus();
+  };
+  const resetForm = () => {
+    linesEl.innerHTML = lineMarkup();
+    if (storeEl) storeEl.value = storeEl.value; // 店名留着，同一天常在同一家买
+    pendingPhotos = [];
+    if (photoEl) photoEl.value = "";
+    showPending();
+  };
+  function showPending(){
+    if (!photoLabel) return;
+    photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
+    if (photoEl) photoLabel.appendChild(photoEl);
+  }
+
+  linesEl.innerHTML = lineMarkup();
+  if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+  addLineBtn?.addEventListener("click", addLine);
+  // 最后一行不许删光，否则表单变成空的、没处填。
+  linesEl.addEventListener("click", event => {
+    const del = event.target.closest(".buy-line-del");
+    if (!del) return;
+    if (linesEl.children.length > 1) del.closest(".buy-line").remove();
+    else del.closest(".buy-line").querySelectorAll("input").forEach(input => { input.value = ""; });
+  });
+  photoEl?.addEventListener("change", () => {
+    pendingPhotos = Array.from(photoEl.files || []);
+    showPending();
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    const items = Array.from(linesEl.querySelectorAll(".buy-line")).map(row => ({
+      name: (row.querySelector(".buy-name").value || "").trim(),
+      amount: (row.querySelector(".buy-amount").value || "").trim(),
+      price: row.querySelector(".buy-price").value.trim() === "" ? null : Number(row.querySelector(".buy-price").value),
+    })).filter(item => item.name);
+    if (!items.length){ linesEl.querySelector(".buy-name")?.focus(); return; }
+    const date = (dateEl?.value || new Date().toISOString().slice(0, 10));
+    const store = (storeEl?.value || "").trim() || "未记录地点";
+    const {receiptId} = addPurchaseReceipt({date, store, items});
+    const files = pendingPhotos;
+    resetForm();
+    await renderShopping();
+    renderFoods();
+    if (files.length){
+      await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
+      await renderShopping();
+    }
+    saveBtn.textContent = `已记 ${items.length} 件`;
+    setTimeout(() => { saveBtn.textContent = "保存这次采购"; }, 1800);
   });
 })();
 
