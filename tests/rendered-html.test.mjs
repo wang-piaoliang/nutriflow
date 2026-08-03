@@ -532,8 +532,12 @@ test("keeps the recognition prompt's hard-won rules", async () => {
   assert.match(html, /nutriflow_ai_key/);
   assert.doesNotMatch(html, /sk-[a-zA-Z0-9]{16}/);
 
-  // Recognition is opt-in per photo. Uploading still never transmits anything.
-  assert.match(html, /只有你在某张照片上主动点「识别」/);
+  // Uploading a meal photo now transmits it (the user asked for that), so the
+  // settings card must not keep claiming otherwise — a stale privacy promise is
+  // worse than none. What still holds: nothing goes out without a key.
+  assert.doesNotMatch(html, /只有你在某张照片上主动点「识别」/);
+  assert.match(html, /只有你自己传进来的这些照片会发给模型/);
+  assert.match(html, /不填 key 就一张也不发/);
 
   // Gemini retires dated model ids — the pinned gemini-2.5-flash began
   // returning 404 "no longer available to new users" for keys made in 2026-08.
@@ -686,7 +690,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v82"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v83"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

@@ -268,6 +268,23 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:14px;
   font-weight:650;
 }
+/* 「发张照片就行」——全新的一天在列表里还没有自己的 📷，这里给一个入口。
+   和「添加」并排，宽一点，因为它才是常用的那条路。 */
+.diet-form-photo{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px;
+  border:1px dashed var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:14px;
+  white-space:nowrap;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
 .chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
 /* 每一顿的小 ＋，紧跟在食物列表末尾同一行，点开就地加东西。
    inline 上下文里要用 inline-flex 才能和文字基线对齐。 */
@@ -969,7 +986,7 @@ summary.week-block-head::after{
           <h2>🔍 照片识别</h2>
           <span class="subtle" id="aiStatus">未配置</span>
         </div>
-        <div class="note">配置后，点开饮食页的餐食照片就能识别食物、直接写进当天记录。<strong>只有你在某张照片上主动点「识别」，那一张才会发出去</strong>，其余照片和 key 都只留在这台设备。</div>
+        <div class="note">配置后，餐食照片一传上来就自动识别、直接写进当天记录，小票照片也能自动读成采购记录。<strong>只有你自己传进来的这些照片会发给模型</strong>，一次只发一张、不碰相册里别的东西；不填 key 就一张也不发。key 只存在这台设备。</div>
         <div class="sync-form">
           <select id="aiProvider" aria-label="模型提供商">
             <option value="qwen">通义千问 · 国内直连，快</option>
@@ -1068,7 +1085,7 @@ summary.week-block-head::after{
           <h2>每天吃了什么</h2>
           <span class="subtle"><button class="week-fold-all" type="button" id="weekFoldAll" hidden>全部折叠</button><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">点开餐食照片点「识别」记录，照片存本地不传 GitHub。</div>
+        <div class="note">发张餐食照片就自动记好，照片存本地不传 GitHub。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -1096,7 +1113,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v82</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v83</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2871,7 +2888,10 @@ function dietDayFormMarkup(){
       <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
     </div>
     <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
-    <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+    <div class="diet-form-row">
+      <label class="diet-form-photo" id="dietFormPhotoLabel" title="直接发照片，自动识别" aria-label="直接发照片，自动识别">📷 发张照片就行<input class="photo-input" type="file" accept="image/*" multiple id="dietFormPhoto"></label>
+      <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+    </div>
   </div>`;
 }
 // 空格、逗号、顿号、加号都当分隔符，怎么随手写都能拆开。
@@ -2895,6 +2915,34 @@ function bindDietForm(container){
   container.querySelector("#dietFormSave").addEventListener("click", submit);
   container.querySelector("#dietFormItems").addEventListener("keydown", event => {
     if (event.key === "Enter") submit();
+  });
+  // 全新的一天在列表里还不存在，也就没有它自己的 📷——不给这里一个入口的话，
+  // 想靠照片记一顿就必须先打字建一条，和"都不要必填"是矛盾的。
+  const photoInput = container.querySelector("#dietFormPhoto");
+  const photoLabel = container.querySelector("#dietFormPhotoLabel");
+  photoInput?.addEventListener("change", async () => {
+    const files = Array.from(photoInput.files || []).filter(file => file.type.startsWith("image/"));
+    photoInput.value = "";
+    if (!files.length) return;
+    const date = container.querySelector("#dietFormDate").value || new Date().toISOString().slice(0, 10);
+    const setLabel = (text) => {
+      if (!photoLabel) return;
+      photoLabel.textContent = text;
+      photoLabel.appendChild(photoInput);
+    };
+    setLabel(aiConfig().key ? "识别中…" : "已存下照片");
+    try{
+      const owner = dietPhotoOwner(date);
+      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
+      const added = await autoRecognize(owner, saved);
+      render();
+      setLabel(added ? "✅ 已记录" : (aiConfig().key ? "没认出来，点开大图重试" : "📷 发张照片就行"));
+      setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+    }catch(error){
+      console.error(error);
+      setLabel("照片没存下来");
+      setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+    }
   });
 
   // 每一顿后面的 ＋：就地展开一个输入框，往这一顿里加东西。
