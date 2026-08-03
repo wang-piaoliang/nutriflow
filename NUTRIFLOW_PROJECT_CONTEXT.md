@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v75`
+- 当前离线缓存：`nutriflow-pwa-v76`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -333,6 +333,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-03：**修云同步会吃掉刚录入的数据**（用户："我添加寿司郎，刷新一下就没了"）。`schedulePush` 有 600ms 防抖，而 `syncPull()` 开页面时**无条件**用服务端数据覆盖本地——加完立刻刷新，推送还没发出去，新页面一拉取就把本地刚写的盖没了。已复现：本地 2 条 → `syncPull()` → 0 条，期间一次 PUT 都没发生。**这个坑对 `diet_entries` 一样成立**，识别出来的餐食同样会这么丢。修法：① 新增 `nutriflow_sync_dirty`（**存 localStorage，才扛得住刷新**），改动的一瞬间就标脏；② `syncPull` 遇到脏文档改成**推上去**而不是拉下来；③ 推成功才清标记，失败就留着下次重推（用 `syncRevs` 防止推的过程中又改了被误清）；④ 服务端为空而本地有数据时也反推，防止刚开同步的设备被清空；⑤ `pagehide` 时用 `keepalive: true` 立刻把脏文档发出去。加了回归测试，已用 `git stash` 确认它在修复前会失败。离线缓存与版本号升至 v76。
+  - 顺带给测试的 vm stub 补了 `window.addEventListener` 和 `setTimeout/clearTimeout`——同步模块要用，缺了整个脚本在测试里直接抛错（这也正是这套 vm 测试的价值：纯正则断言发现不了）。
 
 - 2026-08-03：**在外就餐也能识别照片 + 下拉刷新**。用户反馈两件事，其实是同一处缺口：「上传了，没识别」和「寿司郎后面没写具体吃了什么」——照片传到了「在外就餐」卡片上，而那里既没有识别按钮（`openViewerFor` 只认 `diet:` 前缀）也没有食物字段。现在 `dining:<id>` 的照片也能识别，结果带店名写进饮食记录，卡片按 `diningId` 反查显示菜名（**按 id 不按店名**，因为那条记录可以不填店名）。另加**下拉刷新**（`initPullToRefresh`）：加到主屏后是 standalone 模式，Safari 自带的下拉刷新没有了，想换新版本只能杀掉 app 重开；现在滚到顶再下拉、松手即刷，并且先 `registration.update()` 催 service worker 去取新壳。`touchmove` 必须 `passive:false` 才拦得住 iOS 整页橡皮筋。离线缓存与版本号升至 v75。
   - **测试踩的坑**：`html` 上有 `scroll-behavior:smooth`，所以 `scrollTop = 400` 之后立刻读还是 0，我因此误判「滚到中间还会触发下拉刷新」。测滚动相关行为前先把 `scrollBehavior` 设成 `auto`。

@@ -43,12 +43,16 @@ async function runAppScript() {
     static now() { return FIXED_NOW; }
   }
   const context = {
-    window: {},
+    // The sync module registers a `pagehide` flush on window, so the stub needs
+    // addEventListener — without it the whole script throws at load time.
+    window: { addEventListener() {} },
     navigator: {},
     location: { protocol: "http:" },
     console: { log() {}, warn() {}, error() {} },
     Date: FixedDate,
     crypto: { randomUUID: () => `id-${store.size}-${Math.random().toString(36).slice(2)}` },
+    // The sync module debounces pushes; the vm realm has no timers of its own.
+    setTimeout, clearTimeout,
     localStorage: {
       getItem: (key) => (store.has(key) ? store.get(key) : null),
       setItem: (key, value) => store.set(key, value),
@@ -403,6 +407,43 @@ test("shows what was eaten on an eating-out record", async () => {
   assert.equal(context.diningItems(anon).join(" · "), "");
 });
 
+test("never lets a pull overwrite local edits that have not been pushed", async () => {
+  const { context, evaluate } = await runAppScript();
+
+  // Adding an eating-out record and refreshing right away used to lose it:
+  // the push is debounced 600ms, so the reload's syncPull() fetched the older
+  // server copy and wrote it straight over the local one.
+  const requests = [];
+  const server = { diet_entries: [], dining: [], remaining: {} };
+  context.fetch = async (url, options) => {
+    const key = String(url).split("/doc/")[1];
+    requests.push(`${options?.method || "GET"} ${key}`);
+    if (options?.method === "PUT") {
+      server[key] = JSON.parse(options.body).value;
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    return { ok: true, status: 200, json: async () => ({ value: server[key] }) };
+  };
+  context.localStorage.setItem("nutriflow_sync_token", "t");
+
+  context.addDining({ date: "2026-08-03", place: "寿司郎", price: 168 });
+  assert.equal(evaluate("dirtyDocs()").includes("dining"), true, "改动后要立刻标脏");
+
+  await context.syncPull();
+
+  assert.equal(evaluate("diningEntries.length"), 1, "本地这条不能被服务端旧数据覆盖");
+  assert.equal(server.dining.length, 1, "反过来要把本地推上去");
+  assert.ok(requests.includes("PUT dining"));
+  assert.ok(!requests.includes("GET dining"), "脏文档根本不该去拉");
+  assert.equal(evaluate("dirtyDocs()").length, 0, "推成功后清标记");
+
+  // A device that has nothing local still pulls normally.
+  server.dining = [{ id: "x", date: "2026-08-01", place: "别家", price: 50 }];
+  evaluate("diningEntries.length = 0");
+  await context.syncPull();
+  assert.equal(evaluate("diningEntries[0].place"), "别家");
+});
+
 test("keeps the recognition prompt's hard-won rules", async () => {
   const html = await readFile(
     new URL("../public/nutriflow.html", import.meta.url),
@@ -575,7 +616,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v75"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v76"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
