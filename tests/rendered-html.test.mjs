@@ -396,6 +396,12 @@ test("keeps the recognition prompt's hard-won rules", async () => {
 
   // Recognition is opt-in per photo. Uploading still never transmits anything.
   assert.match(html, /只有你在某张照片上主动点「识别」/);
+
+  // Gemini retires dated model ids: the pinned gemini-2.5-flash started
+  // returning 404 "no longer available to new users" for keys made in 2026-08.
+  // Nobody maintains this app, so the URL must use a moving alias.
+  assert.match(html, /models\/gemini-[a-z-]*latest:generateContent/);
+  assert.doesNotMatch(html, /models\/gemini-\d/);
 });
 
 test("merges manually added meals into the day", async () => {
@@ -538,7 +544,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v72"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v73"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

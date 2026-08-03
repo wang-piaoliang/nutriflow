@@ -863,7 +863,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
         <div class="sync-form">
           <select id="aiProvider" aria-label="模型提供商">
             <option value="qwen">通义千问 · 国内直连</option>
-            <option value="gemini">Google Gemini · 每天 1500 次免费</option>
+            <option value="gemini">Google Gemini · 认得更全</option>
           </select>
           <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" id="aiSave">保存</button>
@@ -969,7 +969,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v72</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v73</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1311,7 +1311,8 @@ async function callQwen(key, base64, mime){
     method: "POST",
     headers: {"Content-Type": "application/json", "Authorization": `Bearer ${key}`},
     body: JSON.stringify({
-      model: "qwen-vl-plus",
+      // qwen3-vl-plus 实测 1.2s，上一代 qwen-vl-plus 要 8.5s 且认出的东西更少。
+      model: "qwen3-vl-plus",
       messages: [{role: "user", content: [
         {type: "image_url", image_url: {url: `data:${mime};base64,${base64}`}},
         {type: "text", text: RECOGNIZE_PROMPT},
@@ -1323,7 +1324,10 @@ async function callQwen(key, base64, mime){
   return data?.choices?.[0]?.message?.content || "";
 }
 async function callGemini(key, base64, mime){
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+  // 必须用 gemini-flash-latest 这种别名，不要钉死版本号。
+  // 原来钉的 gemini-2.5-flash 到 2026-08 已经对新 key 返回 404
+  // 「no longer available to new users」——这个 app 没人长期维护，别名才不会哪天突然坏掉。
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(key)}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
