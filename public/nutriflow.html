@@ -323,9 +323,33 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 /* 每周一段：这一周的汇总（日期范围 + 分类磁贴）排在这一周的每天上面，
    段与段之间一条细线隔开，最近的在最前。 */
-.week-block + .week-block{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
-.week-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
-.week-block-head strong{font-size:14px;font-weight:600}
+/* 周是比天更高一层的分组，标题就得比天更有份量。原来是 14px 的细字加一条
+   分隔线，反而比下面 16px 的日期还弱，层级看着是反的（用户："太丑了，
+   标题设计和字没存在感，还不如每日的显眼"）。现在做成一条实心绿标头。 */
+.week-block + .week-block{margin-top:22px}
+.week-block-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:0 0 10px;
+  padding:10px 13px;
+  border-radius:10px;
+  background:var(--hero-bg);
+  color:#fff;
+}
+.week-block-head strong{font-size:17px;font-weight:700;letter-spacing:.3px}
+/* 右边那个「N 种 · M 天」用半透明胶囊，别再是一团灰字。 */
+.week-block-head span{
+  flex:0 0 auto;
+  padding:3px 9px;
+  border-radius:999px;
+  background:rgba(255,255,255,.16);
+  color:#fff;
+  font-size:12px;
+  font-weight:600;
+  white-space:nowrap;
+}
 /* 磁贴和这周第一天之间留口气，别粘在一起。 */
 .week-block .week-metrics + .diet-day{margin-top:12px}
 /* 大图查看器底部的识别按钮。定位在图片下方、查看器内，点它不能穿透到背景的关闭手势。 */
@@ -1045,7 +1069,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v79</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v80</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1373,6 +1397,54 @@ function blobToBase64(blob){
   });
 }
 // 模型有时会把 JSON 包在 ```json 围栏里，或前后带一句话。取第一个完整的 {...}。
+// 小票识别。和餐食那套是两回事：这里要读的是文字，不是猜食物。
+const RECEIPT_PROMPT = `看这张超市小票（或线上订单截图），把上面买的每一件商品列出来。
+只返回 JSON，不要解释、不要 markdown 代码块。格式：
+{"store":"门店名","date":"YYYY-MM-DD","items":[{"name":"商品名","amount":"重量或规格","price":实付金额}]}
+规则：
+1. name 用小票上的商品名，去掉促销词和编号，保留品牌（例如"盒马日日鲜 冰鲜鸡小胸"）。
+2. amount 写小票上的重量或规格，例如 "400g"、"1kg"、"约500g"、"550ml×12"。**小票上没写就留空字符串**，绝对不要自己估。
+3. price 写这一行的**实付小计金额**（数字，不带货币符号），不是单价、不是原价。看不清就写 null。
+4. 购物袋、包装费、餐具费也照实列出来，不要跳过。
+5. date 用小票上的交易日期；只有时间没有日期、或者看不清，就留空字符串。
+6. store 用小票抬头的门店名；没有就留空字符串。
+7. **认不出的行就不写，绝对不要编造商品**。宁可少列几件，也不要出现小票上没有的东西。`;
+function parseReceipt(text){
+  const match = String(text || "").match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("模型没有返回 JSON，换一张更清楚的小票照片试试。");
+  let parsed;
+  try{ parsed = JSON.parse(match[0]); }
+  catch{ throw new Error("模型返回的不是合法 JSON。"); }
+  const items = (Array.isArray(parsed.items) ? parsed.items : [])
+    .map(item => {
+      if (!item || typeof item !== "object") return null;
+      const name = String(item.name || "").trim();
+      if (!name) return null;
+      const price = item.price === null || item.price === undefined || item.price === ""
+        ? null
+        : Number(item.price);
+      return {name, amount: String(item.amount || "").trim(), price: Number.isFinite(price) ? price : null};
+    })
+    .filter(Boolean);
+  return {
+    store: String(parsed.store || "").trim(),
+    // 日期得是 YYYY-MM-DD，不然填进 <input type="date"> 会被丢掉。
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.date || "").trim()) ? String(parsed.date).trim() : "",
+    items,
+  };
+}
+async function recognizeReceipt(blob){
+  const {provider, key} = aiConfig();
+  if (!key) throw new Error("还没填 API key，去「目标」页最下面的「🔍 照片识别」配置。");
+  const base64 = await blobToBase64(blob);
+  const mime = blob.type || "image/jpeg";
+  const raw = provider === "gemini"
+    ? await callGemini(key, base64, mime, RECEIPT_PROMPT)
+    : await callQwen(key, base64, mime, RECEIPT_PROMPT);
+  const result = parseReceipt(raw);
+  if (!result.items.length) throw new Error("没从这张照片里读出商品，可能不是小票或者太糊。");
+  return result;
+}
 function parseRecognition(text){
   const match = String(text).match(/\{[\s\S]*\}/);
   if (!match) throw new Error("模型没有返回 JSON");
@@ -1467,6 +1539,37 @@ async function describeApiError(response, label){
     return `${label} 限流了（HTTP 429），免费额度可能用完或请求太频繁，过一会再试。`;
   }
   return `${label} 返回 HTTP ${response.status}${detail ? `：${detail}` : ""}`;
+}
+// 上传即识别。用户的原话是"发了图就不要让必填别的了，直接识别就能出来"，
+// 以及"寿司郎是我填的，应该根据别的一样，识别一下我上传的图吃了什么"。
+// 所以只要配了 key，餐食照片和「在外就餐」照片一存下来就自动识别、直接写进记录，
+// 不用再点开大图按一次。没配 key 就什么都不发生（照片仍然只躺在本机）。
+// 认不出来也不弹窗打断——大图里那个「识别」按钮还在，想重试随时点。
+function ownerContext(owner){
+  if (typeof owner !== "string") return null;
+  if (owner.startsWith("diet:")) return {date: owner.slice(5)};
+  if (owner.startsWith("dining:")){
+    const entry = diningEntries.find(item => item.id === owner.slice(7));
+    if (entry?.date) return {date: entry.date, place: entry.place || "", diningId: entry.id};
+  }
+  return null;   // 小票照片走另一套识别，不在这里
+}
+async function autoRecognize(owner, saved){
+  const context = ownerContext(owner);
+  if (!context || !aiConfig().key) return 0;
+  let added = 0;
+  for (const photo of saved){
+    if (!photo?.blob || recognizedIds().includes(photo.id)) continue;
+    try{
+      const {meal, items} = await recognizePhoto(photo.blob);
+      addDietEntry(context.date, meal, items, context.place, context.diningId);
+      markRecognized(photo.id);
+      added += 1;
+    }catch(error){
+      console.error("自动识别失败", error);
+    }
+  }
+  return added;
 }
 async function recognizePhoto(blob){
   const {provider, key} = aiConfig();
@@ -1820,8 +1923,10 @@ function bindDiningForm(){
     placeEl.value = ""; priceEl.value = "";
     await renderDining();
     if (entry && files.length){
-      await Promise.all(files.map(file => savePrivatePhoto(diningOwner(entry.id), file)));
+      const owner = diningOwner(entry.id);
+      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
       await renderDining();
+      if (await autoRecognize(owner, saved)){ render(); await renderDining(); }
     }
   });
 }
@@ -2048,6 +2153,8 @@ async function savePrivatePhoto(ownerId, file){
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || new Error("无法保存本机照片"));
   });
+  // 返回 id 和 blob，好让调用方接着自动识别。
+  return {id, blob};
 }
 async function removePrivatePhoto(id){
   const database = await openPhotoDatabase();
@@ -2127,8 +2234,11 @@ function bindPhotoControls(container, rerender){
       input.value = "";
       if (!files.length) return;
       try{
-        await Promise.all(files.map(file => savePrivatePhoto(input.dataset.photoOwner, file)));
+        const owner = input.dataset.photoOwner;
+        const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
         rerender();
+        // 存完立刻识别，识别出东西再刷一次界面。
+        if (await autoRecognize(owner, saved)){ render(); rerender(); }
       }catch(error){
         console.error(error);
         window.alert("照片未能保存到这台设备。请检查 Safari 的网站数据权限后重试。");
@@ -3009,9 +3119,34 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     if (linesEl.children.length > 1) del.closest(".buy-line").remove();
     else del.closest(".buy-line").querySelectorAll("input").forEach(input => { input.value = ""; });
   });
-  photoEl?.addEventListener("change", () => {
+  // 选了小票照片就直接识别、把表单填好。用户："如果发了图就不要让必填别的了，
+  // 直接识别就能出来"。识别完仍然是可编辑的草稿，点保存才真正入账——小票 OCR
+  // 认错价格是常事，不给人改的机会不行。
+  photoEl?.addEventListener("change", async () => {
     pendingPhotos = Array.from(photoEl.files || []);
     showPending();
+    if (!pendingPhotos.length || !aiConfig().key) return;
+    const hintEl = document.querySelector(".buy-add-hint");
+    const hintText = hintEl?.textContent;
+    if (hintEl) hintEl.textContent = "正在识别小票…";
+    try{
+      const receipt = await recognizeReceipt(pendingPhotos[0]);
+      if (receipt.date && dateEl) dateEl.value = receipt.date;
+      if (receipt.store && storeEl) storeEl.value = receipt.store;
+      linesEl.innerHTML = receipt.items.map(() => lineMarkup()).join("") || lineMarkup();
+      Array.from(linesEl.querySelectorAll(".buy-line")).forEach((row, index) => {
+        const item = receipt.items[index];
+        if (!item) return;
+        row.querySelector(".buy-name").value = item.name;
+        row.querySelector(".buy-amount").value = item.amount;
+        row.querySelector(".buy-price").value = item.price == null ? "" : item.price;
+      });
+      if (hintEl) hintEl.textContent = `识别出 ${receipt.items.length} 件，核对一下再保存。金额认错是常事，改完再点保存。`;
+    }catch(error){
+      console.error(error);
+      if (hintEl) hintEl.textContent = `识别失败：${error.message} 也可以直接手填。`;
+      setTimeout(() => { if (hintEl && hintText) hintEl.textContent = hintText; }, 6000);
+    }
   });
 
   saveBtn.addEventListener("click", async () => {
