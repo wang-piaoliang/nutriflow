@@ -328,13 +328,10 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .week-block .week-metrics + .diet-day{margin-top:12px}
 /* 大图查看器底部的识别按钮。定位在图片下方、查看器内，点它不能穿透到背景的关闭手势。 */
 .photo-viewer-actions{
-  position:absolute;
-  left:0;
-  right:0;
-  bottom:calc(16px + env(safe-area-inset-bottom));
   display:grid;
   gap:8px;
   justify-items:center;
+  margin-top:12px;
   padding:0 16px;
 }
 .photo-viewer-actions button{
@@ -679,12 +676,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   inset:0;
   z-index:100;
   display:grid;
-  place-items:center;
-  padding:52px 12px 12px;
+  /* 上面一行放图、下面一行放识别操作条。操作条曾经是 absolute+bottom，
+     竖构图照片（手机截图那种 9:19.5）会顶满 max-height，底下 95px 被按钮盖住。
+     用网格让图片自己让出空间；没有操作条时第二行是 0，图片照样占满。
+     必须是 minmax(0,1fr) 不能是 1fr——1fr 的最小值是内容高度，图片行压不下去，
+     操作条会被顶到视口外面（实测跑到 824→914，而屏高只有 812）。 */
+  grid-template-rows:minmax(0,1fr) auto;
+  justify-items:center;
+  align-items:center;
+  padding:52px 12px calc(12px + env(safe-area-inset-bottom));
   background:rgba(0,0,0,.9);
 }
 [hidden]{display:none!important}
-.photo-viewer img{display:block;max-width:min(100%,900px);max-height:calc(100vh - 64px);margin:auto;object-fit:contain;cursor:zoom-out}
+.photo-viewer img{display:block;max-width:min(100%,900px);max-height:100%;margin:auto;object-fit:contain;cursor:zoom-out}
 .photo-viewer-close{position:absolute;top:8px;right:8px;width:34px;height:34px;border:0;border-radius:50%;background:#fff;color:#111;font-size:22px;line-height:1}
 .note{
   margin-top:10px;
@@ -855,11 +859,11 @@ h3{margin:0;font-size:15px;letter-spacing:0}
           <h2>🔍 照片识别</h2>
           <span class="subtle" id="aiStatus">未配置</span>
         </div>
-        <div class="note">配置后，点开饮食页任意一张餐食照片，就能让模型认出里面的食物、直接写进当天记录。<strong>照片默认仍然只存本机</strong>——只有你在某张照片上主动点「识别」，那一张才会发给模型。key 存在这台设备，不进 GitHub。</div>
+        <div class="note">配置后，点开饮食页的餐食照片就能识别食物、直接写进当天记录。<strong>只有你在某张照片上主动点「识别」，那一张才会发出去</strong>，其余照片和 key 都只留在这台设备。</div>
         <div class="sync-form">
           <select id="aiProvider" aria-label="模型提供商">
-            <option value="qwen">通义千问 Qwen-VL（阿里云百炼 · 国内直连 · 有免费额度）</option>
-            <option value="gemini">Google Gemini（每天 1500 次永久免费）</option>
+            <option value="qwen">通义千问 · 国内直连</option>
+            <option value="gemini">Google Gemini · 每天 1500 次免费</option>
           </select>
           <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" id="aiSave">保存</button>
@@ -965,7 +969,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v71</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v72</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
