@@ -535,16 +535,23 @@ test("files bone-in cuts as meat, not as whatever else is in the dish name", asy
 });
 
 test("counts the foods behind each weekly tile", async () => {
-  const { context } = await runAppScript();
+  const { context, evaluate } = await runAppScript();
   const week = context.tallyByCategory([
     { date: "2026-08-04", meals: [{ name: "晚餐", items: ["玉米排骨汤", "干煸四季豆", "米饭", "排骨"] }] },
   ]);
+  // 玉米排骨汤 spans two categories, so it is counted in both — the corn used to
+  // vanish entirely. And a tap lists the INGREDIENT, not the dish: 排骨 / 玉米.
   const meat = week.counts.find((entry) => entry.rule.name === "鱼禽瘦肉");
-  // Both land in 鱼禽瘦肉 now. They are distinct names so they count as two
-  // kinds; the tile lists them so a tap shows what is actually behind the number.
-  assert.equal(meat.count, 2);
-  assert.equal(meat.names.join(" · "), "玉米排骨汤 · 排骨");
-  assert.equal(week.counts.find((entry) => entry.rule.name === "主食").names.join(" · "), "米饭");
+  assert.equal(meat.names.join(" · "), "排骨");
+  assert.equal(meat.count, 1);
+  const staple = week.counts.find((entry) => entry.rule.name === "主食");
+  assert.equal(staple.names.join(" · "), "玉米 · 米饭", "汤里的玉米也要算进主食");
+
+  // A name matching one category only still shows the whole name, and 黄瓜 must
+  // not leak into 水果坚果 via the bare 瓜 keyword.
+  assert.deepEqual([...evaluate('itemTags("拍黄瓜")')], ["拍黄瓜"]);
+  assert.deepEqual([...evaluate('itemTags("番茄炒蛋")')], ["番茄", "蛋"]);
+  assert.deepEqual([...evaluate('itemTags("鸡蛋")')], ["鸡蛋"]);
 });
 
 test("keeps the recognition prompt's hard-won rules", async () => {
@@ -723,7 +730,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v86"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v87"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

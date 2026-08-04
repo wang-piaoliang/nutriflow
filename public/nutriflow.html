@@ -1177,7 +1177,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v86</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v87</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1487,7 +1487,7 @@ const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这
 严格按这些规则：
 1. 写具体菜名，不要笼统的类别。看到烤鸭就写"烤鸭"，不要写"鸭肉"；看到梅花肉写"梅花肉"，不要写"猪肉"。
 2. 如果具体菜名里不含食材类别词（比如"罗宋汤""狮子头"），用 {"name":"具体菜名","as":"归类词"} 的形式，as 填能代表食材大类的词（如"牛肉"）。菜名本身已含类别词的（如"烤鸭"含"鸭"）直接写字符串即可。
-2b. **菜名里同时出现两类食材时，必须用 as 指明主料**，否则会被归错类。例如"玉米排骨汤"要写 {"name":"玉米排骨汤","as":"排骨"}，"番茄炒蛋"要写 {"name":"番茄炒蛋","as":"蛋"}。
+2b. **菜名里同时出现两类食材时，as 要写成数组，主料排最前**，否则配料那一类会被漏掉。例如"玉米排骨汤"写 {"name":"玉米排骨汤","as":["排骨","玉米"]}，"番茄炒蛋"写 {"name":"番茄炒蛋","as":["蛋","番茄"]}。只有一种食材的菜照旧写字符串。
 3. 蛋一律写"蛋"或"煎蛋""蒸蛋"，**绝对不要写"鸡蛋"**——"鸡"字会让它被错误归到禽肉类。
 4. **主食必须写全**：米饭、杂粮饭、面条、米线、馒头、红薯等，只要照片里有就一定要列出来。这一条经常被漏，特别注意。
 5. 不要编造重量或克数，只写食物名称。
@@ -1569,6 +1569,13 @@ function parseRecognition(text){
       if (typeof item === "string") return item.trim();
       if (item && typeof item.name === "string"){
         const name = item.name.trim();
+        // as 可以是字符串，也可以是数组（横跨两类的菜）。
+        if (Array.isArray(item.as)){
+          const list = item.as.map(tag => String(tag || "").trim()).filter(Boolean);
+          if (list.length > 1) return {name, as: list};
+          if (list.length === 1) return list[0] === name ? name : {name, as: list[0]};
+          return name;
+        }
         const as = typeof item.as === "string" ? item.as.trim() : "";
         return as && as !== name ? {name, as} : name;
       }
@@ -2133,11 +2140,56 @@ function allDietRecords(){
 // 前者显示什么就按什么归类；后者显示具体菜名，归类和统计用隐藏标签 `as`。
 // 这样既能看清那天到底吃的什么菜，"本周吃到" 里又不会把烤鸭和鸭肉算成两种。
 function itemLabel(item){return typeof item === "string" ? item : item.name}
-function itemTag(item){return typeof item === "string" ? item : (item.as || item.name)}
-function dietItemRank(item){
-  const tag = itemTag(item);
+function itemTag(item){return itemTags(item)[0]}
+// 一道菜可能横跨两类：「玉米排骨汤」里既有排骨也有玉米。as 允许写成数组
+// （["排骨","玉米"]），排在最前的算主料——决定它在餐次里排哪儿；
+// 统计时则每一类都算，否则玉米这样的配料就凭空消失了。
+// 一个菜名里横跨几类时，按命中的关键词拆开。这样**已经记进去的旧数据**也能
+// 立刻算对，不用重记一遍——"玉米排骨汤"会拆成 ["排骨","玉米"]。
+// 只命中一类的照旧返回整个菜名（"鸡胸肉"就显示"鸡胸肉"，不是"鸡"）。
+function splitNameTags(name){
+  const clean = String(name || "").trim();
+  if (!clean) return [];
+  // "鸡蛋"里的"鸡"会命中禽肉——这是这个项目的老坑，先按"蛋"归一化掉。
+  const probe = clean.replace(/鸡蛋/g, "蛋");
+  const hits = [];
+  dietItemCategoryRules.forEach((rule, rank) => {
+    // 同一类里取最长的那个命中词，"四季豆"优先于"豆"。
+    const keyword = rule.keywords
+      .filter(word => probe.includes(word))
+      .sort((a, b) => b.length - a.length)[0];
+    if (keyword) hits.push({rank, keyword});
+  });
+  if (hits.length <= 1) return [clean];
+  // 一个命中词是另一个的子串时，说明它们指的是同一样东西，只是有粗有细——
+  // 丢掉粗的那个。"黄瓜"命中蔬菜、"瓜"命中水果坚果，不去掉就会把黄瓜也算成水果
+  // （项目里早就有这条戒律："冬瓜"不能被"瓜"判成水果）。
+  const kept = hits.filter(hit =>
+    !hits.some(other => other !== hit && other.keyword.length > hit.keyword.length && other.keyword.includes(hit.keyword)));
+  return kept.length > 1 ? kept.map(hit => hit.keyword) : [clean];
+}
+function itemTags(item){
+  if (typeof item === "string") return splitNameTags(item);
+  const as = item && item.as;
+  if (Array.isArray(as)){
+    const list = as.map(tag => String(tag || "").trim()).filter(Boolean);
+    if (list.length) return list;
+  }
+  if (typeof as === "string" && as.trim()) return [as.trim()];
+  return splitNameTags((item && item.name) || "");
+}
+function rankOfTag(tag){
   const index = dietItemCategoryRules.findIndex(rule => rule.keywords.some(keyword => tag.includes(keyword)));
   return index < 0 ? dietItemCategoryRules.length : index;
+}
+// 这道菜落进的所有分类（去重、按分类顺序）。
+function dietItemRanks(item){
+  const ranks = itemTags(item).map(rankOfTag).filter(rank => rank < dietItemCategoryRules.length);
+  return ranks.length ? Array.from(new Set(ranks)).sort((a, b) => a - b) : [dietItemCategoryRules.length];
+}
+// 主分类：决定它在餐次里排哪儿。取第一个标签，也就是模型给的主料。
+function dietItemRank(item){
+  return rankOfTag(itemTag(item));
 }
 function sortMealItems(items){
   return items
@@ -2706,11 +2758,13 @@ function weekLabel(monday){
 function tallyByCategory(records){
   const eaten = dietItemCategoryRules.map(() => new Map());
   records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
-    const rank = dietItemRank(item);
-    // 按 tag 去重（同一样吃多次只算一种），但存菜名——点开时"玉米排骨汤"比"排骨"有信息量。
-    if (rank < dietItemCategoryRules.length && !eaten[rank].has(itemTag(item))){
-      eaten[rank].set(itemTag(item), itemLabel(item));
-    }
+    // 横跨两类的菜（玉米排骨汤）在两类里都算一次，否则配料那一类就白吃了。
+    // 按 tag 去重，**列出来的也是 tag（食材）不是菜名**——用户明确要求
+    // "点开的是食物，不是菜"：点「肉」看到的是"排骨"，点「主食」看到的是"玉米"。
+    itemTags(item).forEach(tag => {
+      const rank = rankOfTag(tag);
+      if (rank < dietItemCategoryRules.length) eaten[rank].set(tag, tag);
+    });
   })));
   const counts = dietItemCategoryRules
     .map((rule, index) => ({rule, count:eaten[index].size, names:Array.from(eaten[index].values())}))
