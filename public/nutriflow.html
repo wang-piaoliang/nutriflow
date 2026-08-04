@@ -406,6 +406,16 @@ summary.week-block-head::after{
   text-align:right;
   white-space:nowrap;
 }
+/* 分类磁贴一行排完（用户："四个小 tab 看能不能显示成一行，现在是两行但有点空"）。
+   列数按实际类数走，窄屏下字号自动收一点，保证 5 类也塞得下。 */
+.week-metrics{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.week-metrics .metric{padding:10px 6px;text-align:center}
+#dietLog .week-metrics .metric b{font-size:16px}
+#dietLog .week-metrics .metric span{font-size:11px;margin-top:2px}
+@media (max-width:400px){
+  #dietLog .week-metrics .metric b{font-size:15px}
+  #dietLog .week-metrics .metric span{font-size:10px}
+}
 /* 磁贴和这周第一天之间留口气，别粘在一起。 */
 .week-block .week-metrics + .diet-day{margin-top:12px}
 /* 大图查看器底部的识别按钮。定位在图片下方、查看器内，点它不能穿透到背景的关闭手势。 */
@@ -617,16 +627,30 @@ summary.week-block-head::after{
   white-space:nowrap;
 }
 .tab-chip.active{background:var(--green);border-color:var(--green);color:white}
+/* 食材搜索：标题里只放一个小放大镜，点开才露出输入框。 */
+.food-search-btn{margin-right:8px;padding:0;border:none;background:none;font-size:15px;line-height:1}
+.food-search{
+  width:100%;
+  box-sizing:border-box;
+  margin:8px 0 4px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface-2);
+  color:var(--text);
+  /* 16px，否则 iOS 聚焦时会自动放大整页 */
+  font-size:16px;
+}
 .bars{display:grid;gap:12px}
 .bar-row{display:grid;gap:6px}
 .bar-head{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px}
 .price-group{display:grid;gap:10px;padding:12px;border-radius:8px;background:var(--surface-2)}
 .price-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
-.price-group-head strong{font-size:15px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.price-group-head strong{font-size:15px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .price-group-head span{white-space:nowrap}
 /* 「日期 门店 · 品名」必须一行显示完（用户要求）：不换行，超长用省略号截断。 */
 .bar-head span{min-width:0;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar-head b{white-space:nowrap;font-size:14px}
+.bar-head b{white-space:nowrap;font-size:14px;font-weight:500}
 .bar-note{color:var(--muted);font-size:12px;line-height:1.35}
 .track{height:8px;background:var(--surface-2);border-radius:8px;overflow:hidden}
 .fill{height:100%;border-radius:8px;background:var(--green);width:0}
@@ -851,10 +875,11 @@ summary.week-block-head::after{
 .meal-entry{padding-top:10px;margin-top:10px;border-top:1px solid var(--line)}
 .meal-entry b{display:block;font-size:14px}
 .meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
-.meal-place{color:var(--text);font-weight:600}
-.meal-price{color:var(--text);font-weight:600;white-space:nowrap}
-/* 手动补记的食物在食物列表里用主色轻微区分，能看出是自己加的，但不另起一行、不加边框叉号。 */
-.added-item{color:var(--green)}
+.meal-place{color:var(--text)}
+.meal-price{color:var(--text);white-space:nowrap}
+/* 曾经用绿色标出「自己加的」，但现在几乎每一样都是识别来的，全绿反而没了区分
+   意义，整页食物名都发绿（用户两次反馈）。回到和其它食物一样的灰。 */
+.added-item{color:inherit}
 .bottom-nav{
   position:fixed;
   left:50%;
@@ -1118,8 +1143,9 @@ summary.week-block-head::after{
       <article class="card">
         <div class="section-title has-sticky-tabs">
           <h2>食材营养价值</h2>
-          <span class="subtle">保守参考 · 满分 5.0</span>
+          <span class="subtle"><button class="food-search-btn" type="button" id="foodSearchBtn" title="搜索食材" aria-label="搜索食材">🔍</button>保守参考 · 满分 5.0</span>
         </div>
+        <input type="search" class="food-search" id="foodSearch" placeholder="搜食材名，比如 牛肉、菠菜" aria-label="搜索食材" hidden>
         <div class="note">权威指南不会给单个食材逐一排名。本页仅按指南契合度、营养密度、轮换价值和个人目标做保守参考；相差 0.1–0.2 分不代表明显优劣。新鲜蔬果整体都值得常吃，重点是每天达量和经常换种类。</div>
         <div class="tabs" id="foodTabs"></div>
         <div class="list" id="foodList"></div>
@@ -1127,7 +1153,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v84</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v85</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2661,7 +2687,8 @@ function tallyByCategory(records){
   return {counts, total: counts.reduce((sum, entry) => sum + entry.count, 0)};
 }
 function weekTiles(counts){
-  return `<div class="grid3 week-metrics">
+  // 一行排完，不管是 4 类还是 5 类。3 列时 5 个磁贴要占两行，第二行空一大半。
+  return `<div class="week-metrics">
         ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
       </div>`;
 }
@@ -3070,9 +3097,17 @@ function renderFoods(){
       renderFoods();
     });
   });
+  // 搜索时跨全部分类找，把分类筛选让位给关键词——不然还得先猜它在哪一类。
+  // 名字、别名（variants）、营养点都参与匹配。
+  const keyword = (document.getElementById("foodSearch")?.value || "").trim().toLowerCase();
   const list = foods
-    .filter(food => food.category === activeFoodCategory)
+    .filter(food => keyword
+      ? [food.name, food.variants, food.nutrients, food.feature]
+          .filter(Boolean).join(" ").toLowerCase().includes(keyword)
+      : food.category === activeFoodCategory)
     .sort((a,b) => b.score - a.score || a.name.localeCompare(b.name, "zh-CN"));
+  // 搜索时分类筛选栏没意义，收起来。
+  tabs.hidden = Boolean(keyword);
   document.getElementById("foodList").innerHTML = list.map(food => `
     <div class="item tall">
       <span class="icon">${iconForFood(food.id)}</span>
@@ -3109,6 +3144,23 @@ document.getElementById("weekFoldAll")?.addEventListener("click", () => {
 });
 // 单独折叠某一周之后，按钮文案要跟着变。details 的 toggle 不冒泡，用捕获。
 document.getElementById("dietLogList")?.addEventListener("toggle", syncWeekFoldButton, true);
+// 食材搜索。这两个元素在 renderFoods 重渲染的范围之外，只绑一次。
+(function initFoodSearch(){
+  const btn = document.getElementById("foodSearchBtn");
+  const box = document.getElementById("foodSearch");
+  if (!btn || !box) return;
+  btn.addEventListener("click", () => {
+    box.hidden = !box.hidden;
+    if (box.hidden){
+      // 收起来时要清空并重渲染，否则分类栏一直被隐藏、列表还停在搜索结果上。
+      box.value = "";
+      renderFoods();
+    } else {
+      box.focus();
+    }
+  });
+  box.addEventListener("input", () => renderFoods());
+})();
 document.querySelectorAll(".nav-btn").forEach(button => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav-btn").forEach(item => item.classList.remove("active"));
