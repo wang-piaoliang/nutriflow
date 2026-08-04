@@ -409,6 +409,21 @@ summary.week-block-head::after{
 /* 分类磁贴一行排完（用户："四个小 tab 看能不能显示成一行，现在是两行但有点空"）。
    列数按实际类数走，窄屏下字号自动收一点，保证 5 类也塞得下。 */
 .week-metrics{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+/* 磁贴现在是按钮，去掉浏览器默认边框/字体，保持原来的样子。 */
+.week-metrics .metric{border:none;font:inherit;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.week-metrics .metric[aria-expanded="true"]{outline:2px solid var(--green);outline-offset:-2px}
+/* 点开后列出这一类的具体食物。 */
+.metric-names{
+  margin-top:8px;
+  padding:10px 12px;
+  border-radius:8px;
+  background:var(--surface-2);
+  color:var(--text);
+  font-size:13px;
+  line-height:1.6;
+  overflow-wrap:anywhere;
+}
+.hero .metric-names{background:rgba(255,255,255,.92)}
 .week-metrics .metric{padding:10px 6px;text-align:center}
 #dietLog .week-metrics .metric b{font-size:16px}
 #dietLog .week-metrics .metric span{font-size:11px;margin-top:2px}
@@ -830,8 +845,12 @@ summary.week-block-head::after{
 .buy-line input{min-width:0}
 .buy-line-del{padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px}
 .buy-add-actions{display:flex;gap:8px;margin-top:10px}
-#buyAddLine{flex:0 0 auto;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:14px}
-#buySave{flex:1;padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+#buyAddLine{flex:1;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:14px}
+#buySave{width:100%;margin-top:10px;padding:12px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+/* 手填是退路，标题做轻。 */
+.buy-add-manual>summary{padding:4px 0;color:var(--muted);font-size:13px;cursor:pointer;list-style:none}
+.buy-add-manual>summary::-webkit-details-marker{display:none}
+.buy-add-manual .buy-add-row{margin-top:8px}
 .buy-add-hint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .receipt-del{margin:8px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:13px}
 /* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
@@ -1007,6 +1026,14 @@ summary.week-block-head::after{
 
       <article class="card">
         <div class="section-title">
+          <h2>每周采购目标</h2>
+          <span class="subtle">按分类汇总</span>
+        </div>
+        <div class="grid2" id="weeklySummary"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
           <h2>☁️ 云同步</h2>
           <span class="subtle" id="syncStatus">未配置</span>
         </div>
@@ -1064,17 +1091,22 @@ summary.week-block-head::after{
         <details class="buy-add" id="buyAddBox">
           <summary>＋ 记一次采购</summary>
           <div class="buy-add-body">
-            <div class="buy-add-row">
-              <input type="date" id="buyDate" aria-label="日期">
-              <input type="text" id="buyStore" placeholder="在哪买的" autocomplete="off">
-              <label class="photo-add-mini" id="buyPendingPhoto" title="小票照片，点保存时一起存" aria-label="小票照片，点保存时一起存">📷<input class="photo-input" type="file" accept="image/*" multiple id="buyPhotoInput"></label>
-            </div>
-            <div id="buyLines"></div>
-            <div class="buy-add-actions">
-              <button type="button" id="buyAddLine">＋ 再加一件</button>
-              <button type="button" id="buySave">保存这次采购</button>
-            </div>
-            <p class="buy-add-hint">重量填了才能进「单价对比」（写 500g、1kg、约300g 都行），不填也能存，只是比不了价。</p>
+            <!-- 和饮食页一个规矩：拍张小票就够了，日期店名商品都从照片里读。
+                 手填是退路，收进下面那个折叠里（用户："和饮食一样，应该是上传图为主"）。 -->
+            <label class="diet-form-photo" id="buyPendingPhoto" title="拍小票，自动读出商品和价格" aria-label="拍小票，自动读出商品和价格">📷 拍张小票就行<input class="photo-input" type="file" accept="image/*" multiple id="buyPhotoInput"></label>
+            <p class="buy-add-hint">识别完会填成草稿，核对一下再点保存。没配 key 或者认不出来，也可以只存照片、回头再补。</p>
+            <details class="buy-add-manual" id="buyManual">
+              <summary>或者手动填</summary>
+              <div class="buy-add-row">
+                <input type="date" id="buyDate" aria-label="日期">
+                <input type="text" id="buyStore" placeholder="在哪买的" autocomplete="off">
+              </div>
+              <div id="buyLines"></div>
+              <div class="buy-add-actions">
+                <button type="button" id="buyAddLine">＋ 再加一件</button>
+              </div>
+            </details>
+            <button type="button" id="buySave">保存这次采购</button>
           </div>
         </details>
         <div id="purchaseHistory"></div>
@@ -1133,14 +1165,6 @@ summary.week-block-head::after{
   <section class="view" id="foods">
     <div class="stack">
       <article class="card">
-        <div class="section-title">
-          <h2>每周采购目标</h2>
-          <span class="subtle">按分类汇总</span>
-        </div>
-        <div class="grid2" id="weeklySummary"></div>
-      </article>
-
-      <article class="card">
         <div class="section-title has-sticky-tabs">
           <h2>食材营养价值</h2>
           <span class="subtle"><button class="food-search-btn" type="button" id="foodSearchBtn" title="搜索食材" aria-label="搜索食材">🔍</button>保守参考 · 满分 5.0</span>
@@ -1153,7 +1177,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v85</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v86</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1400,7 +1424,7 @@ const dietRecords = [
 // 规则按顺序匹配，靠前的先命中：蔬菜要排在水果前面，"冬瓜" 才不会被 "瓜" 判成水果；
 // 毛豆归在蛋奶豆、只匹配蛋奶豆关键词，和蔬菜不冲突，所以蔬菜挪到蛋奶豆前面不影响归类。
 const dietItemCategoryRules = [
-  {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","蛙","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","肉"]},
+  {icon:"🥩", name:"鱼禽瘦肉", keywords:["鱼","虾","贝","蟹","鱿鱼","墨鱼","牛肉","猪肉","羊肉","鸡","鸭","蛙","肉丸","里脊","梅花肉","牛腱","肝","培根","火腿","排骨","肋排","牛排","猪排","羊排","牛腩","五花","蹄","骨","肉"]},
   {icon:"🥦", name:"蔬菜", keywords:["菜","番茄","西红柿","胡萝卜","萝卜","菇","木耳","茄子","黄瓜","冬瓜","丝瓜","西葫芦","南瓜","洋葱","蒜","葱","韭","椒","笋","豆角","四季豆","荷兰豆","海带","秋葵"]},
   {icon:"🥛", name:"蛋奶豆", keywords:["蛋","奶","酸奶","豆腐","豆干","豆皮","豆浆","毛豆","腐竹"]},
   {icon:"🍚", name:"主食", keywords:["饭","面","粉","馒头","包子","饼","粥","燕麦","红薯","土豆","玉米","藜麦","吐司","米"]},
@@ -1463,6 +1487,7 @@ const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这
 严格按这些规则：
 1. 写具体菜名，不要笼统的类别。看到烤鸭就写"烤鸭"，不要写"鸭肉"；看到梅花肉写"梅花肉"，不要写"猪肉"。
 2. 如果具体菜名里不含食材类别词（比如"罗宋汤""狮子头"），用 {"name":"具体菜名","as":"归类词"} 的形式，as 填能代表食材大类的词（如"牛肉"）。菜名本身已含类别词的（如"烤鸭"含"鸭"）直接写字符串即可。
+2b. **菜名里同时出现两类食材时，必须用 as 指明主料**，否则会被归错类。例如"玉米排骨汤"要写 {"name":"玉米排骨汤","as":"排骨"}，"番茄炒蛋"要写 {"name":"番茄炒蛋","as":"蛋"}。
 3. 蛋一律写"蛋"或"煎蛋""蒸蛋"，**绝对不要写"鸡蛋"**——"鸡"字会让它被错误归到禽肉类。
 4. **主食必须写全**：米饭、杂粮饭、面条、米线、馒头、红薯等，只要照片里有就一定要列出来。这一条经常被漏，特别注意。
 5. 不要编造重量或克数，只写食物名称。
@@ -1488,13 +1513,13 @@ function blobToBase64(blob){
 // 小票识别。和餐食那套是两回事：这里要读的是文字，不是猜食物。
 const RECEIPT_PROMPT = `看这张超市小票（或线上订单截图），把上面买的每一件商品列出来。
 只返回 JSON，不要解释、不要 markdown 代码块。格式：
-{"store":"门店名","date":"YYYY-MM-DD","items":[{"name":"商品名","amount":"重量或规格","price":实付金额}]}
+{"store":"门店名","date":"YYYY-MM-DD HH:MM","items":[{"name":"商品名","amount":"重量或规格","price":实付金额}]}
 规则：
 1. name 用小票上的商品名，去掉促销词和编号，保留品牌（例如"盒马日日鲜 冰鲜鸡小胸"）。
 2. amount 写小票上的重量或规格，例如 "400g"、"1kg"、"约500g"、"550ml×12"。**小票上没写就留空字符串**，绝对不要自己估。
 3. price 写这一行的**实付小计金额**（数字，不带货币符号），不是单价、不是原价。看不清就写 null。
 4. 购物袋、包装费、餐具费也照实列出来，不要跳过。
-5. date 用小票上的交易日期；只有时间没有日期、或者看不清，就留空字符串。
+5. date 用小票上的**交易日期和时间**，格式 "YYYY-MM-DD HH:MM"；只有日期没有时间就写 "YYYY-MM-DD"；看不清就留空字符串。
 6. store 用小票抬头的门店名；没有就留空字符串。
 7. **认不出的行就不写，绝对不要编造商品**。宁可少列几件，也不要出现小票上没有的东西。`;
 function parseReceipt(text){
@@ -1516,8 +1541,10 @@ function parseReceipt(text){
     .filter(Boolean);
   return {
     store: String(parsed.store || "").trim(),
-    // 日期得是 YYYY-MM-DD，不然填进 <input type="date"> 会被丢掉。
-    date: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.date || "").trim()) ? String(parsed.date).trim() : "",
+    // 小票上有几点几分就一起留着——采购历史里靠它排序，也能看出是早上还是晚上买的。
+    // <input type="date"> 只吃 YYYY-MM-DD，所以时间单独拆出来给 buySave 用。
+    date: /^\d{4}-\d{2}-\d{2}/.test(String(parsed.date || "").trim()) ? String(parsed.date).trim().slice(0, 10) : "",
+    time: /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(String(parsed.date || "").trim()) ? String(parsed.date).trim().slice(11, 16) : "",
     items,
   };
 }
@@ -2050,6 +2077,7 @@ function bindDiningForm(){
     const entry = addDining({date, place, price});
     const files = pendingPhotos;
     pendingPhotos = [];
+    recognizedTime = "";
     if (photoEl) photoEl.value = "";
     showPending();
     placeEl.value = ""; priceEl.value = "";
@@ -2676,22 +2704,38 @@ function weekLabel(monday){
 }
 // 按分类统计这批记录吃到的不同食物。用 itemTag 去重：烤鸭和鸭肉是同一种。
 function tallyByCategory(records){
-  const eaten = dietItemCategoryRules.map(() => new Set());
+  const eaten = dietItemCategoryRules.map(() => new Map());
   records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
     const rank = dietItemRank(item);
-    if (rank < dietItemCategoryRules.length) eaten[rank].add(itemTag(item));
+    // 按 tag 去重（同一样吃多次只算一种），但存菜名——点开时"玉米排骨汤"比"排骨"有信息量。
+    if (rank < dietItemCategoryRules.length && !eaten[rank].has(itemTag(item))){
+      eaten[rank].set(itemTag(item), itemLabel(item));
+    }
   })));
   const counts = dietItemCategoryRules
-    .map((rule, index) => ({rule, count:eaten[index].size}))
+    .map((rule, index) => ({rule, count:eaten[index].size, names:Array.from(eaten[index].values())}))
     .filter(entry => entry.count > 0);
   return {counts, total: counts.reduce((sum, entry) => sum + entry.count, 0)};
 }
+let openMetricCategory = "";
 function weekTiles(counts){
   // 一行排完，不管是 4 类还是 5 类。3 列时 5 个磁贴要占两行，第二行空一大半。
+  // 磁贴可点，点开在下面列出这一类到底吃了哪几样（用户："点了就可以看到具体是哪些食物"）。
+  const open = counts.find(entry => entry.rule.name === openMetricCategory);
   return `<div class="week-metrics">
-        ${counts.map(entry => `<div class="metric"><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></div>`).join("")}
-      </div>`;
+        ${counts.map(entry => `<button class="metric" type="button" data-metric-cat="${entry.rule.name}"${entry.rule.name === openMetricCategory ? ' aria-expanded="true"' : ""}><b>${entry.rule.icon} ${entry.count}</b><span>${entry.rule.name}</span></button>`).join("")}
+      </div>${open ? `<div class="metric-names">${open.names.join(" · ")}</div>` : ""}`;
 }
+// 磁贴在好几处渲染（绿色 hero 和每个往期周块），而且每次重渲染都会重建，
+// 所以用事件委托绑在 document 上，只绑一次。
+document.addEventListener("click", event => {
+  const tile = event.target.closest?.("[data-metric-cat]");
+  if (!tile) return;
+  const name = tile.dataset.metricCat;
+  openMetricCategory = openMetricCategory === name ? "" : name;
+  renderWeekSummary();
+  void renderDietLog();
+});
 // 所有有记录的周，新到旧，每周带上自己的分类统计。
 function weeksFromRecords(){
   const buckets = new Map();
@@ -3324,6 +3368,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   const photoLabel = document.getElementById("buyPendingPhoto");
   if (!box || !linesEl || !saveBtn) return;
   let pendingPhotos = [];
+  // 小票照片里读到的时间。手动填的那条路没有时间来源，保存时用当下的钟点兜底。
+  let recognizedTime = "";
 
   const lineMarkup = () => `<div class="buy-line">
       <input type="text" class="buy-name" placeholder="买了什么" autocomplete="off">
@@ -3376,6 +3422,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     try{
       const receipt = await recognizeReceipt(pendingPhotos[0]);
       if (receipt.date && dateEl) dateEl.value = receipt.date;
+      recognizedTime = receipt.time || "";
       if (receipt.store && storeEl) storeEl.value = receipt.store;
       linesEl.innerHTML = receipt.items.map(() => lineMarkup()).join("") || lineMarkup();
       Array.from(linesEl.querySelectorAll(".buy-line")).forEach((row, index) => {
@@ -3385,6 +3432,9 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
         row.querySelector(".buy-amount").value = item.amount;
         row.querySelector(".buy-price").value = item.price == null ? "" : item.price;
       });
+      // 草稿填进去了就得让人看见——否则它藏在「或者手动填」里，看着像什么都没发生。
+      const manual = document.getElementById("buyManual");
+      if (manual) manual.open = true;
       if (hintEl) hintEl.textContent = `识别出 ${receipt.items.length} 件，核对一下再保存。金额认错是常事，改完再点保存。`;
     }catch(error){
       console.error(error);
@@ -3403,7 +3453,15 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     // 识别没配 key、或者模型没认出来的时候，总不能把小票照片也一起卡在门外。
     // 存成一条占位行，照片有地方挂、这次采购在历史里露得出来，回头再补。
     if (!items.length && !pendingPhotos.length){ linesEl.querySelector(".buy-name")?.focus(); return; }
-    const date = (dateEl?.value || new Date().toISOString().slice(0, 10));
+    const day = (dateEl?.value || new Date().toISOString().slice(0, 10));
+    // 硬编码那批小票都是 "2026-07-30 10:18" 的格式，自己录的只有日期就显得
+    // 少了一截（用户："这几次采购都没有具体的时间"）。优先用小票上认出来的
+    // 时间；认不到就用此刻的钟点——只在记的是今天时才这么补，补昨天的钟点没意义。
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const clock = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const time = recognizedTime || (day === today ? clock : "");
+    const date = time ? `${day} ${time}` : day;
     const store = (storeEl?.value || "").trim() || "未记录地点";
     const {receiptId} = addPurchaseReceipt({
       date, store,
