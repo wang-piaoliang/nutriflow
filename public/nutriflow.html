@@ -21,7 +21,7 @@
   --surface-2:#eef3ec;
   --surface-3:#f8faf5;
   --text:#151515;
-  --muted:#687069;
+  --muted:#6d6d6d;
   --line:rgba(20,20,20,.09);
   --green:#1f7a4d;
   --red:#b23a48;
@@ -42,7 +42,7 @@
     --surface-2:#232820;
     --surface-3:#171917;
     --text:#f3f4ee;
-    --muted:#a9aea6;
+    --muted:#a8a8a8;
     --line:rgba(255,255,255,.1);
     --green:#6ccf95;
     --red:#ff7f8c;
@@ -268,23 +268,35 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   font-size:14px;
   font-weight:650;
 }
-/* 「发张照片就行」——全新的一天在列表里还没有自己的 📷，这里给一个入口。
-   和「添加」并排，宽一点，因为它才是常用的那条路。 */
+/* 记一餐的主角：日期 + 那张照片。两样都做大，其余收进「或者手动填」。 */
+.diet-form-date{font-size:17px!important;font-weight:600;padding:12px!important}
 .diet-form-photo{
   position:relative;
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:10px;
-  border:1px dashed var(--line);
-  border-radius:8px;
+  padding:16px;
+  border:1.5px dashed var(--green);
+  border-radius:10px;
   background:var(--surface);
-  color:var(--muted);
-  font-size:14px;
+  color:var(--green);
+  font-size:16px;
+  font-weight:600;
   white-space:nowrap;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
 }
+/* 手填是退路，收起来，标题做得很轻。 */
+.diet-form-manual>summary{
+  padding:4px 0;
+  color:var(--muted);
+  font-size:13px;
+  cursor:pointer;
+  list-style:none;
+}
+.diet-form-manual>summary::-webkit-details-marker{display:none}
+.diet-form-manual .diet-form-row{margin-top:6px}
+.diet-form-manual input[type=text]{margin-top:6px}
 .chip-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
 /* 每一顿的小 ＋，紧跟在食物列表末尾同一行，点开就地加东西。
    inline 上下文里要用 inline-flex 才能和文字基线对齐。 */
@@ -987,7 +999,8 @@ summary.week-block-head::after{
           <span class="subtle" id="aiStatus">未配置</span>
         </div>
         <div class="note">配置后，餐食照片一传上来就自动识别、直接写进当天记录，小票照片也能自动读成采购记录。<strong>只有你自己传进来的这些照片会发给模型</strong>，一次只发一张、不碰相册里别的东西；不填 key 就一张也不发。key 只存在这台设备。</div>
-        <div class="sync-form">
+        <button class="sync-edit" type="button" id="aiEdit" hidden></button>
+        <div class="sync-form" id="aiForm">
           <select id="aiProvider" aria-label="模型提供商">
             <option value="qwen">通义千问 · 国内直连，快</option>
             <option value="gemini">Google Gemini · 认得更全，但要挂梯子</option>
@@ -1973,7 +1986,7 @@ function bindDiningForm(){
       const owner = diningOwner(entry.id);
       const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
       await renderDining();
-      if (await autoRecognize(owner, saved)){ render(); await renderDining(); }
+      void autoRecognize(owner, saved).then(added => { if (added){ render(); void renderDining(); } });
     }
   });
 }
@@ -2284,8 +2297,9 @@ function bindPhotoControls(container, rerender){
         const owner = input.dataset.photoOwner;
         const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
         rerender();
-        // 存完立刻识别，识别出东西再刷一次界面。
-        if (await autoRecognize(owner, saved)){ render(); rerender(); }
+        // 识别放后台跑，界面不等它——照片存下来缩略图就该立刻出现，
+        // 模型那几秒不该把整个页面卡住（用户："照片上传后后台识别，前端页面不用等"）。
+        void autoRecognize(owner, saved).then(added => { if (added){ render(); rerender(); } });
       }catch(error){
         console.error(error);
         window.alert("照片未能保存到这台设备。请检查 Safari 的网站数据权限后重试。");
@@ -2628,7 +2642,7 @@ function renderWeekSummary(){
   // 也不提示“还没吃到”：一周还没过完，缺什么都言之过早。
   document.getElementById("weekSummary").innerHTML = total
     ? `${weekTiles(counts)}
-      <p class="week-caption">${weekLabel(monday)}，看看这几类是不是都吃到了。</p>`
+`
     : `<div class="note">本周还没有记录。</div>`;
 }
 // 单价对比的分组名用「食材本名」，不带品牌——「盒马日日鲜 冰鲜鸡小胸」这种在标题里
@@ -2882,16 +2896,19 @@ async function renderDietLog(){
 function dietDayFormMarkup(){
   const today = new Date();
   const value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  // 记一餐最重要的是"哪天"和"那张照片"，所以这两样占大格、排最前；
+  // 餐次和手打食物很少用到，缩到下面一行（用户明确要求这个主次）。
   return `<div class="diet-form" id="dietDayForm" hidden>
-    <div class="diet-form-row">
-      <input type="date" id="dietFormDate" value="${value}" aria-label="日期">
-      <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
-    </div>
-    <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
-    <div class="diet-form-row">
-      <label class="diet-form-photo" id="dietFormPhotoLabel" title="直接发照片，自动识别" aria-label="直接发照片，自动识别">📷 发张照片就行<input class="photo-input" type="file" accept="image/*" multiple id="dietFormPhoto"></label>
-      <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
-    </div>
+    <input type="date" id="dietFormDate" class="diet-form-date" value="${value}" aria-label="日期">
+    <label class="diet-form-photo" id="dietFormPhotoLabel" title="直接发照片，自动识别" aria-label="直接发照片，自动识别">📷 发张照片就行<input class="photo-input" type="file" accept="image/*" multiple id="dietFormPhoto"></label>
+    <details class="diet-form-manual">
+      <summary>或者手动填</summary>
+      <div class="diet-form-row">
+        <select id="dietFormMeal" aria-label="餐次">${MEAL_ORDER.map(name => `<option${name === "午餐" ? " selected" : ""}>${name}</option>`).join("")}</select>
+        <button class="diet-form-save" type="button" id="dietFormSave">添加</button>
+      </div>
+      <input type="text" id="dietFormItems" placeholder="吃了什么，用空格或顿号分开" aria-label="食物">
+    </details>
   </div>`;
 }
 // 空格、逗号、顿号、加号都当分隔符，怎么随手写都能拆开。
@@ -3164,15 +3181,34 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     const name = provider === "gemini" ? "Gemini" : "Qwen-VL";
     status.textContent = key ? `已配置 · ${name}` : "未配置";
   };
+  // 保存后要收起来。之前存完 key 那一长串还明晃晃摆在输入框里，
+  // 除了按钮闪一下"已保存"没有任何变化，看不出到底存没存上（用户反馈）。
+  const form = document.getElementById("aiForm");
+  const editBtn = document.getElementById("aiEdit");
+  const showSaved = () => {
+    const {key} = aiConfig();
+    const saved = Boolean(key);
+    if (form) form.hidden = saved;
+    if (editBtn){
+      editBtn.hidden = !saved;
+      // key 只露头尾，中间打码——够认出是哪一个，又不至于摊在屏幕上。
+      editBtn.textContent = `已保存 ${key.slice(0, 6)}…${key.slice(-4)}，点这里换一个`;
+    }
+  };
   providerInput.value = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
   keyInput.value = localStorage.getItem(AI_KEY_KEY) || "";
   label();
+  showSaved();
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(AI_PROVIDER_KEY, providerInput.value);
     localStorage.setItem(AI_KEY_KEY, keyInput.value.trim());
     label();
-    saveBtn.textContent = "已保存";
-    setTimeout(() => { saveBtn.textContent = "保存"; }, 1500);
+    showSaved();
+  });
+  editBtn?.addEventListener("click", () => {
+    if (form) form.hidden = false;
+    editBtn.hidden = true;
+    keyInput.focus();
   });
 })();
 

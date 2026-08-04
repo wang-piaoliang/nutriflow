@@ -262,12 +262,15 @@ test("summarises how many foods per category the week covered", async () => {
   assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 6<\/b><span>主食<\/span>/);
   assert.match(summary, /<b>🍎 2<\/b><span>水果坚果<\/span>/);
-  assert.match(summary, /看看这几类是不是都吃到了/);
+  // The trailing caption line is gone — the user asked for the tiles alone.
+  assert.doesNotMatch(summary, /看看这几类是不是都吃到了/);
+  assert.doesNotMatch(summary, /week-caption/);
 
   // A category with no foods this week is dropped rather than called out.
   assert.doesNotMatch(summary, /本周还没吃到/);
-  // The week's date range now lives in the caption under the tiles.
-  assert.match(summary, /\d+\/\d+–\d+\/\d+/);
+  // The date range went with the caption. "本周" says it already, and the hero
+  // is meant to be tiles only now.
+  assert.doesNotMatch(summary, /\d+\/\d+–\d+\/\d+/);
 
   // Local parsing: a Monday record must not fall into the previous week.
   const monday = context.currentWeek().monday;
