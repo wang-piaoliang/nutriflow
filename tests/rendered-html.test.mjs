@@ -517,6 +517,36 @@ test("saves a receipt that is only a photo", async () => {
   assert.doesNotMatch(context.document.getElementById("boughtFoods").innerHTML, /待补充/);
 });
 
+test("files bone-in cuts as meat, not as whatever else is in the dish name", async () => {
+  const { context, evaluate } = await runAppScript();
+  const nameOf = (item) => evaluate(`dietItemCategoryRules[${context.dietItemRank(item)}].name`);
+
+  // 玉米排骨汤 has no 肉 character, but it does contain 玉米 — so it used to be
+  // filed under 主食 and the week showed 鱼禽瘦肉 = 1 after a rib soup.
+  assert.equal(nameOf("玉米排骨汤"), "鱼禽瘦肉");
+  assert.equal(nameOf("排骨"), "鱼禽瘦肉");
+  assert.equal(nameOf("牛排"), "鱼禽瘦肉");
+  assert.equal(nameOf("猪蹄"), "鱼禽瘦肉");
+
+  // 牛奶 must stay in 蛋奶豆 — the fix adds specific cuts, not a bare 牛.
+  assert.equal(nameOf("牛奶"), "蛋奶豆");
+  // Plain corn is still a staple.
+  assert.equal(nameOf("玉米"), "主食");
+});
+
+test("counts the foods behind each weekly tile", async () => {
+  const { context } = await runAppScript();
+  const week = context.tallyByCategory([
+    { date: "2026-08-04", meals: [{ name: "晚餐", items: ["玉米排骨汤", "干煸四季豆", "米饭", "排骨"] }] },
+  ]);
+  const meat = week.counts.find((entry) => entry.rule.name === "鱼禽瘦肉");
+  // Both land in 鱼禽瘦肉 now. They are distinct names so they count as two
+  // kinds; the tile lists them so a tap shows what is actually behind the number.
+  assert.equal(meat.count, 2);
+  assert.equal(meat.names.join(" · "), "玉米排骨汤 · 排骨");
+  assert.equal(week.counts.find((entry) => entry.rule.name === "主食").names.join(" · "), "米饭");
+});
+
 test("keeps the recognition prompt's hard-won rules", async () => {
   const html = await readFile(
     new URL("../public/nutriflow.html", import.meta.url),
@@ -693,7 +723,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v85"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v86"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
