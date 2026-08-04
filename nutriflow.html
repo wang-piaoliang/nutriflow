@@ -367,7 +367,7 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   background:var(--hero-bg);
   color:#fff;
 }
-.week-block-head strong{font-size:17px;font-weight:700;letter-spacing:.3px}
+.week-block-head strong{font-size:20px;font-weight:700;letter-spacing:.3px;flex:0 0 auto}
 /* 整周可折叠，默认展开。折叠指示做得很轻——用户明确说"折叠按钮不要太明显"：
    只有一个半透明的小箭头，展开时朝下、收起时朝右，整条标头都可点。 */
 summary.week-block-head{cursor:pointer;list-style:none}
@@ -395,15 +395,15 @@ summary.week-block-head::after{
   text-decoration:underline;
   text-underline-offset:2px;
 }
-/* 右边那个「N 种 · M 天」用半透明胶囊，别再是一团灰字。 */
+/* 主角是「N 种」不是日期——用户："44 这个字不明显，其实这个很重要，
+   看到的只有日期，日期还没那么重要"。种数做大排最左，几周叠起来天然对齐；
+   日期和天数退成右边一行小字。 */
 .week-block-head span{
-  flex:0 0 auto;
-  padding:3px 9px;
-  border-radius:999px;
-  background:rgba(255,255,255,.16);
-  color:#fff;
+  flex:1 1 auto;
+  color:rgba(255,255,255,.82);
   font-size:12px;
-  font-weight:600;
+  font-weight:500;
+  text-align:right;
   white-space:nowrap;
 }
 /* 磁贴和这周第一天之间留口气，别粘在一起。 */
@@ -852,6 +852,7 @@ summary.week-block-head::after{
 .meal-entry b{display:block;font-size:14px}
 .meal-entry small{display:block;margin-top:4px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
 .meal-place{color:var(--text);font-weight:600}
+.meal-price{color:var(--text);font-weight:600;white-space:nowrap}
 /* 手动补记的食物在食物列表里用主色轻微区分，能看出是自己加的，但不另起一行、不加边框叉号。 */
 .added-item{color:var(--green)}
 .bottom-nav{
@@ -1126,7 +1127,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v83</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v84</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1441,9 +1442,13 @@ const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这
 5. 不要编造重量或克数，只写食物名称。
 6. 认不出的东西就不写，不要猜。
 7. 判断这是哪一餐：早餐、午餐、晚餐、加餐 四选一。
+8. 每样食物按分量排序：**同一类里份量大的写在前面**，一小撮配菜写在后面。不要写克数，只是排序。
+9. 判断这顿看起来是"在外面吃的"（餐厅、外卖、食堂）还是"家里做的"，填 outside（true/false）。有餐具餐垫、餐厅托盘、外卖盒、菜单、摆盘讲究的，倾向 true；家常锅碗、厨房台面，倾向 false。**拿不准就填 false。**
+10. 照片里如果**明确出现**店名（招牌、餐具、外卖单、小票）就填 place，看不到就填空字符串。**绝对不要猜店名。**
+11. 照片里如果**明确出现**金额（账单、小票、外卖单）就填 price（数字），看不到就填 null。**绝对不要估价格。**
 
 只返回 JSON，不要解释、不要 markdown 代码块：
-{"meal":"午餐","items":["虾","烤鸭",{"name":"罗宋汤","as":"牛肉"},"米饭"]}`;
+{"meal":"午餐","items":["烤鸭","虾",{"name":"罗宋汤","as":"牛肉"},"米饭"],"outside":true,"place":"寿司郎","price":168}`;
 
 function blobToBase64(blob){
   return new Promise((resolve, reject) => {
@@ -1518,7 +1523,16 @@ function parseRecognition(text){
     })
     .filter(Boolean);
   const meal = MEAL_ORDER.includes(parsed.meal) ? parsed.meal : "午餐";
-  return {meal, items};
+  // 店名和金额只有照片里真出现才收——prompt 里已经写死"不许猜"，这里再挡一道：
+  // 明显不像钱的数字（负数、大得离谱）一律丢掉。
+  const price = Number(parsed.price);
+  return {
+    meal,
+    items,
+    outside: parsed.outside === true,
+    place: typeof parsed.place === "string" ? parsed.place.trim() : "",
+    price: Number.isFinite(price) && price > 0 && price < 100000 ? price : null,
+  };
 }
 async function callQwen(key, base64, mime, prompt){
   const response = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
@@ -1618,8 +1632,28 @@ async function autoRecognize(owner, saved){
   for (const photo of saved){
     if (!photo?.blob || recognizedIds().includes(photo.id)) continue;
     try{
-      const {meal, items} = await recognizePhoto(photo.blob);
-      addDietEntry(context.date, meal, items, context.place, context.diningId);
+      const result = await recognizePhoto(photo.blob);
+      const {meal, items} = result;
+      let place = context.place;
+      let diningId = context.diningId;
+      // 看着像在外面吃的就顺手建一条「在外就餐」（用户："系统自动梳理…
+      // 缺少的信息可以留空，后面我会拍照上传系统再识别补充"）。会误判，
+      // 所以这条和手动加的完全一样——能改价格、能删。已经挂在某条在外就餐
+      // 下面的照片就不再建，免得一顿记两条。
+      if (result.outside && !diningId){
+        const entry = addDining({date: context.date, place: result.place || "", price: result.price, note: ""});
+        diningId = entry.id;
+        place = result.place || "";
+        void renderDining();
+      } else if (diningId && result.price != null){
+        // 已有那条如果还没填价格，照片里读到了就补上。
+        const entry = diningEntries.find(item => item.id === diningId);
+        if (entry && (entry.price == null || isNaN(entry.price))){
+          updateDiningPrice(diningId, result.price);
+          void renderDining();
+        }
+      }
+      addDietEntry(context.date, meal, items, place, diningId);
       markRecognized(photo.id);
       added += 1;
     }catch(error){
@@ -1904,6 +1938,18 @@ function removeManualReceipt(receiptId){
   saveManualPurchases();
 }
 function diningOwner(id){ return `dining:${id}`; }
+// 这一顿花了多少钱，写在食物最后面（用户："店名放在食物的最前面，价格可以放在最后"）。
+// 钱记在「在外就餐」那条记录上，这里只是把它显示回来，不另存一份。
+function mealPriceMark(meal){
+  const ids = new Set((meal.added || []).map(entry => entry.diningId).filter(Boolean));
+  let total = 0;
+  ids.forEach(id => {
+    const entry = diningEntries.find(item => item.id === id);
+    const price = entry && Number(entry.price);
+    if (Number.isFinite(price) && price > 0) total += price;
+  });
+  return total > 0 ? ` <span class="meal-price">¥${total.toFixed(2).replace(/\.00$/, "")}</span>` : "";
+}
 // 这笔在外就餐吃了什么。不在 dining 记录里另存一份，直接从 dietEntries 里按
 // diningId 找回来，免得识别结果和「每天吃了什么」两处对不上、删了一边另一边还在。
 function diningItems(entry){
@@ -2018,7 +2064,7 @@ function allDietRecords(){
   dietEntries.forEach(entry => {
     const meal = ensureMeal(ensure(entry.date), entry.meal);
     meal.items.push(...entry.items);
-    meal.added.push({id:entry.id, items:entry.items});
+    meal.added.push({id:entry.id, items:entry.items, diningId:entry.diningId});
     if (entry.place) meal.place = entry.place;
   });
   return Array.from(byDate.values())
@@ -2850,7 +2896,7 @@ async function renderDietLog(){
       const add = `<button class="chip-add" type="button" data-add-item="${key}" title="给${meal.name}加一样" aria-label="给${record.date} ${meal.name}加一样">＋</button>`;
       return `<div class="meal-entry">
         <b>${meal.name}</b>
-        <small>${meal.place ? `<span class="meal-place">${meal.place}：</span>` : ""}${itemsMarkup} ${add}${meal.note ? `<br>${meal.note}` : ""}</small>
+        <small>${meal.place ? `<span class="meal-place">${meal.place}：</span>` : ""}${itemsMarkup} ${add}${mealPriceMark(meal)}${meal.note ? `<br>${meal.note}` : ""}</small>
         <div class="inline-add" data-inline-for="${key}" hidden>
           <div class="inline-add-row">
             <input type="text" placeholder="加一样，用空格分开" aria-label="给${meal.name}添加的食物">
@@ -2880,7 +2926,7 @@ async function renderDietLog(){
     // 往期整周可折叠，默认展开。「N 天」写成「记了 N 天」——它数的是有记录的
     // 天数，不是这一周有几天，光写「5 天」会被读成这周只有 5 天。
     return `<details class="week-block" open>
-      <summary class="week-block-head"><strong>${weekLabel(week.monday)}</strong><span class="subtle">${week.total} 种 · 记了 ${week.records.length} 天</span></summary>
+      <summary class="week-block-head"><strong>${week.total} 种</strong><span class="subtle">${weekLabel(week.monday)} · 记了 ${week.records.length} 天</span></summary>
       ${weekTiles(week.counts)}
       ${week.records.map(dayMarkup).join("")}
     </details>`;
