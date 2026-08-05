@@ -110,6 +110,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 .icon-btn{
   width:42px;
   height:42px;
+  /* 不设字号就继承正文 15px。⌘ 是宽字形看着还满，换成齿轮后就显得很小了。 */
+  font-size:21px;
+  line-height:1;
   border:1px solid var(--line);
   border-radius:8px;
   background:var(--surface);
@@ -996,7 +999,7 @@ summary.week-block-head::after{
       <h1>NutriFlow</h1>
       <span>每日摄入 · 采购历史 · 食材库</span>
     </div>
-    <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置">⚙︎</button>
+    <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置">⚙</button>
   </div>
 
   <section class="view" id="home">
@@ -1187,7 +1190,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v88</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v89</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
