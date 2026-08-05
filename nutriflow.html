@@ -410,7 +410,9 @@ summary.week-block-head::after{
    列数按实际类数走，窄屏下字号自动收一点，保证 5 类也塞得下。 */
 .week-metrics{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
 /* 磁贴现在是按钮，去掉浏览器默认边框/字体，保持原来的样子。 */
-.week-metrics .metric{border:none;font:inherit;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+/* 磁贴是 <button>，必须把颜色也继承回来——只写 font:inherit 的话数字会用
+   浏览器给按钮的默认色，iOS 上是一片蓝（用户："数字怎么变成蓝色了，好丑"）。 */
+.week-metrics .metric{border:none;font:inherit;color:inherit;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .week-metrics .metric[aria-expanded="true"]{outline:2px solid var(--green);outline-offset:-2px}
 /* 点开后列出这一类的具体食物。 */
 .metric-names{
@@ -518,6 +520,9 @@ summary.week-block-head::after{
 #home .target-row strong{white-space:nowrap}
 .target-row b{
   font-size:16px;
+  /* 份量不用加粗——加粗的是「早餐」这类标题（用户："每餐目标下面的字，
+     不要黑体，早餐/xx 这几个标题可以黑体"）。 */
+  font-weight:400;
   line-height:1.35;
   text-align:right;
   min-width:0;
@@ -644,6 +649,9 @@ summary.week-block-head::after{
 .tab-chip.active{background:var(--green);border-color:var(--green);color:white}
 /* 食材搜索：标题里只放一个小放大镜，点开才露出输入框。 */
 .food-search-btn{margin-right:8px;padding:0;border:none;background:none;font-size:15px;line-height:1}
+/* 设置抽屉：云同步和照片识别两张卡片平时收着，点顶栏的 ⚙︎ 才露出来。
+   这两样一台设备只配一次，天天摆在「目标」页最下面纯属占地方。 */
+.settings-drawer{display:grid;gap:12px}
 .food-search{
   width:100%;
   box-sizing:border-box;
@@ -988,7 +996,7 @@ summary.week-block-head::after{
       <h1>NutriFlow</h1>
       <span>每日摄入 · 采购历史 · 食材库</span>
     </div>
-    <button class="icon-btn" onclick="window.print()" title="打印">⌘</button>
+    <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置">⚙︎</button>
   </div>
 
   <section class="view" id="home">
@@ -1032,6 +1040,7 @@ summary.week-block-head::after{
         <div class="grid2" id="weeklySummary"></div>
       </article>
 
+          <div class="settings-drawer" id="settingsDrawer" hidden>
       <article class="card">
         <div class="section-title">
           <h2>☁️ 云同步</h2>
@@ -1062,7 +1071,8 @@ summary.week-block-head::after{
           <button type="button" id="aiSave">保存</button>
         </div>
       </article>
-    </div>
+      </div>
+</div>
   </section>
 
   <section class="view" id="shopping">
@@ -1177,7 +1187,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v87</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v88</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3242,6 +3252,22 @@ document.getElementById("weekFoldAll")?.addEventListener("click", () => {
 });
 // 单独折叠某一周之后，按钮文案要跟着变。details 的 toggle 不冒泡，用捕获。
 document.getElementById("dietLogList")?.addEventListener("toggle", syncWeekFoldButton, true);
+// 顶栏 ⚙︎：打开/收起设置抽屉，并跳到「目标」页。
+// 原来这里是个 window.print() 按钮，手机上基本用不到，换成设置更值当。
+(function initSettings(){
+  const btn = document.getElementById("settingsBtn");
+  const drawer = document.getElementById("settingsDrawer");
+  if (!btn || !drawer) return;
+  btn.addEventListener("click", () => {
+    const show = drawer.hidden;
+    drawer.hidden = !show;
+    btn.setAttribute("aria-expanded", String(show));
+    if (!show) return;
+    // 抽屉在「目标」页里，先切过去再滚到它，否则点了像没反应。
+    document.querySelector('[data-view="home"]')?.click();
+    drawer.scrollIntoView({block: "start"});
+  });
+})();
 // 食材搜索。这两个元素在 renderFoods 重渲染的范围之外，只绑一次。
 (function initFoodSearch(){
   const btn = document.getElementById("foodSearchBtn");
