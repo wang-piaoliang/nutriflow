@@ -1205,7 +1205,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v93</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v94</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2036,6 +2036,46 @@ function saveManualPurchases(){ persist(MANUAL_PURCHASES_KEY, manualPurchases); 
 // 别名表是后加的，早先存下来的行全落成了 custom:，图标是通用购物车、分类汇总也漏算。
 // 每次启动把这些重新认一遍，认出来了就落盘——已经记错的采购不用手动重录。
 // 只动 custom: 开头的：用户自己改过名字、已经归好类的那些不碰。
+// 一单的指纹：同店、同一天、商品（名+规格+金额）完全一致。
+// 同一天在同一家店买两趟、且每一件商品连规格金额都分毫不差——现实里基本不可能，
+// 所以指纹相同就是同一单被记了两遍。
+function receiptSignature(store, date, items){
+  const day = String(date || "").slice(0, 10);
+  const body = items
+    .map(item => `${String(item.item ?? item.name ?? "").trim()}|${String(item.amount || "").trim()}|${Number(item.totalPrice ?? item.price ?? 0)}`)
+    .sort()
+    .join("~");
+  return `${String(store || "").trim()}@${day}#${body}`;
+}
+function manualReceiptSignatures(){
+  const groups = new Map();
+  manualPurchases.forEach(row => {
+    if (!groups.has(row.receiptId)) groups.set(row.receiptId, []);
+    groups.get(row.receiptId).push(row);
+  });
+  return Array.from(groups.entries()).map(([receiptId, rows]) => ({
+    receiptId,
+    date: rows[0].date,
+    signature: receiptSignature(rows[0].store, rows[0].date, rows),
+  }));
+}
+// 识别或保存跑了两遍就会多出一模一样的一单，「现有食材」里于是同一样东西出现两次
+// （用户："识别重复了，导致上面都重复了"）。启动时把重复的整单删掉，只留最早那一单。
+function dedupeManualReceipts(){
+  const seen = new Set();
+  const doomed = [];
+  manualReceiptSignatures()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .forEach(entry => {
+      if (seen.has(entry.signature)) doomed.push(entry.receiptId);
+      else seen.add(entry.signature);
+    });
+  if (!doomed.length) return 0;
+  markDeleted(manualPurchases.filter(row => doomed.includes(row.receiptId)).map(row => row.id));
+  manualPurchases = manualPurchases.filter(row => !doomed.includes(row.receiptId));
+  saveManualPurchases();
+  return doomed.length;
+}
 function healManualFoodIds(){
   let changed = false;
   manualPurchases.forEach(row => {
@@ -3726,7 +3766,12 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   // 选了小票照片就直接识别、把表单填好。用户："如果发了图就不要让必填别的了，
   // 直接识别就能出来"。识别完仍然是可编辑的草稿，点保存才真正入账——小票 OCR
   // 认错价格是常事，不给人改的机会不行。
+  // 识别三张图要好几秒。这期间 iOS 的选图器有时会再发一次 change，或者人又选了一遍，
+  // 于是两条 async 流程并发跑完 commitPurchase()，同一单被记两遍
+  // （用户："识别重复了，导致上面都重复了"）。自动保存之后这条路更没人拦，必须加锁。
+  let recognizing = false;
   photoEl?.addEventListener("change", async () => {
+    if (recognizing) return;
     pendingPhotos = Array.from(photoEl.files || []);
     showPending();
     if (!pendingPhotos.length) return;
@@ -3738,6 +3783,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       return;
     }
     if (hintEl) hintEl.textContent = "正在识别小票…";
+    recognizing = true;
     try{
       const receipt = await recognizeReceipts(pendingPhotos, done => {
         if (hintEl) hintEl.textContent = `正在识别小票…（${done}/${pendingPhotos.length}）`;
@@ -3762,6 +3808,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       console.error(error);
       if (hintEl) hintEl.textContent = `识别失败：${error.message} 也可以直接手填。`;
       setTimeout(() => { if (hintEl && hintText) hintEl.textContent = hintText; }, 6000);
+    }finally{
+      recognizing = false;
     }
   });
 
@@ -3785,10 +3833,18 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     const time = recognizedTime || (day === today ? clock : "");
     const date = time ? `${day} ${time}` : day;
     const store = (storeEl?.value || "").trim() || "未记录地点";
-    const {receiptId} = addPurchaseReceipt({
-      date, store,
-      items: items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}],
-    });
+    const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
+    // 无论重复来自哪儿（识别跑了两遍、手滑传了两次、点了两下保存），指纹一样就不再记一单。
+    const signature = receiptSignature(store, date, rows);
+    const already = manualReceiptSignatures().find(entry => entry.signature === signature);
+    if (already){
+      resetForm();
+      await renderShopping();
+      saveBtn.textContent = "这单刚记过了";
+      setTimeout(() => { saveBtn.textContent = "保存这次采购"; }, 1800);
+      return 0;
+    }
+    const {receiptId} = addPurchaseReceipt({date, store, items: rows});
     const files = pendingPhotos;
     resetForm();
     await renderShopping();
@@ -3914,6 +3970,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 bindDiningForm();
 // 先把早先落成 custom: 的行重新归类，再渲染——否则第一屏还是旧图标和旧汇总。
 healManualFoodIds();
+dedupeManualReceipts();
 render();
 </script>
 </body>
