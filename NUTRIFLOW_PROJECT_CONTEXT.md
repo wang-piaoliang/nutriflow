@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v91`
+- 当前离线缓存：`nutriflow-pwa-v92`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修「采购记录不对」——商品名认不出分类**（用户发图：7 行里 6 行是通用 🛒 图标，分类汇总只算到「蔬菜 500g」，实际油菜 400g + 南瓜 500g = 900g）。根因：`foodIdForItem` 只拿**食材目录的 name** 做 `includes` 匹配，而目录里是「小青菜类」「豆腐/豆干」「瓜果类」「无糖希腊酸奶」这种**概念名**，小票上写的是「盒马日日鲜 油菜 (上海青)」「内酯豆腐」「麒麟奶油西瓜」「原味酸奶」，一个都对不上，全落成 `custom:` → 图标、分类汇总、单价对比全错。修法：① 新增 `purchaseItemAliases` 关键词别名表（约 60 条），**顺序即优先级**——包装费/购物袋最前（归 `bag`，不进「现有食材」也不进单价对比）；牛油果先于牛肉、蛋奶先于鸡牛（「鸡蛋」含「鸡」、「牛奶」含「牛」、「牛油果」含「牛」）；具体先于笼统（金针菇→菇、米线→米、南瓜→瓜、菠萝不能被「萝卜」吃掉）。目录匹配保留为兜底。② `purchaseGroupRules` 新增「🥛 蛋奶」组（egg/milk/greekYogurt/cheese），否则酸奶牛奶在小票分类汇总里根本不出现。③ 新增 `healManualFoodIds()`，启动时（`render()` 之前）把早先存成 `custom:` 的行重新认一遍并落盘，**已经记错的采购自动修好、不用手动重录**；只动 `custom:` 开头的，用户自己改过名字的不碰；认成 `bag` 的顺手 `bought=false`。实测那条小票自愈后：鸡排→chickenTender🍗、豆腐→tofu、酸奶→greekYogurt🥛、西瓜→melon🍉、油菜→bokChoy🥬、包装费→bag，汇总变成「肉类 500g · 蔬菜 900g · 蛋奶 1.5kg」。测试增至 28 项。离线缓存与版本号升至 v92。**仍待办**：那条采购的门店是「未记录地点」、时间是保存时的钟点而非小票时间（模型没读到 store/date），目前门店和日期在保存后还改不了——下一步应让它们也可编辑。
 
 - 2026-08-06：**采购照片上传即自动入账，并让存下来的每一行可就地改**（用户：「上传照片后自动保存，如果有问题我会修改的，可修改就行」）。① 把原来 `saveBtn` 上那段保存逻辑抽成 `commitPurchase()`，识别成功后直接调用，不再等人点「保存这次采购」；按钮仍然在，手填时照用。② **自动保存的前提是改得动**——改之前存下来只有「删掉这次采购」，认错了只能整单删掉重来。现在 `manual:true` 的行在采购历史里渲染成输入框（名称一行，规格/金额/删除一行），新增 `updateManualLine(rowId, field, value)` 与 `removeManualLine(rowId)`；改名会连带重算 `foodId` 和 `unitPrice`（否则图标和「食材单价对比」的归类停在旧值上），改完即存**但不重渲染**（重渲染会替换掉正在打字的输入框、光标和键盘都跳掉）。占位行填上名字后自动转成 `bought:true`。写死在代码里那批仍然只读。③ 新增 `escapeAttribute()`：商品名来自模型，带引号会撑破 `value=""`。测试增至 26 项。离线缓存与版本号升至 v91。
 

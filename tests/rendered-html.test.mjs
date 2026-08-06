@@ -791,13 +791,52 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
   assert.equal(evaluate("manualPurchases.length"), 0);
 });
 
+test("classifies supermarket product names, not just catalogue names", async () => {
+  const { evaluate } = await runAppScript();
+  const id = name => evaluate(`foodIdForItem(${JSON.stringify(name)})`);
+
+  // 食材目录里是「小青菜类」「豆腐/豆干」「瓜果类」这种概念名，小票上永远不会
+  // 这么写，靠 includes 一个都匹配不上，于是全落成 custom:（用户："这个记录不对"）。
+  assert.equal(id("盒马 三色藜麦轻享鸡排"), "chickenTender");
+  assert.equal(id("盒马日日鲜 内酯豆腐"), "tofu");
+  assert.equal(id("盒马 原味酸奶"), "greekYogurt");
+  assert.equal(id("麒麟奶油西瓜"), "melon");
+  assert.equal(id("盒马日日鲜 油菜 (上海青)"), "bokChoy");
+
+  // 包装费/购物袋只是账单行，归 bag 后不进「现有食材」也不进单价对比。
+  assert.equal(id("环保包装费"), "bag");
+
+  // 顺序陷阱：「鸡蛋」含「鸡」、「牛奶」含「牛」、「牛油果」含「牛」、
+  // 「菠萝」含「萝」、「米线」含「米」——具体的必须先命中。
+  assert.equal(id("土鸡蛋 10枚"), "egg");
+  assert.equal(id("盒马 纯牛奶 1L"), "milk");
+  assert.equal(id("牛油果"), "avocado");
+  assert.equal(id("菠萝"), "tropical");
+  assert.equal(id("米线"), "noodle");
+  assert.equal(id("金针菇 150g"), "enoki");
+
+  // 蛋奶得自己成一组，否则酸奶/牛奶在小票的分类汇总里根本不出现。
+  assert.match(evaluate('summarizeReceipt([{foodId:"greekYogurt", amount:"1.5kg"}])'), /蛋奶 1\.5kg/);
+});
+
+test("re-classifies purchases that were stored before the alias table existed", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 别名表是后加的，早先存下来的行全是 custom:。启动时重新认一遍并落盘，
+  // 已经记错的采购不用手动重录；用户自己改过名字的（非 custom:）不碰。
+  assert.match(html, /function healManualFoodIds\(\)/);
+  assert.match(html, /row\.foodId\.startsWith\("custom:"\)/);
+  assert.match(html, /if \(fresh === "bag"\) row\.bought = false;/);
+  assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v91"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v92"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
