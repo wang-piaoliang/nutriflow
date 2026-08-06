@@ -724,6 +724,12 @@ summary.week-block-head::after{
 .receipt-total small{font-size:11px;text-align:right}
 .receipt-card[open] .receipt-head{padding-bottom:10px;border-bottom:1px solid var(--line)}
 .receipt-lines{display:grid;gap:10px;margin-top:10px}
+/* 编辑入口：平时只是一个小 ✏️，和「删掉这次采购」并排放在卡片底部。
+   点开才把这一次采购切成输入框，编辑中变成 ✓。 */
+.receipt-actions{display:flex;align-items:center;gap:8px}
+.receipt-actions .receipt-del{flex:1 1 auto}
+.receipt-edit-toggle{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:7px 11px;line-height:1;font-size:14px}
+.receipt-edit-toggle.on{background:var(--green);border-color:var(--green);color:#fff}
 /* 自己录的小票每行可就地改：名称一行，规格/金额/删除一行。字号和只读行保持一致。 */
 .receipt-line.editable{align-items:start}
 .receipt-edit{display:grid;gap:6px;min-width:0}
@@ -1199,7 +1205,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v92</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v93</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2399,6 +2405,11 @@ let shoppingRenderVersion = 0;
 let dietRenderVersion = 0;
 let activeFoodCategory = "animalProtein";
 let activePriceCategory = "all";
+// 平时小票是只读的（用户："这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的
+// icon"）。点 ✏️ 才把这一次采购切成输入框，一次只编辑一张。
+let editingReceipt = "";
+// 重渲染会把 <details> 关掉。记住哪几张是展开的，编辑完仍然停在原地。
+const openReceipts = new Set();
 let consumed = load("nutriflow_consumed_v1", {});
 
 function clone(value){return JSON.parse(JSON.stringify(value))}
@@ -3160,7 +3171,8 @@ async function renderShopping(){
     const boughtCount = receipt.items.filter(item => item.bought).length;
     const categorySummary = summarizeReceipt(receipt.items);
     const attachedPhotos = photosByReceipt[receipt.key] || [];
-    const lines = receipt.items.map(item => item.manual ? `
+    const editing = receipt.key === editingReceipt;
+    const lines = receipt.items.map(item => (item.manual && editing) ? `
       <div class="receipt-line editable">
         <span class="icon">${iconForFood(item.foodId)}</span>
         <div class="receipt-edit">
@@ -3179,18 +3191,37 @@ async function renderShopping(){
         <div class="price">${item.totalPrice ? `¥${Number(item.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</div>
       </div>
     `).join("");
-    return `<details class="receipt-card">
+    return `<details class="receipt-card" data-receipt="${receipt.key}"${openReceipts.has(receipt.key) ? " open" : ""}>
       <summary class="receipt-head">
         <span class="receipt-toggle" aria-hidden="true">›</span>
         <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件${categorySummary ? ` · ${categorySummary}` : ""}${receipt.note ? `<br>${receipt.note}` : ""}</small></div>
         <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
       </summary>
       <div class="receipt-lines">${lines}</div>
-      ${receipt.items.every(item => item.manual) ? `<button type="button" class="receipt-del" data-receipt-del="${receipt.key}">删掉这次采购</button>` : ""}
+      ${receipt.items.every(item => item.manual) ? `<div class="receipt-actions">
+        <button type="button" class="receipt-edit-toggle${editing ? " on" : ""}" data-edit-receipt="${receipt.key}" title="${editing ? "改完了" : "编辑这次采购"}" aria-label="${editing ? "改完了" : "编辑这次采购"}">${editing ? "✓" : "✏️"}</button>
+        <button type="button" class="receipt-del" data-receipt-del="${receipt.key}">删掉这次采购</button>
+      </div>` : ""}
       ${photoSectionMarkup("shopping", receipt.key, attachedPhotos, `${receipt.store} 小票`)}
     </details>`;
   }).join("") : `<div class="note">暂无采购记录。</div>`;
   // 只有自己录的才给删除按钮：写在代码里那批删了下次发版又回来，反而让人困惑。
+  // 展开/收起的状态自己记着，重渲染后才不会全部弹回收起。
+  document.getElementById("purchaseHistory").querySelectorAll("[data-receipt]").forEach(card => {
+    card.addEventListener("toggle", () => {
+      if (card.open) openReceipts.add(card.dataset.receipt);
+      else { openReceipts.delete(card.dataset.receipt); if (editingReceipt === card.dataset.receipt) editingReceipt = ""; }
+    });
+  });
+  document.getElementById("purchaseHistory").querySelectorAll("[data-edit-receipt]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const key = button.dataset.editReceipt;
+      editingReceipt = editingReceipt === key ? "" : key;
+      openReceipts.add(key);
+      await renderShopping();
+      renderFoods();
+    });
+  });
   // 改完即存。这里刻意不调 renderShopping()——重渲染会替换掉正在打字的输入框、
   // 光标和键盘都会跳掉。合计和分类等下次进这一页时自然刷新。
   document.getElementById("purchaseHistory").querySelectorAll("[data-line]").forEach(input => {

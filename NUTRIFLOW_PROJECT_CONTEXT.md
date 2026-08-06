@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v92`
+- 当前离线缓存：`nutriflow-pwa-v93`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**小票恢复只读排版，编辑收进一个小 ✏️**（用户：「这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的 icon，可以编辑一次的采购」）。v91 把 `manual` 行**默认**渲染成输入框（名称一行、规格/金额/✕ 一行），平时根本用不到却占掉大半屏、还和只读行的排版对不齐。现在默认走回原来的只读 `.receipt-line`，卡片底部加 `.receipt-actions`：一个小 ✏️（`data-edit-receipt`）＋原来的「删掉这次采购」。新增模块级 `editingReceipt`（一次只编辑一张）与 `openReceipts` Set。**注意 `openReceipts` 是必须的**：重渲染会把 `<details>` 全部弹回收起，点 ✏️ 后卡片会自己合上；现在按 `data-receipt` 记住展开状态、渲染时回填 `open`，收起某张时顺手退出它的编辑态。编辑中 ✏️ 变 ✓（`.receipt-edit-toggle.on` 绿底）。**测试断言注意**：`<details class="receipt-card">` 现在带了 `data-receipt` 属性，写死尖括号的正则要改成 `/<details class="receipt-card"/`。测试仍 28 项。离线缓存与版本号升至 v93。
 
 - 2026-08-06：**修「采购记录不对」——商品名认不出分类**（用户发图：7 行里 6 行是通用 🛒 图标，分类汇总只算到「蔬菜 500g」，实际油菜 400g + 南瓜 500g = 900g）。根因：`foodIdForItem` 只拿**食材目录的 name** 做 `includes` 匹配，而目录里是「小青菜类」「豆腐/豆干」「瓜果类」「无糖希腊酸奶」这种**概念名**，小票上写的是「盒马日日鲜 油菜 (上海青)」「内酯豆腐」「麒麟奶油西瓜」「原味酸奶」，一个都对不上，全落成 `custom:` → 图标、分类汇总、单价对比全错。修法：① 新增 `purchaseItemAliases` 关键词别名表（约 60 条），**顺序即优先级**——包装费/购物袋最前（归 `bag`，不进「现有食材」也不进单价对比）；牛油果先于牛肉、蛋奶先于鸡牛（「鸡蛋」含「鸡」、「牛奶」含「牛」、「牛油果」含「牛」）；具体先于笼统（金针菇→菇、米线→米、南瓜→瓜、菠萝不能被「萝卜」吃掉）。目录匹配保留为兜底。② `purchaseGroupRules` 新增「🥛 蛋奶」组（egg/milk/greekYogurt/cheese），否则酸奶牛奶在小票分类汇总里根本不出现。③ 新增 `healManualFoodIds()`，启动时（`render()` 之前）把早先存成 `custom:` 的行重新认一遍并落盘，**已经记错的采购自动修好、不用手动重录**；只动 `custom:` 开头的，用户自己改过名字的不碰；认成 `bag` 的顺手 `bought=false`。实测那条小票自愈后：鸡排→chickenTender🍗、豆腐→tofu、酸奶→greekYogurt🥛、西瓜→melon🍉、油菜→bokChoy🥬、包装费→bag，汇总变成「肉类 500g · 蔬菜 900g · 蛋奶 1.5kg」。测试增至 28 项。离线缓存与版本号升至 v92。**仍待办**：那条采购的门店是「未记录地点」、时间是保存时的钟点而非小票时间（模型没读到 store/date），目前门店和日期在保存后还改不了——下一步应让它们也可编辑。
 

@@ -112,7 +112,7 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /name:"鸡肉"/);
   assert.doesNotMatch(html, /name:"火鸡/);
   assert.match(html, /<details class="history-details">/);
-  assert.match(html, /<details class="receipt-card">/);
+  assert.match(html, /<details class="receipt-card"/);
   assert.match(html, /summarizeReceipt/);
   assert.match(html, /国产谷饲黄牛牛腱肉/);
   assert.match(html, /indexedDB/);
@@ -176,7 +176,7 @@ test("groups purchases into one card per receipt at runtime", async () => {
   // Seven receipts, thirty-seven line items. A receipt count above the number of
   // distinct receipt IDs means the grouping accumulator leaked extra keys.
   assert.match(meta, /^7 次 · 37 件 /);
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 7);
+  assert.equal(history.match(/<details class="receipt-card"/g).length, 7);
   assert.match(history, /fudi 超市五道口店/);
   assert.match(history, /盒马鲜生/);
 
@@ -651,7 +651,7 @@ test("folds receipt-level fields across every line item", async () => {
   await context.renderShopping();
 
   const history = elements.get("purchaseHistory").innerHTML;
-  assert.equal(history.match(/<details class="receipt-card">/g).length, 8);
+  assert.equal(history.match(/<details class="receipt-card"/g).length, 8);
   assert.match(history, /¥3\.00/);
   assert.match(history, /总价待确认/);
 });
@@ -770,9 +770,17 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
 
   evaluate('addPurchaseReceipt({date:"2026-08-06 15:03", store:"盒马鲜生", items:[{name:"丘比 沙拉酱", amount:"150g", price:13.11}]})');
   await context.renderShopping();
-  const history = elements.get("purchaseHistory").innerHTML;
 
-  // 自动保存的前提是存进去还能改：每行都是输入框，还能单独删行。
+  // 平时保持只读，和写死在代码里那批长得一样，每次采购只多一个小 ✏️
+  // （用户："这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的 icon"）。
+  const idle = elements.get("purchaseHistory").innerHTML;
+  assert.doesNotMatch(idle, /receipt-line editable/);
+  assert.match(idle, /data-edit-receipt="/);
+
+  // 点 ✏️ 才切成输入框，一次只编辑一张采购。
+  evaluate("editingReceipt = manualPurchases[0].receiptId");
+  await context.renderShopping();
+  const history = elements.get("purchaseHistory").innerHTML;
   assert.match(history, /receipt-line editable/);
   assert.equal(history.match(/data-line="/g).length, 3);
   assert.match(history, /data-line-del="/);
@@ -836,7 +844,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v92"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v93"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
