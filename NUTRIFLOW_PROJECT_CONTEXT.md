@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v89`
+- 当前离线缓存：`nutriflow-pwa-v90`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修三个识别 bug**（用户反馈「上传三张照片但只识别了四样东西」「吃饭的金额都识别错了」）。① **采购只识别第一张**：`photoEl.change` 里写的是 `recognizeReceipt(pendingPhotos[0])`，后面几张根本没发给模型。一单小票常要滚几屏才截得完，三张是一单的三段。新增 `recognizeReceipts(blobs, onProgress)` 逐张识别再合并：门店/日期取第一张读到的、不被后面覆盖；相邻截图会重叠，按「商品名+规格」去重；单张失败跳过继续拼，全失败才抛第一张的错。② **同一笔钱串到别的餐次**：`autoRecognize` 里 `diningId` 声明在 per-photo 循环**外面**，一天的照片里午饭晚饭混在一起时，午餐那条会复用晚餐建的账单，于是两顿后面都显示 ¥37.80。改成在循环内按**这张照片识别出的 meal** 解析：`context.diningId || diningIdFor(date, meal)`。③ **同一顿重复建账单导致价格翻倍**：`ownerContext("diet:…")` 只返回 `{date}`、没有 diningId，所以每次给同一顿补传照片都会 `addDining` 新建一条，`mealPriceMark` 按 diningId 去重求和后就变成倍数（用户看到 ¥74.70 = 24.9×3）。新增 `diningIdFor(date, meal)` 从 `dietEntries` 里回查已挂的账单，有就复用并只补空字段（价格、店名都不覆盖已填的）。④ prompt 加 11b：外卖单上同时有总价/原价/总优惠/打包费/配送费和各菜单价，**明确只填「实付」那个数、且不许相加**（原规则 11 只说"填 price"，没说读哪个）。测试增至 25 项。离线缓存与版本号升至 v90。
 
 - 2026-08-03：**补上「全新的一天只发照片」这条路**。之前有个真空档：某一天在列表里还不存在时，它就没有自己的 📷（每天的照片区是跟着已有记录渲染的），想靠照片记一顿必须先用 ＋ 打字建一条——和用户要的「都不要必填」直接矛盾。现在 `＋` 展开的表单里多了一个「📷 发张照片就行」，选完直接存进 `diet:<日期>` 并自动识别、当场把这一天建出来。按钮文案会走「识别中… → ✅ 已记录 / 没认出来 / 已存下照片（没配 key）」。
   - **同时修掉一句已经变成假话的隐私说明**：设置卡片里原来写「只有你在某张照片上主动点『识别』，那一张才会发出去」——上传即识别之后这句不再成立。改成「只有你自己传进来的这些照片会发给模型，一次只发一张、不碰相册里别的东西；不填 key 就一张也不发」。测试里那条断言也反过来了：`doesNotMatch` 旧句子 + `match` 新句子。**界面上的隐私承诺必须和实际行为一致，宁可写得直白也不要留旧的安慰话。**

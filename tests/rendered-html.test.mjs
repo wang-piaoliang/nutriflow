@@ -724,13 +724,49 @@ test("filters the unit-price comparison by purchase category", async () => {
   assert.equal(elements.get("priceMeta").textContent, "23 种");
 });
 
+test("keeps one bill per meal and never shares it across meals", async () => {
+  const { evaluate } = await runAppScript();
+
+  evaluate('dietEntries.length = 0; diningEntries.length = 0;');
+  evaluate('const d = addDining({date:"2026-08-05", place:"川成元", price:37.8, note:""}); addDietEntry("2026-08-05","晚餐",["牛肉片"],"川成元",d.id);');
+
+  // 一天里午饭和晚饭的照片常常混在一起识别。账单必须按「这张照片是哪一餐」去找，
+  // 否则同一笔钱会同时显示在午餐和晚餐后面（用户看到两顿都是 ¥37.80）。
+  assert.equal(evaluate('diningIdFor("2026-08-05","午餐")'), "");
+  assert.equal(evaluate('diningIdFor("2026-08-05","晚餐")'), evaluate("diningEntries[0].id"));
+
+  // 同一顿再传一张照片时要认出账单已经有了，不能再建一条——否则价格成倍。
+  assert.equal(evaluate("diningEntries.length"), 1);
+
+  // 同一笔账单被这一餐的多条记录引用时只算一次，不是叠加。
+  evaluate('globalThis.__meal = {added:[{diningId:diningEntries[0].id},{diningId:diningEntries[0].id},{diningId:diningEntries[0].id}]}');
+  assert.match(evaluate("mealPriceMark(globalThis.__meal)"), /¥37\.80/);
+  assert.doesNotMatch(evaluate("mealPriceMark(globalThis.__meal)"), /113/);
+});
+
+test("merges every receipt photo instead of only the first", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 一单小票要滚好几屏才截得完，三张图是一单的三段。只发第一张会丢掉后面所有商品
+  // （用户："上传三张照片，但只识别了四样东西"）。
+  assert.match(html, /async function recognizeReceipts\(blobs/);
+  assert.doesNotMatch(html, /recognizeReceipt\(pendingPhotos\[0\]\)/);
+  assert.match(html, /recognizeReceipts\(pendingPhotos/);
+  // 相邻截图会重叠，按「名称 + 规格」去重。
+  assert.match(html, /\$\{item\.name\}\|\$\{item\.amount\}/);
+
+  // 外卖单上同时有总价/优惠/打包费，必须明确只取实付，否则会挑错数或相加。
+  assert.match(html, /实付合计.*实付款|只填\*\*这一单最后实际付掉的钱\*\*/);
+  assert.match(html, /不要把它们相加/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v89"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v90"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

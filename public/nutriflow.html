@@ -1190,7 +1190,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v89</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v90</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1510,6 +1510,7 @@ const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这
 9. 判断这顿看起来是"在外面吃的"（餐厅、外卖、食堂）还是"家里做的"，填 outside（true/false）。有餐具餐垫、餐厅托盘、外卖盒、菜单、摆盘讲究的，倾向 true；家常锅碗、厨房台面，倾向 false。**拿不准就填 false。**
 10. 照片里如果**明确出现**店名（招牌、餐具、外卖单、小票）就填 place，看不到就填空字符串。**绝对不要猜店名。**
 11. 照片里如果**明确出现**金额（账单、小票、外卖单）就填 price（数字），看不到就填 null。**绝对不要估价格。**
+11b. price 只填**这一单最后实际付掉的钱**，也就是"实付""实付合计""实付款"后面那个数。外卖单上同时有"总价""原价""总优惠""打包费""配送费"和各菜单价——**这些一律不要填，也不要把它们相加**。例如写着「总价 ¥96.4，总优惠 ¥58.6，实付 ¥37.8」时，price 填 37.8。同一张图里只有一个实付金额，不要重复计。
 
 只返回 JSON，不要解释、不要 markdown 代码块：
 {"meal":"午餐","items":["烤鸭","虾",{"name":"罗宋汤","as":"牛肉"},"米饭"],"outside":true,"place":"寿司郎","price":168}`;
@@ -1572,6 +1573,38 @@ async function recognizeReceipt(blob){
   const result = parseReceipt(raw);
   if (!result.items.length) throw new Error("没从这张照片里读出商品，可能不是小票或者太糊。");
   return result;
+}
+// 一单小票常常要滚好几屏才截得完，所以三张图是「一单的三段」，不是三单。
+// 之前只把 pendingPhotos[0] 发出去，后面几张里的商品全丢了（用户："上传三张照片，
+// 但只识别了四样东西"）。这里逐张识别再拼起来：
+//  - 门店和日期取第一张读到的，后面的不覆盖（第一张通常是抬头那段）；
+//  - 相邻两张常有重叠行，按「商品名 + 规格」去重，只留先出现的那条；
+//  - 某一张识别失败不至于让整单白费，跳过它继续拼，最后至少有东西可核对。
+async function recognizeReceipts(blobs, onProgress){
+  const list = Array.from(blobs || []).filter(Boolean);
+  if (!list.length) throw new Error("没有可识别的照片。");
+  const merged = {store: "", date: "", time: "", items: []};
+  const seen = new Set();
+  const failures = [];
+  for (let index = 0; index < list.length; index += 1){
+    try{
+      const part = await recognizeReceipt(list[index]);
+      if (!merged.store && part.store) merged.store = part.store;
+      if (!merged.date && part.date){ merged.date = part.date; merged.time = part.time; }
+      part.items.forEach(item => {
+        const key = `${item.name}|${item.amount}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.items.push(item);
+      });
+    }catch(error){
+      failures.push(error);
+    }
+    if (typeof onProgress === "function") onProgress(index + 1);
+  }
+  // 全都失败才算失败——报第一张的原因，比笼统一句"识别不出来"好排查。
+  if (!merged.items.length) throw failures[0] || new Error("没从这些照片里读出商品。");
+  return merged;
 }
 function parseRecognition(text){
   const match = String(text).match(/\{[\s\S]*\}/);
@@ -1698,6 +1731,12 @@ function ownerContext(owner){
   }
   return null;   // 小票照片走另一套识别，不在这里
 }
+// 找这一天这一餐已经挂上的那笔「在外就餐」。没有它的话，同一顿饭每识别一张照片
+// 就会新建一条，价格于是被叠加成好几倍（用户看到 ¥74.70，其实是 24.9 记了三遍）。
+function diningIdFor(date, meal){
+  const hit = dietEntries.find(entry => entry.date === date && entry.meal === meal && entry.diningId);
+  return hit ? hit.diningId : "";
+}
 async function autoRecognize(owner, saved){
   const context = ownerContext(owner);
   if (!context || !aiConfig().key) return 0;
@@ -1708,22 +1747,33 @@ async function autoRecognize(owner, saved){
       const result = await recognizePhoto(photo.blob);
       const {meal, items} = result;
       let place = context.place;
-      let diningId = context.diningId;
+      // 店名和账单必须按「这张照片认出来的那一餐」去找，不能在整个循环外面共用一个。
+      // 一天的照片里午饭和晚饭常常混在一起，共用一个 diningId 会让同一笔钱同时显示
+      // 在午餐和晚餐后面（用户看到午餐和晚餐都是 ¥37.80，其实只有晚餐花了这些）。
+      let diningId = context.diningId || diningIdFor(context.date, meal);
       // 看着像在外面吃的就顺手建一条「在外就餐」（用户："系统自动梳理…
       // 缺少的信息可以留空，后面我会拍照上传系统再识别补充"）。会误判，
-      // 所以这条和手动加的完全一样——能改价格、能删。已经挂在某条在外就餐
-      // 下面的照片就不再建，免得一顿记两条。
+      // 所以这条和手动加的完全一样——能改价格、能删。这一餐已经有账单了就不再建，
+      // 免得一顿记成好几条、价格翻倍。
       if (result.outside && !diningId){
         const entry = addDining({date: context.date, place: result.place || "", price: result.price, note: ""});
         diningId = entry.id;
         place = result.place || "";
         void renderDining();
-      } else if (diningId && result.price != null){
-        // 已有那条如果还没填价格，照片里读到了就补上。
+      } else if (diningId){
+        // 已有那条缺什么就补什么：价格和店名都只在空着的时候写，不覆盖已填的。
         const entry = diningEntries.find(item => item.id === diningId);
-        if (entry && (entry.price == null || isNaN(entry.price))){
-          updateDiningPrice(diningId, result.price);
-          void renderDining();
+        if (entry){
+          if (result.price != null && (entry.price == null || isNaN(entry.price))){
+            updateDiningPrice(diningId, result.price);
+            void renderDining();
+          }
+          if (!entry.place && result.place){
+            entry.place = result.place;
+            saveDining();
+            void renderDining();
+          }
+          place = place || entry.place || "";
         }
       }
       addDietEntry(context.date, meal, items, place, diningId);
@@ -3503,7 +3553,9 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     }
     if (hintEl) hintEl.textContent = "正在识别小票…";
     try{
-      const receipt = await recognizeReceipt(pendingPhotos[0]);
+      const receipt = await recognizeReceipts(pendingPhotos, done => {
+        if (hintEl) hintEl.textContent = `正在识别小票…（${done}/${pendingPhotos.length}）`;
+      });
       if (receipt.date && dateEl) dateEl.value = receipt.date;
       recognizedTime = receipt.time || "";
       if (receipt.store && storeEl) storeEl.value = receipt.store;
