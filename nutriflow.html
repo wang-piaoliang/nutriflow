@@ -1199,7 +1199,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v91</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v92</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2027,11 +2027,100 @@ function removeDining(id){
 const MANUAL_PURCHASES_KEY = "nutriflow_purchases_v1";
 let manualPurchases = load(MANUAL_PURCHASES_KEY, []);
 function saveManualPurchases(){ persist(MANUAL_PURCHASES_KEY, manualPurchases); schedulePush("purchases"); }
+// 别名表是后加的，早先存下来的行全落成了 custom:，图标是通用购物车、分类汇总也漏算。
+// 每次启动把这些重新认一遍，认出来了就落盘——已经记错的采购不用手动重录。
+// 只动 custom: 开头的：用户自己改过名字、已经归好类的那些不碰。
+function healManualFoodIds(){
+  let changed = false;
+  manualPurchases.forEach(row => {
+    if (!row || typeof row.foodId !== "string" || !row.foodId.startsWith("custom:")) return;
+    const fresh = foodIdForItem(row.item);
+    if (fresh === row.foodId) return;
+    row.foodId = fresh;
+    // 包装费、购物袋这类不是买到手的食材，别让它们出现在「现有食材」清单里。
+    if (fresh === "bag") row.bought = false;
+    changed = true;
+  });
+  if (changed) saveManualPurchases();
+}
 function allPurchases(){ return purchases.concat(manualPurchases); }
 // 没有目录里的 foodId 时，用品名当分组键。单价对比和「现有食材」都按 foodId 归组，
 // 同名的两次采购必须落进同一组才比得出涨跌，所以这里要稳定、可复现。
+// 超市商品名和食材目录的名字对不上：目录里是「小青菜类」「豆腐/豆干」「瓜果类」这种
+// 概念名，小票上写的是「盒马日日鲜 油菜 (上海青)」「内酯豆腐」「麒麟奶油西瓜」，
+// 靠 includes 一个都匹配不上，于是全落成 custom:，图标是通用购物车、分类汇总也漏算
+// （用户："这个记录不对"——7 行里 6 行没认出来，蔬菜只统计到 500g）。
+// 这里按关键词认，顺序很重要，靠前的先命中：
+//  - 包装费/购物袋排最前，它们只是账单行，归 bag 后不进「现有食材」也不进单价对比；
+//  - 牛油果要排在牛肉前面，酸奶/牛奶/蛋要排在鸡、牛前面（"鸡蛋"含"鸡"、"牛奶"含"牛"）；
+//  - 具体的排在笼统的前面：金针菇先于菇、米线先于米、南瓜先于瓜。
+const purchaseItemAliases = [
+  {id:"bag", keywords:["包装费","购物袋","袋子","餐具","打包费","配送费","运费"]},
+  {id:"avocado", keywords:["牛油果"]},
+  {id:"egg", keywords:["鸡蛋","鸭蛋","蛋"]},
+  {id:"greekYogurt", keywords:["酸奶"]},
+  {id:"cheese", keywords:["奶酪","芝士"]},
+  {id:"soyMilk", keywords:["豆浆"]},
+  {id:"milk", keywords:["纯牛奶","鲜牛奶","牛奶","鲜奶"]},
+  {id:"shrimp", keywords:["虾"]},
+  {id:"salmon", keywords:["三文鱼"]},
+  {id:"tuna", keywords:["金枪鱼"]},
+  {id:"squid", keywords:["鱿鱼","墨鱼"]},
+  {id:"scallop", keywords:["扇贝","干贝"]},
+  {id:"shellfish", keywords:["贝","蛤","蛏","生蚝","牡蛎"]},
+  {id:"whiteFish", keywords:["鲈鱼","鳕鱼","巴沙鱼","龙利鱼","鱼"]},
+  {id:"chickenTender", keywords:["鸡小胸","鸡胸","鸡排","鸡柳","鸡里脊"]},
+  {id:"chickenThigh", keywords:["鸡腿","琵琶腿"]},
+  {id:"chicken", keywords:["鸡翅","鸡爪","整鸡","鸡"]},
+  {id:"duck", keywords:["鸭"]},
+  {id:"beef", keywords:["牛"]},
+  {id:"lamb", keywords:["羊"]},
+  {id:"porkShoulder", keywords:["梅花肉"]},
+  {id:"porkTenderloin", keywords:["里脊"]},
+  {id:"leanPork", keywords:["猪","排骨","五花"]},
+  {id:"liver", keywords:["肝"]},
+  {id:"tofu", keywords:["豆腐","豆干","豆皮","腐竹"]},
+  {id:"edamame", keywords:["毛豆"]},
+  {id:"enoki", keywords:["金针菇"]},
+  {id:"mushroom", keywords:["香菇","口蘑","平菇","杏鲍菇","菌","菇"]},
+  {id:"bokChoy", keywords:["油菜","上海青","小青菜","鸡毛菜","青菜"]},
+  {id:"cabbage", keywords:["大白菜","娃娃菜","包菜","卷心菜","白菜"]},
+  {id:"leafy", keywords:["生菜","菠菜","油麦菜","空心菜","芥蓝","茼蒿","苋菜"]},
+  {id:"broccoli", keywords:["西兰花","西蓝花"]},
+  {id:"cauliflower", keywords:["松花菜","花椰菜","花菜"]},
+  {id:"tomato", keywords:["番茄","西红柿","圣女果"]},
+  {id:"carrot", keywords:["胡萝卜"]},
+  {id:"radish", keywords:["白萝卜","青萝卜","萝卜"]},
+  {id:"pepper", keywords:["彩椒","青椒","尖椒","螺丝椒","辣椒"]},
+  {id:"pumpkin", keywords:["南瓜"]},
+  {id:"eggplant", keywords:["茄子"]},
+  {id:"greenBeans", keywords:["豆角","四季豆","荷兰豆","豇豆","豌豆"]},
+  {id:"allium", keywords:["大蒜","洋葱","小葱","香葱","蒜","葱","姜","韭"]},
+  {id:"gourd", keywords:["丝瓜","冬瓜","黄瓜","西葫芦","苦瓜"]},
+  {id:"quinoa", keywords:["藜麦"]},
+  {id:"oats", keywords:["燕麦"]},
+  {id:"wholeWheatBread", keywords:["吐司","面包"]},
+  {id:"noodle", keywords:["面条","挂面","乌冬","意面","米线","粉丝","面"]},
+  {id:"corn", keywords:["玉米"]},
+  {id:"potato", keywords:["土豆","马铃薯"]},
+  {id:"sweetPotato", keywords:["红薯","地瓜","紫薯"]},
+  {id:"rice", keywords:["大米","香米","糙米","小米","米"]},
+  {id:"melon", keywords:["西瓜","哈密瓜","甜瓜","蜜瓜"]},
+  {id:"banana", keywords:["香蕉"]},
+  {id:"apple", keywords:["苹果","梨"]},
+  {id:"orange", keywords:["橙","橘","柑","柚"]},
+  {id:"kiwi", keywords:["猕猴桃","奇异果"]},
+  {id:"berries", keywords:["蓝莓","草莓","树莓","莓"]},
+  {id:"grape", keywords:["葡萄","提子"]},
+  {id:"stoneFruit", keywords:["樱桃","桃","李","杏"]},
+  {id:"nuts", keywords:["核桃","腰果","巴旦木","杏仁","花生","坚果"]},
+  {id:"tropical", keywords:["芒果","菠萝","火龙果","百香果","榴莲"]},
+];
 function foodIdForItem(name){
   const clean = (name || "").trim();
+  if (!clean) return "custom:";
+  const alias = purchaseItemAliases.find(rule => rule.keywords.some(keyword => clean.includes(keyword)));
+  if (alias) return alias.id;
   const known = foods.find(food => clean.includes(food.name) || food.name.includes(clean));
   return known ? known.id : `custom:${clean}`;
 }
@@ -2703,6 +2792,7 @@ const purchaseGroupRules = [
   {name:"肉类", icon:"🥩", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", icon:"🍤", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
   {name:"蔬菜", icon:"🥦", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
+  {name:"蛋奶", icon:"🥛", ids:["egg","milk","greekYogurt","cheese"]},
   {name:"豆类", icon:"🫘", ids:["tofu","soyMilk","edamame"]},
   {name:"主食", icon:"🍚", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
   {name:"水果坚果", icon:"🍎", ids:["avocado","apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
@@ -3791,6 +3881,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }
 })();
 bindDiningForm();
+// 先把早先落成 custom: 的行重新归类，再渲染——否则第一屏还是旧图标和旧汇总。
+healManualFoodIds();
 render();
 </script>
 </body>
