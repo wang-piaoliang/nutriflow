@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v93`
+- 当前离线缓存：`nutriflow-pwa-v94`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修「识别重复了，导致上面都重复了」——同一单被记两遍**。用户截图里「盒马工坊 卤鸭翅中 160g」在「现有食材」里出现两次，同日同店。根因：`photoEl` 上那个做识别+自动保存的 `change` 监听器**完全没有进行中的守卫**，而识别三张图要好几秒——期间 iOS 的选图器有时会再发一次 `change`、或人又选了一遍，两条 async 流程并发跑完 `commitPurchase()`，于是记成两单。v91 把保存改成自动之后这条路更没人拦（以前要手点保存，重复触发不会自动入账）。三层修复：① `let recognizing = false` 守卫，`if (recognizing) return`，`finally` 里复位；② 保存前用 `receiptSignature(store, date, items)`（同店 + 同一天 + 全部商品的「名+规格+金额」排序后拼接）比对已有采购，指纹相同就不新建、提示「这单刚记过了」——这挡的是**任何来源**的重复，包括手滑传两次、点两下保存；③ 新增 `dedupeManualReceipts()` 在启动时（`healManualFoodIds()` 之后、`render()` 之前）把**已经存在**的重复整单删掉，只留最早那一单，用户不用手动清理。**误删边界已验证**：同店同日同商品但金额不同（19.9 vs 21.9）判为两单、不删——现实里同一天在同一家店买两趟且每件商品连规格金额都分毫不差，基本不可能。测试增至 29 项。离线缓存与版本号升至 v94。
 
 - 2026-08-06：**小票恢复只读排版，编辑收进一个小 ✏️**（用户：「这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的 icon，可以编辑一次的采购」）。v91 把 `manual` 行**默认**渲染成输入框（名称一行、规格/金额/✕ 一行），平时根本用不到却占掉大半屏、还和只读行的排版对不齐。现在默认走回原来的只读 `.receipt-line`，卡片底部加 `.receipt-actions`：一个小 ✏️（`data-edit-receipt`）＋原来的「删掉这次采购」。新增模块级 `editingReceipt`（一次只编辑一张）与 `openReceipts` Set。**注意 `openReceipts` 是必须的**：重渲染会把 `<details>` 全部弹回收起，点 ✏️ 后卡片会自己合上；现在按 `data-receipt` 记住展开状态、渲染时回填 `open`，收起某张时顺手退出它的编辑态。编辑中 ✏️ 变 ✓（`.receipt-edit-toggle.on` 绿底）。**测试断言注意**：`<details class="receipt-card">` 现在带了 `data-receipt` 属性，写死尖括号的正则要改成 `/<details class="receipt-card"/`。测试仍 28 项。离线缓存与版本号升至 v93。
 

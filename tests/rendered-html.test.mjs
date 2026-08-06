@@ -838,13 +838,42 @@ test("re-classifies purchases that were stored before the alias table existed", 
   assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
 });
 
+test("never records the same receipt twice", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 识别三张图要好几秒，期间 iOS 会再发一次 change 或人又选了一遍，两条 async
+  // 流程并发跑完 commitPurchase()，同一单被记两遍（用户："识别重复了"）。
+  assert.match(html, /let recognizing = false;/);
+  assert.match(html, /if \(recognizing\) return;/);
+  assert.match(html, /recognizing = false;/);
+
+  // 保存前再挡一道：指纹一样就不新建，不管重复来自哪儿。
+  assert.match(html, /const signature = receiptSignature\(store, date, rows\);/);
+  assert.match(html, /这单刚记过了/);
+
+  evaluate("manualPurchases.length = 0;");
+  const line = (rid, price) => `{receiptId:"${rid}",id:"${rid}-01",date:"2026-08-06 23:10",foodId:"duck",item:"卤鸭翅中",amount:"160g",totalPrice:${price},unitPrice:"",store:"大钟寺店",bought:true,manual:true}`;
+  evaluate(`manualPurchases.push(${line("A", 19.9)}, ${line("B", 19.9)})`);
+
+  // 同店、同一天、商品名规格金额全一致 —— 现实里不可能，判为同一单记了两遍。
+  assert.equal(evaluate("dedupeManualReceipts()"), 1);
+  assert.equal(evaluate("manualPurchases.length"), 1);
+  assert.equal(evaluate("manualPurchases[0].receiptId"), "A");
+
+  // 金额不同就是真的两单，不能误删。
+  evaluate(`manualPurchases.push(${line("C", 21.9)})`);
+  assert.equal(evaluate("dedupeManualReceipts()"), 0);
+  assert.equal(evaluate("manualPurchases.length"), 2);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v93"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v94"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
