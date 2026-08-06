@@ -760,13 +760,44 @@ test("merges every receipt photo instead of only the first", async () => {
   assert.match(html, /不要把它们相加/);
 });
 
+test("auto-saves a recognised receipt and keeps every line editable", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 识别完直接入账，不再等人点保存。
+  assert.match(html, /const saved = await commitPurchase\(\);/);
+  assert.match(html, /已自动记下 \$\{saved\} 件/);
+
+  evaluate('addPurchaseReceipt({date:"2026-08-06 15:03", store:"盒马鲜生", items:[{name:"丘比 沙拉酱", amount:"150g", price:13.11}]})');
+  await context.renderShopping();
+  const history = elements.get("purchaseHistory").innerHTML;
+
+  // 自动保存的前提是存进去还能改：每行都是输入框，还能单独删行。
+  assert.match(history, /receipt-line editable/);
+  assert.equal(history.match(/data-line="/g).length, 3);
+  assert.match(history, /data-line-del="/);
+
+  // 改名要连带重算分类和单价，否则图标和单价对比还停在旧值上。
+  const rowId = evaluate("manualPurchases[0].id");
+  evaluate(`updateManualLine(${JSON.stringify(rowId)}, "price", "9.9")`);
+  assert.equal(evaluate("manualPurchases[0].totalPrice"), 9.9);
+  assert.match(evaluate("manualPurchases[0].unitPrice"), /9\.9 元/);
+
+  // 商品名来自模型，可能带引号，直接塞进 value="" 会撑破属性。
+  assert.match(html, /function escapeAttribute\(value\)/);
+  assert.match(html, /replace\(\/"\/g, "&quot;"\)/);
+
+  evaluate(`removeManualLine(${JSON.stringify(rowId)})`);
+  assert.equal(evaluate("manualPurchases.length"), 0);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v90"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v91"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

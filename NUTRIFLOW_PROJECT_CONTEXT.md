@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v90`
+- 当前离线缓存：`nutriflow-pwa-v91`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**采购照片上传即自动入账，并让存下来的每一行可就地改**（用户：「上传照片后自动保存，如果有问题我会修改的，可修改就行」）。① 把原来 `saveBtn` 上那段保存逻辑抽成 `commitPurchase()`，识别成功后直接调用，不再等人点「保存这次采购」；按钮仍然在，手填时照用。② **自动保存的前提是改得动**——改之前存下来只有「删掉这次采购」，认错了只能整单删掉重来。现在 `manual:true` 的行在采购历史里渲染成输入框（名称一行，规格/金额/删除一行），新增 `updateManualLine(rowId, field, value)` 与 `removeManualLine(rowId)`；改名会连带重算 `foodId` 和 `unitPrice`（否则图标和「食材单价对比」的归类停在旧值上），改完即存**但不重渲染**（重渲染会替换掉正在打字的输入框、光标和键盘都跳掉）。占位行填上名字后自动转成 `bought:true`。写死在代码里那批仍然只读。③ 新增 `escapeAttribute()`：商品名来自模型，带引号会撑破 `value=""`。测试增至 26 项。离线缓存与版本号升至 v91。
 
 - 2026-08-06：**修三个识别 bug**（用户反馈「上传三张照片但只识别了四样东西」「吃饭的金额都识别错了」）。① **采购只识别第一张**：`photoEl.change` 里写的是 `recognizeReceipt(pendingPhotos[0])`，后面几张根本没发给模型。一单小票常要滚几屏才截得完，三张是一单的三段。新增 `recognizeReceipts(blobs, onProgress)` 逐张识别再合并：门店/日期取第一张读到的、不被后面覆盖；相邻截图会重叠，按「商品名+规格」去重；单张失败跳过继续拼，全失败才抛第一张的错。② **同一笔钱串到别的餐次**：`autoRecognize` 里 `diningId` 声明在 per-photo 循环**外面**，一天的照片里午饭晚饭混在一起时，午餐那条会复用晚餐建的账单，于是两顿后面都显示 ¥37.80。改成在循环内按**这张照片识别出的 meal** 解析：`context.diningId || diningIdFor(date, meal)`。③ **同一顿重复建账单导致价格翻倍**：`ownerContext("diet:…")` 只返回 `{date}`、没有 diningId，所以每次给同一顿补传照片都会 `addDining` 新建一条，`mealPriceMark` 按 diningId 去重求和后就变成倍数（用户看到 ¥74.70 = 24.9×3）。新增 `diningIdFor(date, meal)` 从 `dietEntries` 里回查已挂的账单，有就复用并只补空字段（价格、店名都不覆盖已填的）。④ prompt 加 11b：外卖单上同时有总价/原价/总优惠/打包费/配送费和各菜单价，**明确只填「实付」那个数、且不许相加**（原规则 11 只说"填 price"，没说读哪个）。测试增至 25 项。离线缓存与版本号升至 v90。
 
