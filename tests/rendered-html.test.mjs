@@ -867,13 +867,35 @@ test("never records the same receipt twice", async () => {
   assert.equal(evaluate("manualPurchases.length"), 2);
 });
 
+test("lets the person pick which meal a photo belongs to", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 照片里看不出这是第几餐——一盘番茄炒蛋中午晚上都可能吃。之前全靠模型猜，
+  // 晚餐就被并进了午餐（用户："我刚上传了晚餐的番茄炒蛋，他就直接追加在午餐的后面了"）。
+  assert.equal(evaluate("guessMealByClock(new Date(2026,7,6,7,0))"), "早餐");
+  assert.equal(evaluate("guessMealByClock(new Date(2026,7,6,12,0))"), "午餐");
+  assert.equal(evaluate("guessMealByClock(new Date(2026,7,6,19,0))"), "晚餐");
+  assert.equal(evaluate("guessMealByClock(new Date(2026,7,6,23,0))"), "加餐");
+
+  const form = evaluate("dietDayFormMarkup()");
+  // 四个餐次做成一排 chip，排在「或者手动填」之前——之前它是埋在折叠区里的 select。
+  assert.equal(form.match(/data-meal-pick=/g).length, 4);
+  assert.ok(form.indexOf("data-meal-pick") < form.indexOf("或者手动填"));
+  assert.doesNotMatch(form, /id="dietFormMeal"/);
+
+  // 识别时以人选的餐次为准，模型的判断只在没得选时用。
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /const meal = forcedMeal \|\| result\.meal;/);
+  assert.match(html, /autoRecognize\(owner, saved, \{meal: pickedMeal\(container\)\}\)/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v94"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v95"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
