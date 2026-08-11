@@ -59,6 +59,9 @@ async function runAppScript() {
     },
     document: {
       addEventListener() {},
+      // syncTopbarButtons() 现在在脚本加载时就跑一次（首屏要立刻决定顶栏放 🔍 还是 ⚙），
+      // 它会 document.querySelector(".nav-btn.active")——桩里缺这个方法脚本会直接抛。
+      querySelector: () => null,
       querySelectorAll: () => [],
       createElement: () => createElement(),
       getElementById(id) {
@@ -939,6 +942,9 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   assert.match(html, /id="searchBtn"/);
   assert.match(html, /searchBtn.hidden = view === "home"/);
   assert.match(html, /settingsBtn.hidden = view !== "home"/);
+  // 首屏必须立刻同步一次，否则 🔍 和 ⚙ 会同时挂在顶栏上，看着像凭空多了个按钮，
+  // 而不是把设置换成了搜索。之前这句错插在了 nav 点击回调里，页面加载时根本不执行。
+  assert.match(html, /\n\/\/ 首屏也要立刻同步一次[\s\S]*?\nsyncTopbarButtons\(\);/);
 
   // 在外就餐不再常驻可编辑，点 ✏️ 才切成可填，且店名/日期/价格都能改。
   assert.match(html, /let editingDining = "";/);
@@ -954,7 +960,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v97"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v98"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

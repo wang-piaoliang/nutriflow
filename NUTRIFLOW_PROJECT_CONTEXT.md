@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v97`
+- 当前离线缓存：`nutriflow-pwa-v98`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修首页 🔍 和 ⚙ 同时显示**（用户：「我说的是首页的设置改成搜索，你好像直接增加了搜索，首页看着很奇怪」——不是需求变了，是我上一版有 bug）。上一版那句初始化的 `syncTopbarButtons()` 被我插错了位置，落在了 `.nav-btn` 的 click 回调**里面**，于是页面刚加载时根本不执行，两个按钮都保持初始可见状态——看着就像凭空多了个搜索按钮，而不是把设置换成了搜索。切一次 tab 后才会正常。修法：把那句挪到 forEach 之外的顶层。CDP 实测：首屏（未点任何 tab）饮食页只有 🔍；采购/食材 🔍；目标 ⚙；切回饮食仍是 🔍。**测试桩要同步补 `document.querySelector`**——这个函数现在在脚本加载时就跑，桩里缺它会让整个脚本抛异常、27 个用例一起挂。离线缓存与版本号升至 v98。
 
 - 2026-08-06：**在外就餐改成点 ✏️ 才编辑 + 顶栏搜索**（用户 6 条反馈里剩下的第 3、6 条）。① 「在外就餐」原来价格框常驻可编辑、看着像未填完的表单。新增模块级 `editingDining`（一次一笔），平时价格显示成只读的 `.dining-price-read`（没价格时显示灰色「价格待补」），点 ✏️ 才把**店名、日期、价格**三个字段一起切成输入框，删除按钮也只在编辑态出现（避免误删）。改完即存但**不重渲染**（同采购那边，重渲染会替换掉正在打字的输入框）。② **顶栏按钮按页切换**：新增 `syncTopbarButtons()`，「目标」页显示 ⚙ 设置、其余页显示 🔍 搜索（一次只出现一个）；切页时同步、并收起搜索面板清空关键词——否则搜索范围变了、结果还停在上一页的。③ **搜索**：新增 `SEARCH_SCOPES`（dietLog=全部四类、shopping=采购+在外就餐、foods=食材，home 无）和 `searchAll(keyword, scopes)`，结果按「吃过 / 买过 / 在外吃 / 食材」分组、每组带命中数。空关键词返回空数组，不会把全部内容倒出来。**测试注意**：vm realm 里的数组原型和测试文件不同，`assert.deepEqual` 会因非同一引用而失败，改用 `JSON.stringify` 比较。测试增至 32 项。离线缓存与版本号升至 v97。
 

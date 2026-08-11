@@ -1232,7 +1232,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v97</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v98</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3757,9 +3757,11 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     }
     syncTopbarButtons();
     window.scrollTo({top:0, behavior:"smooth"});
-syncTopbarButtons();
   });
 });
+// 首屏也要立刻同步一次，否则 🔍 和 ⚙ 会同时挂在顶栏上——看着像凭空多了个按钮，
+// 而不是把设置换成了搜索（用户："我说的是首页的设置改成搜索，你好像直接增加了搜索"）。
+syncTopbarButtons();
 const photoViewer = document.getElementById("photoViewer");
 let photoViewerTrigger = null;
 // 当前大图对应的照片：只有饮食页的照片（owner 形如 diet:2026-07-24）能识别，
