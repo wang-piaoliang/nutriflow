@@ -1232,7 +1232,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v98</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v99</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1569,15 +1569,26 @@ function blobToBase64(blob){
 // 小票识别。和餐食那套是两回事：这里要读的是文字，不是猜食物。
 const RECEIPT_PROMPT = `看这张超市小票（或线上订单截图），把上面买的每一件商品列出来。
 只返回 JSON，不要解释、不要 markdown 代码块。格式：
-{"store":"门店名","date":"YYYY-MM-DD HH:MM","items":[{"name":"商品名","amount":"重量或规格","price":实付金额}]}
+{"store":"门店名","date":"YYYY-MM-DD HH:MM","items":[{"name":"商品名","amount":"重量或规格","count":数量,"price":实付金额}]}
 规则：
 1. name 用小票上的商品名，去掉促销词和编号，保留品牌（例如"盒马日日鲜 冰鲜鸡小胸"）。
 2. amount 写小票上的重量或规格，例如 "400g"、"1kg"、"约500g"、"550ml×12"。**小票上没写就留空字符串**，绝对不要自己估。
 3. price 写这一行的**实付小计金额**（数字，不带货币符号），不是单价、不是原价。看不清就写 null。
+3b. count 写这一行买了**几件**（数字）。小票上「2盒」「×2」「2件」「数量 2」都是数量；只买一件就写 1，看不出来也写 1。**这一条经常被漏**——买两盒和买一盒的规格写的是同一个（都是「300g/盒」），不写数量就看不出区别。
 4. 购物袋、包装费、餐具费也照实列出来，不要跳过。
 5. date 用小票上的**交易日期和时间**，格式 "YYYY-MM-DD HH:MM"；只有日期没有时间就写 "YYYY-MM-DD"；看不清就留空字符串。
 6. store 用小票抬头的门店名；没有就留空字符串。
 7. **认不出的行就不写，绝对不要编造商品**。宁可少列几件，也不要出现小票上没有的东西。`;
+// 买两盒和买一盒，小票上的规格写的是同一个（都是「300g/盒」），只看规格分不出来
+// （用户："昨天的猪骨买了两盒，但好像没识别出来"）。把数量折进 amount：
+// 是纯重量/容量的就直接乘出总量，parseAmount 才能算对单价；其余的挂个 ×N。
+function foldCount(amount, count){
+  if (!(count > 1)) return amount;
+  const match = amount.match(/^(\d+(?:\.\d+)?)\s*(g|kg|克|公斤|斤|ml|l|毫升|升)\b/i);
+  if (!match) return amount ? `${amount} ×${count}` : `${count} 件`;
+  const total = Number(match[1]) * count;
+  return `${total}${match[2]}（${count}×${match[1]}${match[2]}）`;
+}
 function parseReceipt(text){
   const match = String(text || "").match(/\{[\s\S]*\}/);
   if (!match) throw new Error("模型没有返回 JSON，换一张更清楚的小票照片试试。");
@@ -1592,7 +1603,8 @@ function parseReceipt(text){
       const price = item.price === null || item.price === undefined || item.price === ""
         ? null
         : Number(item.price);
-      return {name, amount: String(item.amount || "").trim(), price: Number.isFinite(price) ? price : null};
+      const count = Math.max(1, Math.round(Number(item.count)) || 1);
+      return {name, amount: foldCount(String(item.amount || "").trim(), count), price: Number.isFinite(price) ? price : null};
     })
     .filter(Boolean);
   return {
