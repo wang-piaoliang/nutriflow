@@ -918,13 +918,43 @@ test("classifies tricky product names and normalises store names", async () => {
   assert.match(html, /\.bar-row\{[^}]*min-width:0/);
 });
 
+test("searches globally on the landing page and per-page elsewhere", async () => {
+  const { evaluate } = await runAppScript();
+  const names = (kw, scopes) => evaluate(`searchAll(${JSON.stringify(kw)}, ${JSON.stringify(scopes)})`).map(g => g.name);
+
+  // 饮食页搜全 app，采购/食材页只搜本页；目标页不放搜索、保留 ⚙。
+  // vm realm 里的数组原型和这里不同，deepEqual 会因非同一引用而失败，比 JSON 更稳。
+  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.dietLog)"), '["diet","purchase","dining","food"]');
+  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.shopping)"), '["purchase","dining"]');
+  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.foods)"), '["food"]');
+  assert.equal(evaluate("SEARCH_SCOPES.home"), undefined);
+
+  assert.ok(names("南瓜", ["diet", "purchase", "dining", "food"]).length >= 2);
+  assert.equal(names("南瓜", ["food"]).length, 1);
+  assert.equal(names("查无此物", ["diet", "purchase", "dining", "food"]).length, 0);
+  // 空关键词不该把全部内容倒出来。
+  assert.equal(names("   ", ["diet", "purchase", "dining", "food"]).length, 0);
+
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /id="searchBtn"/);
+  assert.match(html, /searchBtn.hidden = view === "home"/);
+  assert.match(html, /settingsBtn.hidden = view !== "home"/);
+
+  // 在外就餐不再常驻可编辑，点 ✏️ 才切成可填，且店名/日期/价格都能改。
+  assert.match(html, /let editingDining = "";/);
+  assert.match(html, /data-dining-edit="/);
+  assert.match(html, /data-dining-field="place"/);
+  assert.match(html, /data-dining-field="date"/);
+  assert.match(html, /class="dining-price-read/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v96"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v97"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

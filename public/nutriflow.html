@@ -96,6 +96,14 @@ input{font:inherit}
   overflow-x:hidden;
   overflow-x:clip;
 }
+/* 搜索面板：顶栏 🔍 点开，贴在顶栏下面。饮食页搜全 app，其他页只搜本页。 */
+.search-panel{display:grid;gap:10px;margin:0 0 14px}
+.search-panel input{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:11px 12px;font-size:16px}
+.search-results{display:grid;gap:8px}
+.search-group{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.search-group h3{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:600}
+.search-hit{display:block;font-size:14px;line-height:1.5;padding:3px 0;overflow-wrap:anywhere}
+.search-hit small{color:var(--muted);font-size:12px}
 .topbar{
   display:flex;
   align-items:center;
@@ -486,6 +494,13 @@ summary.week-block-head::after{
 .dining-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .dining-head strong{font-size:15px}
 .dining-row{display:flex;align-items:center;gap:10px;margin-top:8px}
+/* 在外就餐：平时只读，点 ✏️ 才变成可填。 */
+.dining-price-read{font-size:16px;color:var(--text)}
+.dining-price-read.missing{color:var(--muted);font-size:14px}
+.dining-edit{border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:6px 10px;line-height:1;font-size:14px}
+.dining-edit.on{background:var(--green);border-color:var(--green);color:#fff}
+.dining-field{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:5px 8px;font-size:15px;min-width:0}
+.dining-field.place{flex:1 1 auto;width:100%;font-weight:600}
 .dining-price-field{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:14px}
 .dining-price{width:112px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:16px}
 .dining-del{margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--muted);font-size:13px;cursor:pointer}
@@ -1021,7 +1036,12 @@ summary.week-block-head::after{
       <h1>NutriFlow</h1>
       <span>每日摄入 · 采购历史 · 食材库</span>
     </div>
+    <button class="icon-btn" type="button" id="searchBtn" title="搜索" aria-label="搜索">🔍</button>
     <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置">⚙</button>
+  </div>
+  <div class="search-panel" id="searchPanel" hidden>
+    <input type="search" id="searchInput" placeholder="搜点什么" aria-label="搜索">
+    <div class="search-results" id="searchResults"></div>
   </div>
 
   <section class="view" id="home">
@@ -1212,7 +1232,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v96</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v97</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2285,11 +2305,19 @@ async function renderDining(){
     const photos = photosByOwner[owner] || [];
     const priceVal = (entry.price == null || isNaN(entry.price)) ? "" : entry.price;
     const label = entry.place || "在外就餐";
+    const editing = entry.id === editingDining;
     return `<div class="dining-entry">
-      <div class="dining-head"><strong>${label}</strong><span class="subtle">${entry.date || ""} · ${photoAddLabel(owner, photos.length)}</span></div>
+      <div class="dining-head">${editing
+        ? `<input type="text" class="dining-field place" data-dining-field="place" data-dining-id="${entry.id}" value="${escapeAttribute(entry.place || "")}" placeholder="餐厅名" aria-label="餐厅名">`
+        : `<strong>${label}</strong>`}<span class="subtle">${editing
+        ? `<input type="date" class="dining-field date" data-dining-field="date" data-dining-id="${entry.id}" value="${escapeAttribute((entry.date || "").slice(0,10))}" aria-label="日期">`
+        : (entry.date || "")} · ${photoAddLabel(owner, photos.length)}</span></div>
       <div class="dining-row">
-        <label class="dining-price-field">¥<input type="number" inputmode="decimal" class="dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="补价格"></label>
-        <button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>
+        ${editing
+          ? `<label class="dining-price-field">¥<input type="number" inputmode="decimal" class="dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="补价格"></label>`
+          : `<span class="dining-price-read${priceVal === "" ? " missing" : ""}">${priceVal === "" ? "价格待补" : `¥${priceVal}`}</span>`}
+        <button type="button" class="dining-edit${editing ? " on" : ""}" data-dining-edit="${entry.id}" title="${editing ? "改完了" : "编辑这一笔"}" aria-label="${editing ? "改完了" : "编辑这一笔"}">${editing ? "✓" : "✏️"}</button>
+        ${editing ? `<button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>` : ""}
       </div>
       ${(() => {
         const eaten = diningItems(entry);
@@ -2300,8 +2328,24 @@ async function renderDining(){
     </div>`;
   }).join("") || `<div class="note">还没有在外就餐记录。用上面的输入框加一笔，价格可以留空后补。</div>`;
   bindPhotoControls(list, () => void renderDining());
+  list.querySelectorAll("[data-dining-edit]").forEach(button => {
+    button.addEventListener("click", () => {
+      editingDining = editingDining === button.dataset.diningEdit ? "" : button.dataset.diningEdit;
+      void renderDining();
+    });
+  });
+  // 编辑中改完即存，但不重渲染——重渲染会把正在打字的输入框换掉。
   list.querySelectorAll(".dining-price").forEach(input => {
-    input.addEventListener("change", () => { updateDiningPrice(input.dataset.dining, input.value); void renderDining(); });
+    input.addEventListener("change", () => { updateDiningPrice(input.dataset.dining, input.value); });
+  });
+  list.querySelectorAll("[data-dining-field]").forEach(input => {
+    input.addEventListener("change", () => {
+      const record = diningEntries.find(item => item.id === input.dataset.diningId);
+      if (!record) return;
+      if (input.dataset.diningField === "place") record.place = input.value.trim();
+      else record.date = input.value;
+      saveDining();
+    });
   });
   list.querySelectorAll("[data-dining-del]").forEach(button => {
     button.addEventListener("click", () => { removeDining(button.dataset.diningDel); void renderDining(); });
@@ -2462,6 +2506,9 @@ let activePriceCategory = "all";
 // 平时小票是只读的（用户："这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的
 // icon"）。点 ✏️ 才把这一次采购切成输入框，一次只编辑一张。
 let editingReceipt = "";
+// 在外就餐同理：平时只读，点 ✏️ 才把这一笔切成可填（用户："价格不要直留着可编辑，
+// 没必要，一样加一个编辑的小 icon，点了才编辑，这几个字段都可以弄成可编辑"）。
+let editingDining = "";
 // 重渲染会把 <details> 关掉。记住哪几张是展开的，编辑完仍然停在原地。
 const openReceipts = new Set();
 let consumed = load("nutriflow_consumed_v1", {});
@@ -3600,6 +3647,82 @@ document.getElementById("dietLogList")?.addEventListener("toggle", syncWeekFoldB
     drawer.scrollIntoView({block: "start"});
   });
 })();
+// 顶栏搜索。饮食页（落地页）搜全 app 的内容，采购/食材页只搜本页，
+// 只有最后一页「目标」保留 ⚙ 设置——用户："除了最后一页的设置icon保留，
+// 其他页面改成搜索小icon，搜索本页的内容"。
+const SEARCH_SCOPES = {
+  dietLog: ["diet", "purchase", "dining", "food"],
+  shopping: ["purchase", "dining"],
+  foods: ["food"],
+};
+function currentViewId(){
+  const active = document.querySelector(".nav-btn.active");
+  return (active && active.dataset ? active.dataset.view : "") || "dietLog";
+}
+// 顶栏右上角一次只放一个按钮：目标页放 ⚙，其余放 🔍。
+function syncTopbarButtons(){
+  const view = currentViewId();
+  const searchBtn = document.getElementById("searchBtn");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const panel = document.getElementById("searchPanel");
+  if (searchBtn) searchBtn.hidden = view === "home";
+  if (settingsBtn) settingsBtn.hidden = view !== "home";
+  if (panel && view === "home"){ panel.hidden = true; }
+  const input = document.getElementById("searchInput");
+  if (input) input.placeholder = view === "dietLog" ? "搜全部：吃过的、买过的、食材…" : "搜这一页";
+}
+function searchAll(keyword, scopes){
+  const needle = keyword.trim().toLowerCase();
+  if (!needle) return [];
+  const hit = text => String(text || "").toLowerCase().includes(needle);
+  const groups = [];
+  if (scopes.includes("diet")){
+    const rows = [];
+    allDietRecords().forEach(record => record.meals.forEach(meal => {
+      const names = meal.items.map(itemLabel);
+      if (!hit(meal.place) && !names.some(hit)) return;
+      rows.push(`<span class="search-hit">${record.date} ${meal.name}<small> · ${meal.place ? `${meal.place}：` : ""}${names.join(" · ")}</small></span>`);
+    }));
+    if (rows.length) groups.push({name:`吃过 ${rows.length}`, rows});
+  }
+  if (scopes.includes("purchase")){
+    const rows = purchases.filter(row => hit(row.item) || hit(row.store))
+      .map(row => `<span class="search-hit">${row.item}<small> · ${row.amount || ""} · ${String(row.date).slice(0,10)} ${shortStore(row.store)}${row.totalPrice ? ` · ¥${Number(row.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</small></span>`);
+    if (rows.length) groups.push({name:`买过 ${rows.length}`, rows});
+  }
+  if (scopes.includes("dining")){
+    const rows = diningEntries.filter(entry => hit(entry.place) || diningItems(entry).some(hit))
+      .map(entry => `<span class="search-hit">${entry.place || "在外就餐"}<small> · ${entry.date || ""}${entry.price != null && !isNaN(entry.price) ? ` · ¥${entry.price}` : ""} · ${diningItems(entry).join(" · ")}</small></span>`);
+    if (rows.length) groups.push({name:`在外吃 ${rows.length}`, rows});
+  }
+  if (scopes.includes("food")){
+    const rows = foods.filter(food => hit(food.name) || hit(food.variants) || hit(food.nutrients))
+      .map(food => `<span class="search-hit">${iconForFood(food.id)} ${food.name}<small> · ${food.variants || food.nutrients}</small></span>`);
+    if (rows.length) groups.push({name:`食材 ${rows.length}`, rows});
+  }
+  return groups;
+}
+(function initSearch(){
+  const btn = document.getElementById("searchBtn");
+  const panel = document.getElementById("searchPanel");
+  const input = document.getElementById("searchInput");
+  const results = document.getElementById("searchResults");
+  if (!btn || !panel || !input || !results) return;
+  const run = () => {
+    const groups = searchAll(input.value, SEARCH_SCOPES[currentViewId()] || ["diet"]);
+    results.innerHTML = input.value.trim()
+      ? (groups.length
+        ? groups.map(group => `<div class="search-group"><h3>${group.name}</h3>${group.rows.join("")}</div>`).join("")
+        : `<div class="note">没找到「${input.value.trim()}」。</div>`)
+      : "";
+  };
+  btn.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    if (panel.hidden){ input.value = ""; results.innerHTML = ""; }
+    else { syncTopbarButtons(); input.focus(); }
+  });
+  input.addEventListener("input", run);
+})();
 // 食材搜索。这两个元素在 renderFoods 重渲染的范围之外，只绑一次。
 (function initFoodSearch(){
   const btn = document.getElementById("foodSearchBtn");
@@ -3623,7 +3746,18 @@ document.querySelectorAll(".nav-btn").forEach(button => {
     document.querySelectorAll(".view").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     document.getElementById(button.dataset.view).classList.add("active");
+    // 换页了：搜索的范围跟着变，面板先收起来，顶栏按钮也换成这一页该有的那个。
+    const panel = document.getElementById("searchPanel");
+    if (panel && !panel.hidden){
+      panel.hidden = true;
+      const input = document.getElementById("searchInput");
+      const results = document.getElementById("searchResults");
+      if (input) input.value = "";
+      if (results) results.innerHTML = "";
+    }
+    syncTopbarButtons();
     window.scrollTo({top:0, behavior:"smooth"});
+syncTopbarButtons();
   });
 });
 const photoViewer = document.getElementById("photoViewer");
