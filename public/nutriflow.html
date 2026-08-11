@@ -673,9 +673,11 @@ summary.week-block-head::after{
   font-size:16px;
 }
 .bars{display:grid;gap:12px}
-.bar-row{display:grid;gap:6px}
-.bar-head{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px}
-.price-group{display:grid;gap:10px;padding:12px;border-radius:8px;background:var(--surface-2)}
+.bar-row{display:grid;gap:6px;min-width:0}
+.bar-head{display:flex;align-items:center;justify-content:space-between;font-size:14px;gap:10px;min-width:0}
+/* grid item 默认 min-width:auto，会被里面那行 nowrap 的店名撑住——于是店名不截断、
+   整组被撑破、柱子甩出卡片（用户："这一行的柱子都出去了"）。必须显式 min-width:0。 */
+.price-group{display:grid;gap:10px;padding:12px;border-radius:8px;background:var(--surface-2);min-width:0}
 .price-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
 .price-group-head strong{font-size:15px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .price-group-head span{white-space:nowrap}
@@ -1210,7 +1212,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v95</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v96</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2111,13 +2113,17 @@ function allPurchases(){ return purchases.concat(manualPurchases); }
 const purchaseItemAliases = [
   {id:"bag", keywords:["包装费","购物袋","袋子","餐具","打包费","配送费","运费"]},
   {id:"avocado", keywords:["牛油果"]},
+  // 「蛋糕卷」「沙拉酱 蛋黄口味」都含「蛋」但不是蛋（用户："蛋糕/沙拉酱都归到鸡蛋里面了"），
+  // 必须排在 egg 前面先截住。
+  {id:"dessert", keywords:["蛋糕","蛋挞","蛋卷","面包","吐司","饼干","甜品"]},
+  {id:"sauce", keywords:["沙拉酱","蛋黄酱","酱油","蚝油","番茄酱","调味","酱料"]},
   {id:"egg", keywords:["鸡蛋","鸭蛋","蛋"]},
   {id:"greekYogurt", keywords:["酸奶"]},
   {id:"cheese", keywords:["奶酪","芝士"]},
   {id:"soyMilk", keywords:["豆浆"]},
   {id:"milk", keywords:["纯牛奶","鲜牛奶","牛奶","鲜奶"]},
   {id:"shrimp", keywords:["虾"]},
-  {id:"salmon", keywords:["三文鱼"]},
+  {id:"salmon", keywords:["三文鱼","鲑鱼"]},
   {id:"tuna", keywords:["金枪鱼"]},
   {id:"squid", keywords:["鱿鱼","墨鱼"]},
   {id:"scallop", keywords:["扇贝","干贝"]},
@@ -2131,7 +2137,7 @@ const purchaseItemAliases = [
   {id:"lamb", keywords:["羊"]},
   {id:"porkShoulder", keywords:["梅花肉"]},
   {id:"porkTenderloin", keywords:["里脊"]},
-  {id:"leanPork", keywords:["猪","排骨","五花"]},
+  {id:"leanPork", keywords:["猪","排骨","五花","炒肉","回锅肉","肉丝","肉片"]},
   {id:"liver", keywords:["肝"]},
   {id:"tofu", keywords:["豆腐","豆干","豆皮","腐竹"]},
   {id:"edamame", keywords:["毛豆"]},
@@ -2153,7 +2159,7 @@ const purchaseItemAliases = [
   {id:"gourd", keywords:["丝瓜","冬瓜","黄瓜","西葫芦","苦瓜"]},
   {id:"quinoa", keywords:["藜麦"]},
   {id:"oats", keywords:["燕麦"]},
-  {id:"wholeWheatBread", keywords:["吐司","面包"]},
+  {id:"wholeWheatBread", keywords:["全麦"]},
   {id:"noodle", keywords:["面条","挂面","乌冬","意面","米线","粉丝","面"]},
   {id:"corn", keywords:["玉米"]},
   {id:"potato", keywords:["土豆","马铃薯"]},
@@ -2843,6 +2849,7 @@ function iconForFood(foodId){
     iceCream:"🍦",
     water:"💧",
     sauce:"🧂",
+    dessert:"🍰",
     bag:"🛍️"
   };
   return icons[foodId] || "🛒";
@@ -2850,7 +2857,7 @@ function iconForFood(foodId){
 const purchaseGroupRules = [
   {name:"肉类", icon:"🥩", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", icon:"🍤", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
-  {name:"蔬菜", icon:"🥦", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","allium","eggplant","gourd"]},
+  {name:"蔬菜", icon:"🥦", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","eggplant","gourd"]},
   {name:"蛋奶", icon:"🥛", ids:["egg","milk","greekYogurt","cheese"]},
   {name:"豆类", icon:"🫘", ids:["tofu","soyMilk","edamame"]},
   {name:"主食", icon:"🍚", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
@@ -3071,7 +3078,7 @@ function renderWeekSummary(){
 // 又长又全是修饰词，一眼看不出在比什么。食材目录里的 name 是品类级的（mushroom→菌菇类），
 // 太粗，所以这里单列一份短名表；查不到就退回目录名、再退回原始品名。
 const priceFoodNames = {
-  shellfish:"虾滑", beef:"牛肉", porkShoulder:"梅花肉", edamame:"毛豆米",
+  shellfish:"虾滑", salmon:"三文鱼", dessert:"烘焙", sauce:"调味", egg:"鸡蛋", milk:"牛奶", greekYogurt:"酸奶", allium:"葱蒜", beef:"牛肉", porkShoulder:"梅花肉", edamame:"毛豆米",
   chicken:"鸡翅根", chickenTender:"鸡小胸", noodle:"乌冬面", wholeWheatBread:"全麦吐司",
   gourd:"丝瓜", pepper:"尖椒", cauliflower:"松花菜", leafy:"生菜", mushroom:"香菇",
   enoki:"金针菇", tomato:"西红柿", corn:"玉米", bokChoy:"油菜", rice:"大米",
@@ -3084,11 +3091,22 @@ function priceFoodName(entry){
   return food ? food.name : entry.item;
 }
 // 门店和具体品名都压到最短，好让「日期 门店 · 品名」挤进一行。
+// 同一家店会被识别成好几种写法（「盒马鲜生（大钟寺店）」「大钟寺店」「盒马鲜生」），
+// 对比时看着像不同的店（用户："这几次采购都是在同一家盒马买的，但是标注不一样"）。
+// 统一收敛成一个短名；「会员商店」「超市」「分店」这类后缀没有信息量，一并去掉。
+const storeAliases = [
+  {name:"盒马", keywords:["盒马", "大钟寺"]},
+  {name:"山姆", keywords:["山姆", "sam's", "sams", "member's mark"]},
+  {name:"fudi", keywords:["fudi"]},
+  {name:"永辉", keywords:["永辉"]},
+  {name:"物美", keywords:["物美"]},
+];
 function shortStore(store){
-  const text = String(store || "");
-  if (text.includes("盒马")) return "盒马";
-  if (/fudi/i.test(text)) return "fudi";
-  return text.split("（")[0];
+  const text = String(store || "").trim();
+  const lower = text.toLowerCase();
+  const alias = storeAliases.find(rule => rule.keywords.some(keyword => lower.includes(keyword)));
+  if (alias) return alias.name;
+  return text.split(/[（(]/)[0].replace(/(会员商店|连锁超市|超市|商店|门店|分店)$/, "").trim() || text;
 }
 function shortItem(item){
   return String(item || "")

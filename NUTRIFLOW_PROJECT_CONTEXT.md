@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v95`
+- 当前离线缓存：`nutriflow-pwa-v96`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修一批归类与店名问题**（用户一次提了 6 条，这轮做了其中 4 条）。① **鲑鱼落进「白肉鱼」**：`whiteFish` 的关键词里有个笼统的「鱼」，而「Member's Mark 智利大西洋鲑鱼」不含「三文鱼」，给 `salmon` 加「鲑鱼」。② **蛋糕卷/沙拉酱被归到鸡蛋**：都含「蛋」。新增 `dessert`（蛋糕/蛋挞/蛋卷/面包/吐司/饼干，图标 🍰）和 `sauce`（沙拉酱/蛋黄酱/酱油/蚝油…）两条规则，**排在 `egg` 前面**先截住；`wholeWheatBread` 的关键词收窄成「全麦」以免和 dessert 抢。③ **「蒜苔炒肉」被归成葱蒜**：给 `leanPork` 加「炒肉/回锅肉/肉丝/肉片」，排在 `allium` 前。④ **葱蒜不再归类**（用户要求）：从 `purchaseGroupRules` 的蔬菜组里移除 `allium`。⑤ **店名统一**：同一家店被识别成「盒马鲜生（大钟寺店）」「大钟寺店」「盒马鲜生」好几种写法，对比时看着像不同的店。新增 `storeAliases` 收敛成短名（盒马/山姆/fudi/永辉/物美），并去掉「会员商店/超市/门店/分店」这类没信息量的后缀——「北京石景山山姆会员商店」→「山姆」。⑥ **单价对比的柱子甩出卡片**：`.price-group` 和 `.bar-row` 是 grid item、默认 `min-width:auto`，被里面那行 `white-space:nowrap` 的店名撑住，于是店名不截断、整组被撑破、柱子跟着溢出。三处都补 `min-width:0`。`priceFoodNames` 补上 salmon/egg/milk/greekYogurt/allium/dessert/sauce 的短名。测试增至 31 项。离线缓存与版本号升至 v96。
+  - **本轮未做、用户已提出的**：（a）「在外就餐」的价格框常驻可编辑 → 改成小 ✏️ 点开才编辑，且不只价格、几个字段都要能改；（b）那里如果前面已经有照片，应直接复用而不是让人再传一遍；（c）全局搜索：首页加一个搜索小 icon（替换设置按钮），其他页放搜本页内容的搜索 icon，只有最后一页保留设置 icon。
 
 - 2026-08-06：**餐次改由人来选，不再让模型猜**（用户：「我刚上传了晚餐的番茄炒蛋，他就直接追加在午餐的后面了。添加一餐的时候，把早中午餐的选项也凸显出来」）。根因不是 bug 而是设计问题：`autoRecognize` 用的是 `result.meal`——模型只看一盘番茄炒蛋，中午晚上都可能吃，它猜「午餐」，于是并进了当天的午餐；更糟的是 `diningIdFor(date, meal)` 跟着命中了午餐那笔田辣辣账单，晚餐还被套上了餐厅名和 ¥24.90。修法：① `dietDayFormMarkup` 把餐次从「或者手动填」折叠区里的 `<select id="dietFormMeal">` 提出来，做成日期下面一排显眼的 `.meal-chip`（早/午/晚/加餐），选中绿底；② 新增 `guessMealByClock()` 按当前钟点给默认值（<10 早餐、<15 午餐、<21 晚餐、否则加餐），比模型猜准得多；③ 新增 `pickedMeal(container)` 读选中的 chip，**找不到时退回按钟点猜、绝不静默用「午餐」兜底**——那正是老毛病的来源；④ `autoRecognize(owner, saved, options)` 新增 `options.meal`，`const meal = forcedMeal || result.meal`，表单上传时传人选的餐次，从已有那天的 📷 传的没得选才用模型判断；⑤ 手动添加那条路也改读 chip。测试增至 30 项。离线缓存与版本号升至 v95。
   - 用户同时说「采购现在还是直接可编辑的状态」——代码侧已在 v93 改回只读（实测只读态不含 `receipt-line editable`、只有一个 ✏️），线上 gh-pages 也确认是 v94，判断是设备缓存未更新，已请用户核对页脚版本号。

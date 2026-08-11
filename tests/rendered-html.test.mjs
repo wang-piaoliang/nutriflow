@@ -889,13 +889,42 @@ test("lets the person pick which meal a photo belongs to", async () => {
   assert.match(html, /autoRecognize\(owner, saved, \{meal: pickedMeal\(container\)\}\)/);
 });
 
+test("classifies tricky product names and normalises store names", async () => {
+  const { evaluate } = await runAppScript();
+  const id = name => evaluate(`foodIdForItem(${JSON.stringify(name)})`);
+  const store = name => evaluate(`shortStore(${JSON.stringify(name)})`);
+
+  // 鲑鱼就是三文鱼，之前落进了「白肉鱼」（whiteFish 的关键词里有个笼统的「鱼」）。
+  assert.equal(id("Member's Mark 智利大西洋鲑鱼"), "salmon");
+  // 「蛋糕卷」「沙拉酱 蛋黄口味」都含「蛋」但不是蛋，要排在 egg 前面截住。
+  assert.equal(id("盒马烘焙 双拼蛋糕卷 (芝士)"), "dessert");
+  assert.equal(id("丘比 沙拉酱 蛋黄口味"), "sauce");
+  assert.equal(id("Member's Mark 精选鲜鸡蛋"), "egg");
+  // 「蒜苔炒肉」是一道炒肉，不是葱蒜。
+  assert.equal(id("盒马工坊 日日鲜 蒜苔炒肉"), "leanPork");
+
+  // 同一家店被识别成好几种写法，对比时看着像不同的店。
+  assert.equal(store("北京石景山山姆会员商店"), "山姆");
+  assert.equal(store("盒马鲜生（大钟寺店）"), "盒马");
+  assert.equal(store("大钟寺店"), "盒马");
+  assert.equal(store("盒马鲜生"), "盒马");
+
+  // 葱蒜按用户要求不归类，不再出现在「蔬菜」汇总里。
+  assert.equal(evaluate('summarizeReceipt([{foodId:"allium", amount:"260g"}])'), "");
+
+  // 柱子溢出：grid item 默认 min-width:auto，会被 nowrap 的店名撑住。
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /\.price-group\{[^}]*min-width:0/);
+  assert.match(html, /\.bar-row\{[^}]*min-width:0/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v95"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v96"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
