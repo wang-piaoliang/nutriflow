@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v98`
+- 当前离线缓存：`nutriflow-pwa-v99`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**小票识别补上「数量」**（用户：「昨天的猪骨买了两盒，但好像没识别出来」）。根因：`RECEIPT_PROMPT` 只让模型读商品名、规格、金额，**从来没有数量这个字段**——买两盒和买一盒读出来完全一样，因为规格写的是同一个（都是「300g/盒」）。修法：① prompt 的 JSON схема 加 `count`，并加规则 3b 说明「2盒」「×2」「2件」「数量 2」都是数量、只买一件写 1、看不出来也写 1，并点明「这一条经常被漏」；② 新增 `foldCount(amount, count)` 把数量折进 `amount`——**纯重量/容量的直接乘出总量**（`300g ×2` → `600g（2×300g）`），这样 `parseAmount` 能读出 600、单价对比不会按一件的重量算导致单价翻倍；不是纯重量的挂个 `×N`（`1 盒 ×2`），空规格写成 `N 件`；③ `parseReceipt` 用 `Math.max(1, Math.round(Number(count)) || 1)` 兜底，缺 `count` 的老回复当 1 件，不会变成 0 或 NaN。测试增至 33 项。离线缓存与版本号升至 v99。
 
 - 2026-08-06：**修首页 🔍 和 ⚙ 同时显示**（用户：「我说的是首页的设置改成搜索，你好像直接增加了搜索，首页看着很奇怪」——不是需求变了，是我上一版有 bug）。上一版那句初始化的 `syncTopbarButtons()` 被我插错了位置，落在了 `.nav-btn` 的 click 回调**里面**，于是页面刚加载时根本不执行，两个按钮都保持初始可见状态——看着就像凭空多了个搜索按钮，而不是把设置换成了搜索。切一次 tab 后才会正常。修法：把那句挪到 forEach 之外的顶层。CDP 实测：首屏（未点任何 tab）饮食页只有 🔍；采购/食材 🔍；目标 ⚙；切回饮食仍是 🔍。**测试桩要同步补 `document.querySelector`**——这个函数现在在脚本加载时就跑，桩里缺它会让整个脚本抛异常、27 个用例一起挂。离线缓存与版本号升至 v98。
 

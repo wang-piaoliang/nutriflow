@@ -954,13 +954,39 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   assert.match(html, /class="dining-price-read/);
 });
 
+test("keeps the quantity when a receipt line has more than one unit", async () => {
+  const { evaluate } = await runAppScript();
+  const fold = (amount, count) => evaluate(`foldCount(${JSON.stringify(amount)}, ${count})`);
+
+  // 买两盒和买一盒，小票上的规格写的是同一个（都是「300g/盒」），只看规格分不出来
+  // （用户："昨天的猪骨买了两盒，但好像没识别出来"）。
+  assert.equal(fold("300g", 2), "600g（2×300g）");
+  assert.equal(fold("300g", 1), "300g");
+  assert.equal(fold("1kg", 3), "3kg（3×1kg）");
+  // 折算后 parseAmount 要能读出总量，否则单价对比会按一件的重量算，单价翻倍。
+  assert.equal(evaluate(`parseAmount(${JSON.stringify(fold("300g", 2))})`), 600);
+  // 不是纯重量的挂个 ×N，至少看得出买了几件。
+  assert.equal(fold("1 盒", 2), "1 盒 ×2");
+  assert.equal(fold("", 2), "2 件");
+
+  const parsed = evaluate('parseReceipt(JSON.stringify({store:"盒马",date:"2026-08-10 17:42",items:[{name:"猪汤骨",amount:"300g",count:2,price:15.96}]}))');
+  assert.equal(parsed.items[0].amount, "600g（2×300g）");
+
+  // 缺 count 的老回复要当成 1 件，不能变成 0 或 NaN。
+  const single = evaluate('parseReceipt(JSON.stringify({items:[{name:"生菜",amount:"500g",price:2.97}]}))');
+  assert.equal(single.items[0].amount, "500g");
+
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /count 写这一行买了\*\*几件\*\*/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v98"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v99"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
