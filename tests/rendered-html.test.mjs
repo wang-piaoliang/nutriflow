@@ -1043,13 +1043,60 @@ test("resumes recognition that iOS cut off when the app went to the background",
   assert.match(html, /const STOCK_FOLD_KEY/);
 });
 
+test("summarises spending by week or month and breaks it down by category", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  const weeks = evaluate('spendByPeriod("week")');
+  const months = evaluate('spendByPeriod("month")');
+  assert.ok(weeks.length > months.length);
+  // 新到旧排序，方便一眼看最近花了多少。
+  assert.ok(weeks[0].key >= weeks[weeks.length - 1].key);
+  // 两种口径的总额必须一致，否则是分桶把记录漏了或重复计了。
+  const sum = list => Math.round(list.reduce((total, bucket) => total + bucket.total, 0) * 100);
+  assert.equal(sum(weeks), sum(months));
+
+  const cats = evaluate("categoryTotals()");
+  assert.ok(cats.length >= 3);
+  // 按花费从多到少，且每类都能点开看具体买了啥。
+  assert.ok(cats[0].spend >= cats[cats.length - 1].spend);
+  assert.ok(cats[0].items.length >= 1);
+  // 调料、油、饮用水不计进统计。
+  assert.ok(!cats.some(group => group.items.some(item => /矿泉水|调和油|小米辣/.test(item.name))));
+
+  // 这两个属性是模板里拼出来的，源码里查模板本身。
+  assert.match(html, /data-spend-mode="\$\{mode\}"/);
+  assert.match(html, /data-cat="\$\{group\.name\}"/);
+});
+
+test("search results jump to the record they point at", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 每条命中都是按钮并带上「去哪儿」，容器上做事件委托（结果是 innerHTML 重建的）。
+  assert.match(html, /class="search-hit" data-goto="dietLog"/);
+  assert.match(html, /class="search-hit" data-goto="shopping"/);
+  assert.match(html, /class="search-hit" data-goto="foods"/);
+  assert.match(html, /data-anchor=/);
+  assert.match(html, /results.addEventListener\("click"/);
+  assert.match(html, /function gotoSearchHit\(view, anchor\)/);
+
+  // 跳转目标需要锚点，三处列表都得有。
+  assert.match(html, /<div class="diet-day" data-day=/);
+  assert.match(html, /<div class="dining-entry" data-dining-entry=/);
+  assert.match(html, /<div class="item tall" data-food=/);
+
+  // 目标可能藏在折叠的小票里，得先展开，否则滚过去是空的。
+  assert.match(html, /const box = target.closest\("details"\);/);
+  assert.match(html, /box.open = true;/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v101"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v102"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

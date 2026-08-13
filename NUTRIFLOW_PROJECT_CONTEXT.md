@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v101`
+- 当前离线缓存：`nutriflow-pwa-v102`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**搜索结果可点击跳转 + 采购统计**（用户 6 条反馈里最后两条，至此全部做完）。① **搜索跳转**：每条命中从 `<span>` 改成带 `data-goto`（目标 tab）和 `data-anchor`（CSS 选择器）的 `<button>`；结果是 `innerHTML` 重建的，所以在 `#searchResults` 上做**事件委托**而不是逐条绑。新增 `gotoSearchHit(view, anchor)`：先 `.nav-btn.click()` 走原有切页逻辑（顺带收起面板、同步顶栏按钮），延时 260ms 等 DOM 就绪再找目标——**目标可能藏在折叠的 `<details>` 小票里，必须先 `box.open = true` 并同步 `openReceipts`，否则滚过去是空的**——然后 `scrollIntoView({block:"center"})` 并加 1.6s 的 `.search-flash` 高亮（不闪一下人不知道该看哪条）。为此给三处列表补了锚点：`.diet-day[data-day]`、`.dining-entry[data-dining-entry]`、`.item.tall[data-food]`（小票的 `data-receipt` 早就有）。② **采购统计**（采购页新卡片，在「在外就餐」之前）：`spendByPeriod(mode)` 按自然周（复用 `weekMondayOf`）或按月汇总金额、新到旧；`categoryTotals()` 按 `purchaseGroupRules` 大类汇总花费/重量/明细，未归类的进「其他」，`NOT_INGREDIENT` 里的调料油水不计。UI：周/月 chip 切换 + 金额条（按最贵那期缩放，各期可直接比高低）+ 分类占比条，**点一类展开这一类具体买了啥**（`openSpendCategory`）。同样加了折叠 icon（`nutriflow_stats_folded`）。CDP 实测：3 个周条 / 1 个月条、7 个分类、点「肉类」展开 4 条明细；搜「南瓜」3 条命中全部可点，点第一条跳到饮食页、面板收起、目标高亮。测试增至 37 项。**测试注意**：`data-spend-mode="month"` 这类属性是模板拼出来的，源码里只能查模板本身（`data-spend-mode="\$\{mode\}"`）。离线缓存与版本号升至 v102。
 
 - 2026-08-06：**识别断了能自动接着跑 + 调料不进现有食材 + 现有食材可折叠**。① **识别队列**（用户："经常上传照片，然后我切到别的应用程序，就退出识别了"；方案已获用户确认）。iOS 会挂起后台网页、掐断正在跑的请求，这是系统行为，网页**没法真的在后台跑**。所以改成排队：`AI_QUEUE_KEY = nutriflow_ai_queue` 存 `{photoId, owner, meal}`，`autoRecognize` **先入队再发请求**、识别成功才 `dequeueRecognition`——顺序反了就等于没排队。`drainRecognitionQueue()` 在 `visibilitychange → visible` 和启动 800ms 后跑，`drainingQueue` 加锁避免 visibilitychange 连发导致同一张并发识别（那会把同一顿记两遍）。照片本来就已存进 IndexedDB，所以切走只是识别没跑完、数据不会丢；队列里照片已被删的条目直接清掉，免得永远排着跑不动的。同一张重复入队只留一条。② **调料/油/饮用水不进「现有食材」**：新增 `oil`、`seasoning` 两类别名（**必须排在会误伤的规则前面**：小米辣会被 pepper 的「辣椒」吃掉、矿泉水会被当普通商品），并把 `water` 提前；新增 `NOT_INGREDIENT = [bag, sauce, oil, seasoning, water, soda, dessert]`，`renderShopping` 用它过滤。尖椒仍是 pepper，没被误伤。③ **「现有食材」加折叠 icon**（`#stockFold` / `nutriflow_stock_folded`），和单价对比同一套；`renderShopping` 里回填折叠状态，否则勾掉一样东西后清单又自己展开。测试增至 35 项。离线缓存与版本号升至 v101。
   - **仍未做**：搜索结果点击跳转；每周/每月采购金额统计 + 食物总量/类别/比例的互动统计。
