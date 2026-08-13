@@ -102,7 +102,11 @@ input{font:inherit}
 .search-results{display:grid;gap:8px}
 .search-group{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
 .search-group h3{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:600}
-.search-hit{display:block;font-size:14px;line-height:1.5;padding:3px 0;overflow-wrap:anywhere}
+.search-hit{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text);font-size:14px;line-height:1.5;padding:5px 0;overflow-wrap:anywhere;cursor:pointer}
+.search-hit:active{opacity:.55}
+/* 跳过去之后闪一下，不然滚到一半人不知道该看哪条。 */
+@keyframes searchFlash{0%{background:var(--surface-2)}100%{background:transparent}}
+.search-flash{animation:searchFlash 1.6s ease-out;border-radius:8px}
 .search-hit small{color:var(--muted);font-size:12px}
 .topbar{
   display:flex;
@@ -400,6 +404,14 @@ summary.week-block-head::after{
 .week-block:not([open]) > summary.week-block-head::after{transform:rotate(-90deg)}
 /* 收起时把下边距去掉，免得留一条空白。 */
 .week-block:not([open]) > summary.week-block-head{margin-bottom:0}
+/* 采购统计：分类一行一条，点标题展开这一类具体买了啥。 */
+.cat-row{display:grid;gap:5px;padding:9px 0}
+.cat-row + .cat-row{border-top:1px solid var(--line)}
+.cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;border:0;background:none;color:var(--text);font-size:14px;padding:0;text-align:left;cursor:pointer;min-width:0}
+.cat-head b{white-space:nowrap;font-size:13px;font-weight:600;color:var(--muted)}
+.cat-items{display:grid;gap:3px;padding:4px 0 2px}
+.cat-item{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.cat-item small{color:var(--muted);font-size:12px}
 .price-fold{border:0;background:none;color:var(--muted);font-size:14px;padding:0 6px 0 0;line-height:1}
 /* 「全部折叠」也是轻量的文字按钮，不跟 ＋ 抢注意力。 */
 .week-fold-all{
@@ -1180,6 +1192,19 @@ summary.week-block-head::after{
 
       <article class="card desktop-span">
         <div class="section-title">
+          <h2>采购统计</h2>
+          <span class="subtle"><button class="price-fold" type="button" id="statsFold" title="收起统计" aria-label="收起统计">▾</button><span id="statsMeta"></span></span>
+        </div>
+        <div id="statsBody">
+          <div class="tabs" id="spendTabs"></div>
+          <div class="bars" id="spendChart"></div>
+          <div class="note" id="statsNote">下面按大类看买过些什么，点一类展开具体买了啥。调料、油、饮用水不计。</div>
+          <div id="categoryChart"></div>
+        </div>
+      </article>
+
+      <article class="card desktop-span">
+        <div class="section-title">
           <h2>在外就餐</h2>
           <span class="subtle" id="diningMeta">0 笔</span>
         </div>
@@ -1233,7 +1258,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v101</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v102</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2377,7 +2402,7 @@ async function renderDining(){
     const priceVal = (entry.price == null || isNaN(entry.price)) ? "" : entry.price;
     const label = entry.place || "在外就餐";
     const editing = entry.id === editingDining;
-    return `<div class="dining-entry">
+    return `<div class="dining-entry" data-dining-entry="${entry.id}">
       <div class="dining-head">${editing
         ? `<input type="text" class="dining-field place" data-dining-field="place" data-dining-id="${entry.id}" value="${escapeAttribute(entry.place || "")}" placeholder="餐厅名" aria-label="餐厅名">`
         : `<strong>${label}</strong>`}<span class="subtle">${editing
@@ -3113,6 +3138,7 @@ function render(){
   `).join("");
   void renderShopping();
   renderPriceComparison();
+  renderStats();
   void renderDining();
   renderFoods();
   renderWeekSummary();
@@ -3242,9 +3268,122 @@ function shortItem(item){
     .replace(/（[^）]*）/g, "")
     .trim();
 }
+// ---- 采购统计（用户："出一个每个月、每周的采购金额统计；再出一份购买过的食物的
+// 总量/类别/比例等可以互动式的统计"）----
+let spendMode = "week";      // week | month
+let openSpendCategory = "";  // 展开哪一类的明细
+// 按周（周一起）或按月把采购金额汇总起来。返回新到旧。
+function spendByPeriod(mode){
+  const buckets = new Map();
+  allPurchases().forEach(row => {
+    const price = Number(row.totalPrice || 0);
+    if (!price) return;
+    const day = String(row.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    let key, label;
+    if (mode === "month"){
+      key = day.slice(0, 7);
+      label = `${Number(key.slice(5, 7))} 月`;
+    } else {
+      const monday = weekMondayOf(day);
+      key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+      label = weekLabel(monday);
+    }
+    const bucket = buckets.get(key) || {key, label, total: 0, count: 0};
+    bucket.total += price;
+    bucket.count += 1;
+    buckets.set(key, bucket);
+  });
+  return Array.from(buckets.values()).sort((a, b) => b.key.localeCompare(a.key));
+}
+// 买过的东西按大类汇总：花了多少、买了多重、占比多少，点开能看到具体买了啥。
+// 只统计按重量买的（计件商品换算重量没意义），但金额全都算。
+function categoryTotals(){
+  const groups = purchaseGroupRules.map(rule => ({name: rule.name, icon: rule.icon, spend: 0, grams: 0, items: new Map()}));
+  const other = {name: "其他", icon: "🛒", spend: 0, grams: 0, items: new Map()};
+  allPurchases().forEach(row => {
+    if (NOT_INGREDIENT.includes(row.foodId)) return;
+    const index = purchaseGroupRules.findIndex(rule => rule.ids.includes(row.foodId));
+    const group = index < 0 ? other : groups[index];
+    const price = Number(row.totalPrice || 0);
+    group.spend += price;
+    if (isWeighedAmount(row.amount)) group.grams += parseAmount(row.amount);
+    const key = row.foodId || row.item;
+    const entry = group.items.get(key) || {name: row.item, spend: 0, times: 0};
+    entry.spend += price;
+    entry.times += 1;
+    // 展示名用最近一次的写法就行，太长的品牌名前面已经在单价对比里处理过。
+    entry.name = row.item;
+    group.items.set(key, entry);
+  });
+  return groups.concat(other)
+    .filter(group => group.spend > 0 || group.grams > 0)
+    .map(group => ({...group, items: Array.from(group.items.values()).sort((a, b) => b.spend - a.spend)}))
+    .sort((a, b) => b.spend - a.spend);
+}
 function priceCategoryOf(foodId){
   const rule = purchaseGroupRules.find(item => item.ids.includes(foodId));
   return rule ? rule.name : "";
+}
+const STATS_FOLD_KEY = "nutriflow_stats_folded";
+function statsFolded(){ return localStorage.getItem(STATS_FOLD_KEY) === "1"; }
+function applyStatsFold(){
+  const folded = statsFolded();
+  const btn = document.getElementById("statsFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开统计" : "收起统计";
+  }
+  const body = document.getElementById("statsBody");
+  if (body) body.hidden = folded;
+}
+function renderStats(){
+  const periods = spendByPeriod(spendMode);
+  const total = periods.reduce((sum, bucket) => sum + bucket.total, 0);
+  const meta = document.getElementById("statsMeta");
+  if (meta) meta.textContent = `共 ¥${total.toFixed(2).replace(/\.00$/, "")}`;
+  applyStatsFold();
+
+  const tabs = document.getElementById("spendTabs");
+  if (tabs){
+    tabs.innerHTML = [["week", "🗓 按周"], ["month", "📆 按月"]]
+      .map(([mode, label]) => `<button class="tab-chip${spendMode === mode ? " active" : ""}" type="button" data-spend-mode="${mode}">${label}</button>`).join("");
+    tabs.querySelectorAll("[data-spend-mode]").forEach(button => {
+      button.addEventListener("click", () => { spendMode = button.dataset.spendMode; renderStats(); });
+    });
+  }
+  // 条长按最贵的那一期缩放，这样各期之间能直接比高低。
+  const ceiling = periods.reduce((max, bucket) => Math.max(max, bucket.total), 0);
+  const chart = document.getElementById("spendChart");
+  if (chart){
+    chart.innerHTML = periods.length ? periods.map(bucket => `<div class="bar-row">
+      <div class="bar-head"><span>${bucket.label} · ${bucket.count} 件</span><b>¥${bucket.total.toFixed(2).replace(/\.00$/, "")}</b></div>
+      <div class="track"><div class="fill" style="width:${ceiling ? Math.max(4, Math.round(bucket.total / ceiling * 100)) : 0}%"></div></div>
+    </div>`).join("") : `<div class="note">还没有带金额的采购记录。</div>`;
+  }
+
+  const groups = categoryTotals();
+  const spendAll = groups.reduce((sum, group) => sum + group.spend, 0) || 1;
+  const box = document.getElementById("categoryChart");
+  if (!box) return;
+  box.innerHTML = groups.length ? groups.map(group => {
+    const share = Math.round(group.spend / spendAll * 100);
+    const open = openSpendCategory === group.name;
+    return `<div class="cat-row">
+      <button class="cat-head" type="button" data-cat="${group.name}" aria-expanded="${open}">
+        <span>${group.icon} ${group.name}</span>
+        <b>¥${group.spend.toFixed(2).replace(/\.00$/, "")} · ${share}%${group.grams ? ` · ${formatWeight(group.grams)}` : ""}</b>
+      </button>
+      <div class="track"><div class="fill" style="width:${Math.max(3, share)}%"></div></div>
+      ${open ? `<div class="cat-items">${group.items.map(item => `<span class="cat-item">${item.name}<small> · ¥${item.spend.toFixed(2).replace(/\.00$/, "")}${item.times > 1 ? ` · ${item.times} 次` : ""}</small></span>`).join("")}</div>` : ""}
+    </div>`;
+  }).join("") : `<div class="note">还没有可统计的采购。</div>`;
+  box.querySelectorAll("[data-cat]").forEach(button => {
+    button.addEventListener("click", () => {
+      openSpendCategory = openSpendCategory === button.dataset.cat ? "" : button.dataset.cat;
+      renderStats();
+    });
+  });
 }
 function renderPriceComparison(){
   const allGroups = groupPricesByFood();
@@ -3481,7 +3620,7 @@ async function renderDietLog(){
     }).join("");
     const owner = dietPhotoOwner(record.date);
     const attachedPhotos = photosByOwner[owner] || [];
-    return `<div class="diet-day">
+    return `<div class="diet-day" data-day="${record.date}">
       <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`} · ${photoAddLabel(owner, attachedPhotos.length)}</span></div>
       ${meals}
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
@@ -3682,7 +3821,7 @@ function renderFoods(){
   // 搜索时分类筛选栏没意义，收起来。
   tabs.hidden = Boolean(keyword);
   document.getElementById("foodList").innerHTML = list.map(food => `
-    <div class="item tall">
+    <div class="item tall" data-food="${food.id}">
       <span class="icon">${iconForFood(food.id)}</span>
       <div>
         <strong>${food.name}</strong>
@@ -3767,23 +3906,23 @@ function searchAll(keyword, scopes){
     allDietRecords().forEach(record => record.meals.forEach(meal => {
       const names = meal.items.map(itemLabel);
       if (!hit(meal.place) && !names.some(hit)) return;
-      rows.push(`<span class="search-hit">${record.date} ${meal.name}<small> · ${meal.place ? `${meal.place}：` : ""}${names.join(" · ")}</small></span>`);
+      rows.push(`<button type="button" class="search-hit" data-goto="dietLog" data-anchor="[data-day=&quot;${record.date}&quot;]">${record.date} ${meal.name}<small> · ${meal.place ? `${meal.place}：` : ""}${names.join(" · ")}</small></button>`);
     }));
     if (rows.length) groups.push({name:`吃过 ${rows.length}`, rows});
   }
   if (scopes.includes("purchase")){
     const rows = purchases.filter(row => hit(row.item) || hit(row.store))
-      .map(row => `<span class="search-hit">${row.item}<small> · ${row.amount || ""} · ${String(row.date).slice(0,10)} ${shortStore(row.store)}${row.totalPrice ? ` · ¥${Number(row.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</small></span>`);
+      .map(row => `<button type="button" class="search-hit" data-goto="shopping" data-anchor="[data-receipt=&quot;${row.receiptId || ""}&quot;]">${row.item}<small> · ${row.amount || ""} · ${String(row.date).slice(0,10)} ${shortStore(row.store)}${row.totalPrice ? ` · ¥${Number(row.totalPrice).toFixed(2).replace(/\.00$/, "")}` : ""}</small></button>`);
     if (rows.length) groups.push({name:`买过 ${rows.length}`, rows});
   }
   if (scopes.includes("dining")){
     const rows = diningEntries.filter(entry => hit(entry.place) || diningItems(entry).some(hit))
-      .map(entry => `<span class="search-hit">${entry.place || "在外就餐"}<small> · ${entry.date || ""}${entry.price != null && !isNaN(entry.price) ? ` · ¥${entry.price}` : ""} · ${diningItems(entry).join(" · ")}</small></span>`);
+      .map(entry => `<button type="button" class="search-hit" data-goto="shopping" data-anchor="[data-dining-entry=&quot;${entry.id}&quot;]">${entry.place || "在外就餐"}<small> · ${entry.date || ""}${entry.price != null && !isNaN(entry.price) ? ` · ¥${entry.price}` : ""} · ${diningItems(entry).join(" · ")}</small></button>`);
     if (rows.length) groups.push({name:`在外吃 ${rows.length}`, rows});
   }
   if (scopes.includes("food")){
     const rows = foods.filter(food => hit(food.name) || hit(food.variants) || hit(food.nutrients))
-      .map(food => `<span class="search-hit">${iconForFood(food.id)} ${food.name}<small> · ${food.variants || food.nutrients}</small></span>`);
+      .map(food => `<button type="button" class="search-hit" data-goto="foods" data-anchor="[data-food=&quot;${food.id}&quot;]">${iconForFood(food.id)} ${food.name}<small> · ${food.variants || food.nutrients}</small></button>`);
     if (rows.length) groups.push({name:`食材 ${rows.length}`, rows});
   }
   return groups;
@@ -3828,6 +3967,15 @@ function applyStockFold(){
   });
   applyStockFold();
 })();
+(function initStatsFold(){
+  const btn = document.getElementById("statsFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(STATS_FOLD_KEY, statsFolded() ? "0" : "1");
+    applyStatsFold();
+  });
+  applyStatsFold();
+})();
 (function initPriceFold(){
   const btn = document.getElementById("priceFold");
   if (!btn) return;
@@ -3837,6 +3985,26 @@ function applyStockFold(){
   });
   applyPriceFold();
 })();
+// 跳到某条记录：先切到它所在的 tab，收起搜索面板，再把目标滚到视野里并短暂高亮。
+// 目标可能藏在折叠的 <details> 里（采购小票），得先展开，否则滚过去是空的。
+function gotoSearchHit(view, anchor){
+  const navBtn = document.querySelector(`.nav-btn[data-view="${view}"]`);
+  if (navBtn) navBtn.click();   // 走原有的切页逻辑，顺带收起面板、同步顶栏按钮
+  if (!anchor) return;
+  // 切页后 DOM 才就绪，等一帧再找；采购页是异步渲染的，给它多一点时间。
+  setTimeout(() => {
+    const target = document.querySelector(anchor);
+    if (!target) return;
+    const box = target.closest("details");
+    if (box && !box.open){
+      box.open = true;
+      if (box.dataset && box.dataset.receipt) openReceipts.add(box.dataset.receipt);
+    }
+    target.scrollIntoView({block: "center", behavior: "smooth"});
+    target.classList.add("search-flash");
+    setTimeout(() => target.classList.remove("search-flash"), 1600);
+  }, 260);
+}
 (function initSearch(){
   const btn = document.getElementById("searchBtn");
   const panel = document.getElementById("searchPanel");
@@ -3857,6 +4025,13 @@ function applyStockFold(){
     else { syncTopbarButtons(); input.focus(); }
   });
   input.addEventListener("input", run);
+  // 点搜索结果跳到对应的地方（用户："搜索后要能点到对应的地方"）。
+  // 结果是 innerHTML 重建出来的，所以在容器上做事件委托，而不是逐条绑。
+  results.addEventListener("click", event => {
+    const hit = event.target.closest("[data-goto]");
+    if (!hit) return;
+    gotoSearchHit(hit.dataset.goto, hit.dataset.anchor);
+  });
 })();
 // 食材搜索。这两个元素在 renderFoods 重渲染的范围之外，只绑一次。
 (function initFoodSearch(){
