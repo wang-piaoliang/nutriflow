@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v100`
+- 当前离线缓存：`nutriflow-pwa-v101`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**识别断了能自动接着跑 + 调料不进现有食材 + 现有食材可折叠**。① **识别队列**（用户："经常上传照片，然后我切到别的应用程序，就退出识别了"；方案已获用户确认）。iOS 会挂起后台网页、掐断正在跑的请求，这是系统行为，网页**没法真的在后台跑**。所以改成排队：`AI_QUEUE_KEY = nutriflow_ai_queue` 存 `{photoId, owner, meal}`，`autoRecognize` **先入队再发请求**、识别成功才 `dequeueRecognition`——顺序反了就等于没排队。`drainRecognitionQueue()` 在 `visibilitychange → visible` 和启动 800ms 后跑，`drainingQueue` 加锁避免 visibilitychange 连发导致同一张并发识别（那会把同一顿记两遍）。照片本来就已存进 IndexedDB，所以切走只是识别没跑完、数据不会丢；队列里照片已被删的条目直接清掉，免得永远排着跑不动的。同一张重复入队只留一条。② **调料/油/饮用水不进「现有食材」**：新增 `oil`、`seasoning` 两类别名（**必须排在会误伤的规则前面**：小米辣会被 pepper 的「辣椒」吃掉、矿泉水会被当普通商品），并把 `water` 提前；新增 `NOT_INGREDIENT = [bag, sauce, oil, seasoning, water, soda, dessert]`，`renderShopping` 用它过滤。尖椒仍是 pepper，没被误伤。③ **「现有食材」加折叠 icon**（`#stockFold` / `nutriflow_stock_folded`），和单价对比同一套；`renderShopping` 里回填折叠状态，否则勾掉一样东西后清单又自己展开。测试增至 35 项。离线缓存与版本号升至 v101。
+  - **仍未做**：搜索结果点击跳转；每周/每月采购金额统计 + 食物总量/类别/比例的互动统计。
 
 - 2026-08-06：三项。① **三文鱼仍被写成「白肉鱼」**（用户第二次指出「没改」）。v96 给 `salmon` 加了「鲑鱼」关键词，但**那次的编辑脚本在后面一处 `assert` 失败后整体中止、根本没落盘**；更根本的是 `healManualFoodIds()` 只重算 `foodId.startsWith("custom:")` 的行，而鲑鱼早被存成 `whiteFish`（一个真 id），**「已经归错类」的行永远轮不到**。改成对所有 `manual` 行重新推导——`foodId` 本来就是从 `item` 派生的、用户改名时也会重算，不存在"手动指定过的分类"被覆盖的情况。**教训：多处替换写在同一个 python 脚本里，中途 assert 失败会让前面的改动一起丢；要么分开写，要么先全部替换再一次性落盘。** ② **「本周吃到」按菜名去重导致蛋/卤蛋/煎蛋各算一种**（用户：「这里是统计吃到的食材的种数，不是统计菜的总数」）。`tallyByCategory` 改成用 `foodIdForItem(tag)` 归一后再去重，展示名取同组里**最短**的那个（「蛋」比「卤蛋」更像食材本身）。口径变化：固定数据的 7/20–7/26 那周从 40 种降到 31 种（牛排/牛肉、煎蛋/蛋 等合并），磁贴数同步为 🥩11 🥦9 🥛5 🍚4 🍎2，相关断言已更新。③ **食材单价对比加可折叠 icon**：标题行 `#priceFold`（▾/▸），折叠时把说明、分类筛选、柱状列表一起收起，状态存 `nutriflow_price_folded`，`renderPriceComparison` 每次回填（否则切分类后又自己展开）。测试增至 34 项。离线缓存与版本号升至 v100。
   - **本轮未做、用户已提出**：（a）识别改后台跑，切到别的 App 不中断；（b）搜索结果可点击跳到对应位置；（c）每月/每周采购金额统计 + 购买过的食物总量/类别/比例的互动式统计。

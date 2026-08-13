@@ -1011,13 +1011,45 @@ evaluate('manualPurchases.length = 0');
   assert.match(html, /const PRICE_FOLD_KEY/);
 });
 
+test("resumes recognition that iOS cut off when the app went to the background", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // iOS 挂起后台网页会掐断正在跑的请求，网页没法真在后台跑。所以待识别的照片排队
+  // 存本机，回到前台接着跑完（用户："切到别的应用程序，就退出识别了"）。
+  evaluate('enqueueRecognition("p1","diet:2026-08-11","晚餐")');
+  evaluate('enqueueRecognition("p2","diet:2026-08-11","晚餐")');
+  // 同一张重复入队只留一条，否则回来会把同一顿记两遍。
+  evaluate('enqueueRecognition("p1","diet:2026-08-11","晚餐")');
+  assert.equal(evaluate("aiQueue().length"), 2);
+  evaluate('dequeueRecognition("p1")');
+  assert.equal(evaluate("JSON.stringify(aiQueue().map(j => j.photoId))"), '["p2"]');
+
+  // 先入队再发请求，识别成功才出队——顺序反了就等于没排队。
+  assert.ok(html.indexOf("enqueueRecognition(photo.id, owner, forcedMeal)") < html.indexOf("dequeueRecognition(photo.id)"));
+  assert.match(html, /drainRecognitionQueue/);
+  assert.match(html, /if \(drainingQueue \|\| !aiConfig\(\).key\) return 0;/);
+
+  // 调料、油、饮用水是备货，不该出现在「现有食材」里。
+  assert.match(evaluate("JSON.stringify(NOT_INGREDIENT)"), /seasoning/);
+  assert.equal(evaluate('foodIdForItem("盒马 小米辣 50g")'), "seasoning");
+  assert.equal(evaluate('foodIdForItem("金龙鱼 食用调和油 5L")'), "oil");
+  assert.equal(evaluate('foodIdForItem("农夫山泉 矿泉水")'), "water");
+  // 尖椒是菜，不能被调料规则误伤。
+  assert.equal(evaluate('foodIdForItem("盒马日日鲜 尖椒")'), "pepper");
+
+  // 现有食材也能折叠。
+  assert.match(html, /id="stockFold"/);
+  assert.match(html, /const STOCK_FOLD_KEY/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v100"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v101"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
