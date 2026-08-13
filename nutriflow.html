@@ -1126,7 +1126,7 @@ summary.week-block-head::after{
       <article class="card">
         <div class="section-title">
           <h2>现有食材</h2>
-          <span class="subtle">吃完勾掉</span>
+          <span class="subtle"><button class="price-fold" type="button" id="stockFold" title="收起现有食材" aria-label="收起现有食材">▾</button>吃完勾掉</span>
         </div>
         <div class="list" id="boughtFoods"></div>
         <div class="consumed-section" id="consumedSection">
@@ -1233,7 +1233,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v100</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v101</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1792,6 +1792,50 @@ function diningIdFor(date, meal){
   const hit = dietEntries.find(entry => entry.date === date && entry.meal === meal && entry.diningId);
   return hit ? hit.diningId : "";
 }
+// iOS 会挂起后台网页，正在跑的请求直接断掉——这是系统行为，网页没法真的在后台跑
+// （用户："经常上传照片，然后我切到别的应用程序，就退出识别了"）。所以把待识别的
+// 照片排成一个队列存本机：照片本身早已存进 IndexedDB，切走只是识别没跑完；
+// 回到前台时把队列里剩下的接着跑完，效果是"回来就自动补上"。
+const AI_QUEUE_KEY = "nutriflow_ai_queue";
+function aiQueue(){
+  try{ const list = JSON.parse(localStorage.getItem(AI_QUEUE_KEY)); return Array.isArray(list) ? list : []; }
+  catch{ return []; }
+}
+function saveAiQueue(list){ localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(list.slice(0, 60))); }
+function enqueueRecognition(photoId, owner, meal){
+  const list = aiQueue();
+  if (list.some(job => job.photoId === photoId)) return;
+  list.push({photoId, owner, meal: meal || ""});
+  saveAiQueue(list);
+}
+function dequeueRecognition(photoId){
+  saveAiQueue(aiQueue().filter(job => job.photoId !== photoId));
+}
+let drainingQueue = false;
+// 回到前台就把没跑完的接着跑。加锁避免 visibilitychange 连发两次时并发跑同一张。
+async function drainRecognitionQueue(){
+  if (drainingQueue || !aiConfig().key) return 0;
+  const jobs = aiQueue();
+  if (!jobs.length) return 0;
+  drainingQueue = true;
+  let done = 0;
+  try{
+    const photos = await listPrivatePhotos();
+    for (const job of jobs){
+      const photo = photos.find(entry => entry.id === job.photoId);
+      // 照片没了（被删了）就把这条也清掉，免得队列永远排着一个跑不动的。
+      if (!photo?.blob){ dequeueRecognition(job.photoId); continue; }
+      if (recognizedIds().includes(job.photoId)){ dequeueRecognition(job.photoId); continue; }
+      done += await autoRecognize(job.owner, [photo], job.meal ? {meal: job.meal} : undefined);
+    }
+  }catch(error){
+    console.error("补跑识别失败", error);
+  }finally{
+    drainingQueue = false;
+  }
+  if (done){ render(); void renderDining(); }
+  return done;
+}
 async function autoRecognize(owner, saved, options){
   const forcedMeal = options && MEAL_ORDER.includes(options.meal) ? options.meal : "";
   const context = ownerContext(owner);
@@ -1799,6 +1843,8 @@ async function autoRecognize(owner, saved, options){
   let added = 0;
   for (const photo of saved){
     if (!photo?.blob || recognizedIds().includes(photo.id)) continue;
+    // 先入队再发请求：切到别的 App 把请求掐断时，这条还留在队列里，回来能接着跑。
+    enqueueRecognition(photo.id, owner, forcedMeal);
     try{
       const result = await recognizePhoto(photo.blob);
       const {items} = result;
@@ -1836,6 +1882,7 @@ async function autoRecognize(owner, saved, options){
       }
       addDietEntry(context.date, meal, items, place, diningId);
       markRecognized(photo.id);
+      dequeueRecognition(photo.id);
       added += 1;
     }catch(error){
       console.error("自动识别失败", error);
@@ -2147,8 +2194,15 @@ function allPurchases(){ return purchases.concat(manualPurchases); }
 //  - 包装费/购物袋排最前，它们只是账单行，归 bag 后不进「现有食材」也不进单价对比；
 //  - 牛油果要排在牛肉前面，酸奶/牛奶/蛋要排在鸡、牛前面（"鸡蛋"含"鸡"、"牛奶"含"牛"）；
 //  - 具体的排在笼统的前面：金针菇先于菇、米线先于米、南瓜先于瓜。
+const NOT_INGREDIENT = ["bag", "sauce", "oil", "seasoning", "water", "soda", "dessert"];
 const purchaseItemAliases = [
   {id:"bag", keywords:["包装费","购物袋","袋子","餐具","打包费","配送费","运费"]},
+  // 调料、油、饮用水这些是备货不是"这周要吃完的食材"，归到这里后不进「现有食材」清单
+  // （用户："现有食材里面不需要出现 油、矿泉水、小米辣等调料"）。
+  // 必须排在会误伤的规则前面：小米辣会被 pepper 的「辣椒」吃掉、矿泉水会被当普通商品。
+  {id:"oil", keywords:["食用油","菜籽油","花生油","橄榄油","调和油","香油","玉米油","葵花籽油"]},
+  {id:"seasoning", keywords:["小米辣","干辣椒","花椒","八角","桂皮","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
+  {id:"water", keywords:["矿泉水","天然水","饮用水","纯净水","苏打水"]},
   {id:"avocado", keywords:["牛油果"]},
   // 「蛋糕卷」「沙拉酱 蛋黄口味」都含「蛋」但不是蛋（用户："蛋糕/沙拉酱都归到鸡蛋里面了"），
   // 必须排在 egg 前面先截住。
@@ -2911,6 +2965,8 @@ function iconForFood(foodId){
     ginger:"🫚",
     soda:"🥤",
     iceCream:"🍦",
+    oil:"🫒",
+    seasoning:"🌶",
     water:"💧",
     sauce:"🧂",
     dessert:"🍰",
@@ -3243,7 +3299,9 @@ async function renderShopping(){
   resetPhotoUrls("shopping");
   // 「现有食材」和「已吃完历史」都只列需要跟踪是否吃完的生鲜；购物袋和 pantry
   // 备货（主食/油/盐/米等）进入完整采购记录，但不在这份勾选清单里出现。
-  const boughtItems = allPurchases().filter(purchase => purchase.bought && purchase.foodId !== "bag" && !purchase.pantry);
+  // 「现有食材」只列需要盯着吃完的生鲜。账单行、调料、油、饮用水、汽水这些是备货，
+  // 进完整采购记录但不进这份清单（用户："不需要出现 油、矿泉水、小米辣等调料"）。
+  const boughtItems = allPurchases().filter(purchase => purchase.bought && !NOT_INGREDIENT.includes(purchase.foodId) && !purchase.pantry);
   const activeItems = boughtItems.filter(purchase => !consumed[purchase.id]);
   const consumedItems = boughtItems
     .filter(purchase => consumed[purchase.id])
@@ -3272,6 +3330,8 @@ async function renderShopping(){
     ${recentConsumed.map(purchase => renderBoughtItem(purchase, true)).join("")}
     ${olderConsumed.length ? `<details class="history-details"><summary>查看其余 ${olderConsumed.length} 件</summary><div class="list">${olderConsumed.map(purchase => renderBoughtItem(purchase, true)).join("")}</div></details>` : ""}
   ` : `<div class="note">还没有吃完记录。</div>`;
+  // 折叠状态每次重渲染都要回填，否则勾掉一样东西后清单又自己展开了。
+  applyStockFold();
   document.getElementById("consumedMeta").textContent = `${consumedItems.length} 件`;
   document.querySelectorAll("[data-consumed]").forEach(input => {
     input.addEventListener("change", () => {
@@ -3744,6 +3804,30 @@ function applyPriceFold(){
     if (el) el.hidden = folded;
   });
 }
+// 「现有食材」同样可折叠：买得多的时候这份清单很长（用户要求）。
+const STOCK_FOLD_KEY = "nutriflow_stock_folded";
+function stockFolded(){ return localStorage.getItem(STOCK_FOLD_KEY) === "1"; }
+function applyStockFold(){
+  const folded = stockFolded();
+  const btn = document.getElementById("stockFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开现有食材" : "收起现有食材";
+  }
+  ["boughtFoods", "consumedSection"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = folded;
+  });
+}
+(function initStockFold(){
+  const btn = document.getElementById("stockFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(STOCK_FOLD_KEY, stockFolded() ? "0" : "1");
+    applyStockFold();
+  });
+  applyStockFold();
+})();
 (function initPriceFold(){
   const btn = document.getElementById("priceFold");
   if (!btn) return;
@@ -4209,6 +4293,11 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 })();
 bindDiningForm();
 // 先把早先落成 custom: 的行重新归类，再渲染——否则第一屏还是旧图标和旧汇总。
+// 上次被系统掐断的识别，回到前台就接着跑完。
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void drainRecognitionQueue();
+});
+setTimeout(() => void drainRecognitionQueue(), 800);
 healManualFoodIds();
 dedupeManualReceipts();
 render();
