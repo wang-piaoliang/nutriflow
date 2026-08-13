@@ -400,6 +400,7 @@ summary.week-block-head::after{
 .week-block:not([open]) > summary.week-block-head::after{transform:rotate(-90deg)}
 /* 收起时把下边距去掉，免得留一条空白。 */
 .week-block:not([open]) > summary.week-block-head{margin-bottom:0}
+.price-fold{border:0;background:none;color:var(--muted);font-size:14px;padding:0 6px 0 0;line-height:1}
 /* 「全部折叠」也是轻量的文字按钮，不跟 ＋ 抢注意力。 */
 .week-fold-all{
   margin-right:8px;
@@ -1170,9 +1171,9 @@ summary.week-block-head::after{
       <article class="card desktop-span">
         <div class="section-title has-sticky-tabs">
           <h2>食材单价对比</h2>
-          <span class="subtle" id="priceMeta">0 种</span>
+          <span class="subtle"><button class="price-fold" type="button" id="priceFold" title="收起单价对比" aria-label="收起单价对比">▾</button><span id="priceMeta">0 种</span></span>
         </div>
-        <div class="note">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
+        <div class="note" id="priceNote">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
         <div class="tabs" id="priceTabs"></div>
         <div class="bars" id="priceCompare"></div>
       </article>
@@ -1232,7 +1233,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v99</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v100</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2121,7 +2122,11 @@ function dedupeManualReceipts(){
 function healManualFoodIds(){
   let changed = false;
   manualPurchases.forEach(row => {
-    if (!row || typeof row.foodId !== "string" || !row.foodId.startsWith("custom:")) return;
+    // 原来只补 custom: 开头的，于是「已经归错类」的行永远轮不到——鲑鱼早就被存成
+    // whiteFish，别名表后来加了「鲑鱼」也纹丝不动（用户："三文鱼，不要写白肉鱼，
+    // 这个改一下，没改"）。改成对所有手动行重新推导：foodId 本来就是从 item 派生的，
+    // 用户改名时也会跟着重算，不存在"手动指定过的分类"会被覆盖。
+    if (!row || typeof row.foodId !== "string") return;
     const fresh = foodIdForItem(row.item);
     if (fresh === row.foodId) return;
     row.foodId = fresh;
@@ -3080,7 +3085,14 @@ function tallyByCategory(records){
     // "点开的是食物，不是菜"：点「肉」看到的是"排骨"，点「主食」看到的是"玉米"。
     itemTags(item).forEach(tag => {
       const rank = rankOfTag(tag);
-      if (rank < dietItemCategoryRules.length) eaten[rank].set(tag, tag);
+      if (rank >= dietItemCategoryRules.length) return;
+      // 数的是「吃到几种食材」，不是「几道菜」：蛋、卤蛋、煎蛋是同一种食材，
+      // 之前按 tag 原文去重就各算一种（用户："蛋/卤蛋是分开的-这其实都是蛋"）。
+      // 归到同一个食材 id 上去重；认不出来的仍按名字各算一种。
+      // Map 的 value 留最短的那个名字当展示名——"蛋"比"卤蛋"更像食材本身。
+      const key = foodIdForItem(tag);
+      const shown = eaten[rank].get(key);
+      if (!shown || tag.length < shown.length) eaten[rank].set(key, tag);
     });
   })));
   const counts = dietItemCategoryRules
@@ -3183,6 +3195,8 @@ function renderPriceComparison(){
   // 只列真有数据的分类，免得点进去是空的。选中的分类若因数据变动没了，退回「全部」。
   const present = purchaseGroupRules.filter(rule => allGroups.some(group => rule.ids.includes(group.latest.foodId)));
   if (activePriceCategory !== "all" && !present.some(rule => rule.name === activePriceCategory)) activePriceCategory = "all";
+  // 折叠状态每次重渲染都要回填，否则切分类后又自己展开了。
+  applyPriceFold();
   const tabs = document.getElementById("priceTabs");
   tabs.innerHTML = [{name:"全部", icon:"🧺"}].concat(present)
     .map(rule => `<button class="tab-chip ${rule.name === "全部" && activePriceCategory === "all" || rule.name === activePriceCategory ? "active" : ""}" data-price-cat="${rule.name === "全部" ? "all" : rule.name}">${rule.icon} ${rule.name}</button>`)
@@ -3714,6 +3728,31 @@ function searchAll(keyword, scopes){
   }
   return groups;
 }
+// 单价对比可折叠：内容不短，平时收起来能少滑一大段（用户："食材单价，也加一个
+// 可折叠的小icon"）。状态存本机，下次进来还是收着的。
+const PRICE_FOLD_KEY = "nutriflow_price_folded";
+function priceFolded(){ return localStorage.getItem(PRICE_FOLD_KEY) === "1"; }
+function applyPriceFold(){
+  const folded = priceFolded();
+  const btn = document.getElementById("priceFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开单价对比" : "收起单价对比";
+  }
+  ["priceNote", "priceTabs", "priceCompare"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = folded;
+  });
+}
+(function initPriceFold(){
+  const btn = document.getElementById("priceFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(PRICE_FOLD_KEY, priceFolded() ? "0" : "1");
+    applyPriceFold();
+  });
+  applyPriceFold();
+})();
 (function initSearch(){
   const btn = document.getElementById("searchBtn");
   const panel = document.getElementById("searchPanel");

@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v99`
+- 当前离线缓存：`nutriflow-pwa-v100`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：三项。① **三文鱼仍被写成「白肉鱼」**（用户第二次指出「没改」）。v96 给 `salmon` 加了「鲑鱼」关键词，但**那次的编辑脚本在后面一处 `assert` 失败后整体中止、根本没落盘**；更根本的是 `healManualFoodIds()` 只重算 `foodId.startsWith("custom:")` 的行，而鲑鱼早被存成 `whiteFish`（一个真 id），**「已经归错类」的行永远轮不到**。改成对所有 `manual` 行重新推导——`foodId` 本来就是从 `item` 派生的、用户改名时也会重算，不存在"手动指定过的分类"被覆盖的情况。**教训：多处替换写在同一个 python 脚本里，中途 assert 失败会让前面的改动一起丢；要么分开写，要么先全部替换再一次性落盘。** ② **「本周吃到」按菜名去重导致蛋/卤蛋/煎蛋各算一种**（用户：「这里是统计吃到的食材的种数，不是统计菜的总数」）。`tallyByCategory` 改成用 `foodIdForItem(tag)` 归一后再去重，展示名取同组里**最短**的那个（「蛋」比「卤蛋」更像食材本身）。口径变化：固定数据的 7/20–7/26 那周从 40 种降到 31 种（牛排/牛肉、煎蛋/蛋 等合并），磁贴数同步为 🥩11 🥦9 🥛5 🍚4 🍎2，相关断言已更新。③ **食材单价对比加可折叠 icon**：标题行 `#priceFold`（▾/▸），折叠时把说明、分类筛选、柱状列表一起收起，状态存 `nutriflow_price_folded`，`renderPriceComparison` 每次回填（否则切分类后又自己展开）。测试增至 34 项。离线缓存与版本号升至 v100。
+  - **本轮未做、用户已提出**：（a）识别改后台跑，切到别的 App 不中断；（b）搜索结果可点击跳到对应位置；（c）每月/每周采购金额统计 + 购买过的食物总量/类别/比例的互动式统计。
 
 - 2026-08-06：**小票识别补上「数量」**（用户：「昨天的猪骨买了两盒，但好像没识别出来」）。根因：`RECEIPT_PROMPT` 只让模型读商品名、规格、金额，**从来没有数量这个字段**——买两盒和买一盒读出来完全一样，因为规格写的是同一个（都是「300g/盒」）。修法：① prompt 的 JSON схема 加 `count`，并加规则 3b 说明「2盒」「×2」「2件」「数量 2」都是数量、只买一件写 1、看不出来也写 1，并点明「这一条经常被漏」；② 新增 `foldCount(amount, count)` 把数量折进 `amount`——**纯重量/容量的直接乘出总量**（`300g ×2` → `600g（2×300g）`），这样 `parseAmount` 能读出 600、单价对比不会按一件的重量算导致单价翻倍；不是纯重量的挂个 `×N`（`1 盒 ×2`），空规格写成 `N 件`；③ `parseReceipt` 用 `Math.max(1, Math.round(Number(count)) || 1)` 兜底，缺 `count` 的老回复当 1 件，不会变成 0 或 NaN。测试增至 33 项。离线缓存与版本号升至 v99。
 

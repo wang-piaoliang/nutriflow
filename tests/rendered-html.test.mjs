@@ -259,11 +259,13 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  assert.match(elements.get("weekMeta").textContent, /40 种 · 7 天/);
-  assert.match(summary, /<b>🥩 15<\/b><span>鱼禽瘦肉<\/span>/);
-  assert.match(summary, /<b>🥦 10<\/b><span>蔬菜<\/span>/);
-  assert.match(summary, /<b>🥛 7<\/b><span>蛋奶豆<\/span>/);
-  assert.match(summary, /<b>🍚 6<\/b><span>主食<\/span>/);
+  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，
+  // 所以从 40 降到 31。
+  assert.match(elements.get("weekMeta").textContent, /31 种 · 7 天/);
+  assert.match(summary, /<b>🥩 11<\/b><span>鱼禽瘦肉<\/span>/);
+  assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
+  assert.match(summary, /<b>🥛 5<\/b><span>蛋奶豆<\/span>/);
+  assert.match(summary, /<b>🍚 4<\/b><span>主食<\/span>/);
   assert.match(summary, /<b>🍎 2<\/b><span>水果坚果<\/span>/);
   // The trailing caption line is gone — the user asked for the tiles alone.
   assert.doesNotMatch(summary, /看看这几类是不是都吃到了/);
@@ -305,7 +307,9 @@ test("summarises past weeks in the timeline but never the current one twice", as
   assert.ok(list.indexOf("2026-07-27") < list.indexOf("2026-07-26"));
 
   // Shown exactly once, in the hero.
-  assert.match(elements.get("weekMeta").textContent, /40 种 · 7 天/);
+  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，
+  // 所以从 40 降到 31。
+  assert.match(elements.get("weekMeta").textContent, /31 种 · 7 天/);
 });
 
 test("orders meal items by food category", async () => {
@@ -836,7 +840,8 @@ test("re-classifies purchases that were stored before the alias table existed", 
   // 别名表是后加的，早先存下来的行全是 custom:。启动时重新认一遍并落盘，
   // 已经记错的采购不用手动重录；用户自己改过名字的（非 custom:）不碰。
   assert.match(html, /function healManualFoodIds\(\)/);
-  assert.match(html, /row\.foodId\.startsWith\("custom:"\)/);
+  // 对所有手动行重新推导，而不只是没归类的——否则「已经归错类」的行永远轮不到。
+  assert.doesNotMatch(html, /!row\.foodId\.startsWith\("custom:"\)\) return;/);
   assert.match(html, /if \(fresh === "bag"\) row\.bought = false;/);
   assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
 });
@@ -980,13 +985,39 @@ test("keeps the quantity when a receipt line has more than one unit", async () =
   assert.match(html, /count 写这一行买了\*\*几件\*\*/);
 });
 
+test("counts ingredients, not dish names, and re-fixes stale classifications", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 「本周吃到」数的是吃到几种食材，不是几道菜：蛋/卤蛋/煎蛋是同一种。
+  const tally = evaluate('tallyByCategory([{date:"2026-08-10",meals:[{name:"午餐",items:["蛋","卤蛋","煎蛋","牛肉","牛排","生菜","油麦菜"]}]}])');
+  assert.equal(tally.total, 3);
+  const byName = Object.fromEntries(tally.counts.map(c => [c.rule.name, c.count]));
+  assert.equal(byName["蛋奶豆"], 1);
+  assert.equal(byName["鱼禽瘦肉"], 1);
+  assert.equal(byName["蔬菜"], 1);
+  // 展示名取最短的那个——「蛋」比「卤蛋」更像食材本身。
+  assert.ok(tally.counts.find(c => c.rule.name === "蛋奶豆").names.includes("蛋"));
+
+  // 自愈原来只补 custom: 开头的，「已经归错类」的行永远轮不到——鲑鱼早被存成
+  // whiteFish，别名表加了「鲑鱼」也纹丝不动。
+evaluate('manualPurchases.length = 0');
+  evaluate('manualPurchases.push({receiptId:"S",id:"S-01",date:"2026-08-10",foodId:"whiteFish",item:"智利大西洋鲑鱼",amount:"1kg",totalPrice:125.9,store:"山姆",bought:true,manual:true})');
+  evaluate("healManualFoodIds()");
+  assert.equal(evaluate("manualPurchases[0].foodId"), "salmon");
+
+  // 单价对比可折叠，状态存本机。
+  assert.match(html, /id="priceFold"/);
+  assert.match(html, /const PRICE_FOLD_KEY/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v99"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v100"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
