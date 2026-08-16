@@ -1297,7 +1297,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v107</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v108</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3929,11 +3929,27 @@ function bindDietForm(container){
     try{
       const owner = dietPhotoOwner(date);
       const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
-      // 照片里看不出是第几餐，以人选的为准，别让模型的猜测把晚餐并进午餐。
-      const added = await autoRecognize(owner, saved, {meal: pickedMeal(container)});
+      // 照片存好就先刷一遍、把入口放开——识别慢，不能让人干等着
+      // （用户："照片识别太慢了，所以就后台识别吧，页面先可以继续用"）。
       render();
-      setLabel(added ? "✅ 已记录" : (aiConfig().key ? "没认出来，点开大图重试" : "📷 发张照片就行"));
-      setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+      if (!aiConfig().key){
+        setLabel("已存下照片");
+        setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+        return;
+      }
+      setLabel("后台识别中…可以接着记");
+      // 刻意不 await：识别在后台跑完再刷新。中途被系统掐断也不怕，
+      // 照片已进 IndexedDB、任务已入队，回到前台会自动补跑。
+      // 照片里看不出是第几餐，以人选的为准，别让模型的猜测把晚餐并进午餐。
+      void autoRecognize(owner, saved, {meal: pickedMeal(container)}).then(added => {
+        render();
+        setLabel(added ? "✅ 已记录" : "没认出来，点开大图重试");
+        setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+      }).catch(error => {
+        console.error(error);
+        setLabel("识别失败，点开大图重试");
+        setTimeout(() => setLabel("📷 发张照片就行"), 4000);
+      });
     }catch(error){
       console.error(error);
       setLabel("照片没存下来");
@@ -4538,44 +4554,62 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     clearTimeout(recognizeTimer);
     recognizeTimer = setTimeout(() => void startRecognize(), 1600);
   });
-  async function startRecognize(){
-    if (recognizing) return;
-    if (!pendingPhotos.length) return;
+  // 上传完就把表单腾空、让人接着记下一单，识别放到后台跑（用户："别我上传完照片
+  // 就卡在这里不动了，我还得继续记录下一个"）。识别完直接写进采购历史，不再回填
+  // 表单——表单现在只服务手填这一条路，两者互不干扰，也就能同时跑好几单。
+  let backgroundJobs = 0;
+  function jobHint(text){
     const hintEl = document.querySelector(".buy-add-hint");
-    const hintText = hintEl?.textContent;
-    // 没配 key 就直说，别让人对着一张空表单猜为什么没自动填。
+    if (hintEl) hintEl.textContent = text;
+  }
+  async function startRecognize(){
+    if (!pendingPhotos.length) return;
     if (!aiConfig().key){
-      if (hintEl) hintEl.textContent = "照片已选上，但还没配 API key，识别不了——去「目标」页最下面配一个，或者直接手填。只填照片也能保存。";
+      jobHint("照片已选上，但还没配 API key，识别不了——去「目标」页最下面配一个，或者直接手填。只填照片也能保存。");
       return;
     }
-    if (hintEl) hintEl.textContent = "正在识别小票…";
-    recognizing = true;
+    // 先把这批照片端走并清空表单，人立刻就能拍下一单。
+    const files = pendingPhotos;
+    pendingPhotos = [];
+    showPending();
+    backgroundJobs += 1;
+    jobHint(`正在后台识别${backgroundJobs > 1 ? `（还有 ${backgroundJobs} 单在跑）` : ""}…可以接着记下一单。`);
     try{
-      const receipt = await recognizeReceipts(pendingPhotos, done => {
-        if (hintEl) hintEl.textContent = `正在识别小票…（${done}/${pendingPhotos.length}）`;
-      });
-      if (receipt.date && dateEl) dateEl.value = receipt.date;
-      recognizedTime = receipt.time || "";
-      if (receipt.store && storeEl) storeEl.value = receipt.store;
-      linesEl.innerHTML = receipt.items.map(() => lineMarkup()).join("") || lineMarkup();
-      Array.from(linesEl.querySelectorAll(".buy-line")).forEach((row, index) => {
-        const item = receipt.items[index];
-        if (!item) return;
-        row.querySelector(".buy-name").value = item.name;
-        row.querySelector(".buy-amount").value = item.amount;
-        row.querySelector(".buy-price").value = item.price == null ? "" : item.price;
-      });
-      // 识别完直接入账，不再等人点「保存」（用户："上传照片后自动保存，如果有问题
-      // 我会修改的，可修改就行"）。存进去的每一行在采购历史里都能就地改名称/规格/
-      // 金额、也能单独删行，所以认错了不用删掉重来。
-      const saved = await commitPurchase();
-      if (hintEl) hintEl.textContent = `已自动记下 ${saved} 件。金额认错是常事——在下面的采购历史里点开这次采购，直接改就行。`;
+      const receipt = await recognizeReceipts(files);
+      const items = receipt.items.filter(item => item.name);
+      const day = receipt.date || new Date().toISOString().slice(0, 10);
+      const date = receipt.time ? `${day} ${receipt.time}` : day;
+      const store = receipt.store || "未记录地点";
+      const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
+      // 和手动保存同一道防线：指纹一样就不再记一单。
+      const signature = receiptSignature(store, date, rows);
+      if (manualReceiptSignatures().some(entry => entry.signature === signature)){
+        jobHint("这单刚记过了，没有重复记。");
+        return;
+      }
+      const {receiptId} = addPurchaseReceipt({date, store, items: rows});
+      await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
+      await renderShopping();
+      renderFoods();
+      jobHint(`已记下 ${items.length} 件（${store}）。金额认错是常事——在下面的采购历史里点开这次采购，点 ✏️ 直接改。`);
     }catch(error){
       console.error(error);
-      if (hintEl) hintEl.textContent = `识别失败：${error.message} 也可以直接手填。`;
-      setTimeout(() => { if (hintEl && hintText) hintEl.textContent = hintText; }, 6000);
+      // 识别失败也别让照片白传：先存成一条占位采购，照片挂上去，回头能手动补。
+      try{
+        const {receiptId} = addPurchaseReceipt({
+          date: new Date().toISOString().slice(0, 10),
+          store: "未记录地点",
+          items: [{name: "待补充", amount: "", price: null, placeholder: true}],
+        });
+        await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
+        await renderShopping();
+        jobHint(`识别失败：${error.message} 照片已存成一条待补充的采购，点 ✏️ 手填即可。`);
+      }catch(saveError){
+        console.error(saveError);
+        jobHint(`识别失败：${error.message} 也可以直接手填。`);
+      }
     }finally{
-      recognizing = false;
+      backgroundJobs -= 1;
     }
   }
 
