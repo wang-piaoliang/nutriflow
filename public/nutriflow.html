@@ -377,6 +377,9 @@ h3{margin:0;font-size:15px;letter-spacing:0}
   overflow-wrap:anywhere;
   text-align:left;
 }
+/* 合并后的「目标」卡里，每顿/每天各自的小标题。 */
+.goal-sub{margin:14px 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+.goal-sub:first-of-type{margin-top:2px}
 .week-caption{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 /* 每周一段：这一周的汇总（日期范围 + 分类磁贴）排在这一周的每天上面，
    段与段之间一条细线隔开，最近的在最前。 */
@@ -1078,17 +1081,12 @@ summary.week-block-head::after{
 
       <article class="card">
         <div class="section-title">
-          <h2>每顿目标</h2>
-          <span class="subtle">早餐 / 午餐 / 晚餐</span>
+          <h2>目标</h2>
+          <span class="subtle">每顿 / 每天</span>
         </div>
+        <h3 class="goal-sub">每顿 · 早餐 / 午餐 / 晚餐</h3>
         <div class="list" id="mealList"></div>
-      </article>
-
-      <article class="card">
-        <div class="section-title">
-          <h2>每天目标</h2>
-          <span class="subtle">全天总量</span>
-        </div>
+        <h3 class="goal-sub">每天 · 全天总量</h3>
         <div class="list" id="dailyList"></div>
         <figure class="reference-figure">
           <a href="./balanced-diet-pagoda-2022.png" target="_blank" rel="noopener" aria-label="打开高清版中国居民平衡膳食宝塔">
@@ -1101,7 +1099,7 @@ summary.week-block-head::after{
       <article class="card">
         <div class="section-title">
           <h2>每周采购目标</h2>
-          <span class="subtle">按分类汇总</span>
+          <span class="subtle"><button class="price-fold" type="button" id="weeklyFold" title="展开每周采购目标" aria-label="展开每周采购目标">▸</button>按分类汇总</span>
         </div>
         <div class="grid2" id="weeklySummary"></div>
       </article>
@@ -1266,7 +1264,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v103</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v104</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3856,9 +3854,11 @@ function renderFoods(){
       .slice(0,6)
       .map(food => food.name)
       .join(" / ");
-    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周目标 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${category.note ? `${category.note}<br>` : ""}${top}<br>库内 ${list.length} 组食材可轮换</span></div>`;
+    return `<div class="target"><b>${category.icon} ${category.name}</b><span class="weekly-total">每周目标 ${category.weeklyAmount} · 选 ${category.weeklyVariety}</span><span>${category.note ? `${category.note}<br>` : ""}${top}</span></div>`;
   }).join("");
   document.getElementById("weeklySummary").innerHTML = summary;
+  // 折叠状态每次重渲染都要回填，否则一渲染就自己展开了。
+  applyWeeklyFold();
   const tabs = document.getElementById("foodTabs");
   tabs.innerHTML = categories.map(category => `<button class="tab-chip ${category.id === activeFoodCategory ? "active" : ""}" data-food-cat="${category.id}">${category.icon} ${category.name}</button>`).join("");
   tabs.querySelectorAll("button").forEach(button => {
@@ -4024,6 +4024,29 @@ function applyStockFold(){
     applyStockFold();
   });
   applyStockFold();
+})();
+// 「每周采购目标」默认收起（用户要求）：它是长期参考，不像其他卡片天天要看。
+// 注意默认值和别处相反——没存过就是"折叠"，所以判的是 !== "0"。
+const WEEKLY_FOLD_KEY = "nutriflow_weekly_folded";
+function weeklyFolded(){ return localStorage.getItem(WEEKLY_FOLD_KEY) !== "0"; }
+function applyWeeklyFold(){
+  const folded = weeklyFolded();
+  const btn = document.getElementById("weeklyFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开每周采购目标" : "收起每周采购目标";
+  }
+  const box = document.getElementById("weeklySummary");
+  if (box) box.hidden = folded;
+}
+(function initWeeklyFold(){
+  const btn = document.getElementById("weeklyFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(WEEKLY_FOLD_KEY, weeklyFolded() ? "0" : "1");
+    applyWeeklyFold();
+  });
+  applyWeeklyFold();
 })();
 (function initStatsFold(){
   const btn = document.getElementById("statsFold");

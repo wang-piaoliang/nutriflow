@@ -1117,13 +1117,36 @@ test("picks the day from a strip of recent days, with the calendar behind a tap"
   assert.match(html, /\.diet-form-days\{[^}]*min-width:0/);
 });
 
+test("folds the weekly shopping goal and merges the two target cards", async () => {
+  const { elements } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 「每顿目标」和「每天目标」并成一张卡，和上面的「今天吃到这些」不再三卡重复
+  // （用户："感觉有点重复"）。两份清单都还在，只是各自带个小标题。
+  assert.doesNotMatch(html, /<h2>每顿目标<\/h2>/);
+  assert.doesNotMatch(html, /<h2>每天目标<\/h2>/);
+  assert.match(html, /<h3 class="goal-sub">每顿 · 早餐 \/ 午餐 \/ 晚餐<\/h3>/);
+  assert.match(html, /<h3 class="goal-sub">每天 · 全天总量<\/h3>/);
+  assert.match(html, /id="mealList"/);
+  assert.match(html, /id="dailyList"/);
+
+  // 「每周采购目标」默认收起：它是长期参考，不像别的卡天天要看。
+  // 默认值和别处相反——没存过就是折叠，所以判的是 !== "0"。
+  assert.match(html, /localStorage.getItem\(WEEKLY_FOLD_KEY\) !== "0"/);
+  assert.match(html, /id="weeklyFold"/);
+
+  // 「库内 N 组食材可轮换」按要求删掉。
+  assert.doesNotMatch(html, /组食材可轮换/);
+  assert.doesNotMatch(elements.get("weeklySummary").innerHTML, /库内/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v103"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v104"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
