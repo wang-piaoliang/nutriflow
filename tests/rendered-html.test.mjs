@@ -144,12 +144,27 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /-webkit-touch-callout:none/);
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
-  // Bottom-nav order is 饮食 → 采购 → 食材 → 目标, with 饮食 the default view.
-  assert.ok(html.indexOf('data-view="dietLog"') < html.indexOf('data-view="shopping"'));
-  assert.ok(html.indexOf('data-view="shopping"') < html.indexOf('data-view="foods"'));
-  assert.ok(html.indexOf('data-view="foods"') < html.indexOf('data-view="home"'));
+  // 底栏顺序：饮食 → 食材 → 采购 → 营养 → 计划，饮食是落地页。
+  const navAt = view => html.indexOf(`data-view="${view}"`);
+  assert.ok(navAt("dietLog") < navAt("shopping"));
+  assert.ok(navAt("shopping") < navAt("buying"));
+  assert.ok(navAt("buying") < navAt("foods"));
+  assert.ok(navAt("foods") < navAt("home"));
   assert.match(html, /<section class="view active" id="dietLog">/);
-  assert.match(html, /data-view="home"><b>◎<\/b><span>目标<\/span>/);
+  assert.match(html, /data-view="home"><b>◎<\/b><span>计划<\/span>/);
+  assert.match(html, /grid-template-columns:repeat\(5,1fr\)/);
+
+  // 采购记录单独成页，食材页只留现有食材和单价对比。
+  const viewOf = name => {
+    const start = html.indexOf(`id="${name}">`);
+    return html.slice(start, html.indexOf("</section>", start));
+  };
+  assert.match(viewOf("shopping"), /<h2>现有食材<\/h2>/);
+  assert.match(viewOf("shopping"), /<h2>食材单价对比<\/h2>/);
+  assert.doesNotMatch(viewOf("shopping"), /<h2>采购历史<\/h2>/);
+  assert.match(viewOf("buying"), /<h2>采购历史<\/h2>/);
+  assert.match(viewOf("buying"), /<h2>采购统计<\/h2>/);
+  assert.match(viewOf("buying"), /<h2>在外就餐<\/h2>/);
 
   // The hidden native file input is position:absolute. iOS Safari refuses to
   // shrink input[type=file] to width:1px and lays it out at its intrinsic ~166px,
@@ -939,7 +954,8 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   // 饮食页搜全 app，采购/食材页只搜本页；目标页不放搜索、保留 ⚙。
   // vm realm 里的数组原型和这里不同，deepEqual 会因非同一引用而失败，比 JSON 更稳。
   assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.dietLog)"), '["diet","purchase","dining","food"]');
-  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.shopping)"), '["purchase","dining"]');
+  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.shopping)"), '["purchase"]');
+  assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.buying)"), '["purchase","dining"]');
   assert.equal(evaluate("JSON.stringify(SEARCH_SCOPES.foods)"), '["food"]');
   assert.equal(evaluate("SEARCH_SCOPES.home"), undefined);
 
@@ -1254,7 +1270,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v108"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v109"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

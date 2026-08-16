@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v108`
+- 当前离线缓存：`nutriflow-pwa-v109`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**底栏改成五个 tab**（用户："采购 → 食材，单独加一个采购-就用来保存采购记录，食材 → 营养，目标 → 计划"）。新顺序 **饮食 | 食材 | 采购 | 营养 | 计划**，`grid-template-columns` 从 4 列改 5 列、`.nav-btn b` 字号 20→19px。**view id 全部保持不变**（`shopping` / `foods` / `home`），只改标签和内容归属——这样所有按 id 取元素的渲染逻辑一行都不用动，只有新加的 `buying` 是新 id。内容重新分配：`shopping`（食材）留「现有食材 + 食材单价对比」，新建 `buying`（采购）收「采购历史 + 采购统计 + 在外就餐」，`foods` 改叫营养、`home` 改叫计划，内容不动。`SEARCH_SCOPES` 同步：`shopping: ["purchase"]`、新增 `buying: ["purchase","dining"]`。`syncTopbarButtons` 不用改——它只判 `view === "home"`，⚙ 仍只在计划页。CDP 实测五页内容归属正确、顶栏 🔍/⚙ 正确、390px 与 320px 下底栏和页面横向溢出均为 0。测试断言里写死的「目标」标签和四 tab 顺序已更新。离线缓存与版本号升至 v109。
 
 - 2026-08-06：**识别全部改成后台跑，页面不再干等**（用户："别我上传完照片就卡在这里不动了，我还得继续记录下一个"；"照片识别太慢了，所以就后台识别吧，页面先可以继续用"）。① **采购**：`startRecognize()` 重写——先把 `pendingPhotos` 端走、清空表单、`showPending()`，人立刻能拍下一单；然后才 `await recognizeReceipts(files)`。识别完**直接 `addPurchaseReceipt` 写进采购历史，不再回填表单**（表单现在只服务手填，两条路互不干扰，也就能同时跑好几单）。`backgroundJobs` 计数，提示里带「还有 N 单在跑」。入账前仍走 `receiptSignature` 去重。**识别失败也不让照片白传**：兜底存成一条「待补充」的采购并把照片挂上去，点 ✏️ 手填即可。原来的 `recognizing` 锁去掉了——照片一被端走 `pendingPhotos` 就空，同一批不可能被送第二次，锁反而会把后一单挡掉。② **饮食**：照片 `savePrivatePhoto` 存好后**先 `render()` 放开入口**、标签显示「后台识别中…可以接着记」，然后 `void autoRecognize(...)` **刻意不 await**，跑完再 `render()` 并更新标签。中途被系统掐断也不怕——照片已进 IndexedDB、任务已在 v101 的识别队列里，回到前台会自动补跑。测试增至 43 项（旧断言里查 `recognizeReceipts(pendingPhotos)` / `commitPurchase()` / `recognizing` 的三条已随实现更新）。离线缓存与版本号升至 v108。
 

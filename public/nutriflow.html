@@ -1000,7 +1000,8 @@ summary.week-block-head::after{
   width:100%;
   max-width:540px;
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  /* 五个 tab：饮食 / 食材 / 采购 / 营养 / 计划 */
+  grid-template-columns:repeat(5,1fr);
   gap:4px;
   padding:8px 10px calc(8px + env(safe-area-inset-bottom));
   background:color-mix(in srgb,var(--surface) 88%,transparent);
@@ -1018,7 +1019,7 @@ summary.week-block-head::after{
   gap:2px;
   font-size:11px;
 }
-.nav-btn b{font-size:20px;line-height:1}
+.nav-btn b{font-size:19px;line-height:1}
 /* 页脚版本号：用来一眼确认设备是否已经加载到最新版（排查 Service Worker 缓存）。 */
 .app-version{text-align:center;color:var(--muted);font-size:11px;padding:14px 0 2px;opacity:.55;letter-spacing:.3px}
 .nav-btn.active{background:var(--surface-2);color:var(--text)}
@@ -1188,6 +1189,23 @@ summary.week-block-head::after{
         </div>
       </article>
 
+
+      <article class="card desktop-span">
+        <div class="section-title has-sticky-tabs">
+          <h2>食材单价对比</h2>
+          <span class="subtle"><button class="price-fold" type="button" id="priceFold" title="收起单价对比" aria-label="收起单价对比">▾</button><span id="priceMeta">0 种</span></span>
+        </div>
+        <div class="note" id="priceNote">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
+        <div class="tabs" id="priceTabs"></div>
+        <div class="bars" id="priceCompare"></div>
+      </article>
+
+
+    </div>
+  </section>
+
+  <section class="view" id="buying">
+    <div class="stack desktop-grid">
       <article class="card">
         <div class="section-title">
           <h2>采购历史</h2>
@@ -1217,16 +1235,6 @@ summary.week-block-head::after{
           </div>
         </details>
         <div id="purchaseHistory"></div>
-      </article>
-
-      <article class="card desktop-span">
-        <div class="section-title has-sticky-tabs">
-          <h2>食材单价对比</h2>
-          <span class="subtle"><button class="price-fold" type="button" id="priceFold" title="收起单价对比" aria-label="收起单价对比">▾</button><span id="priceMeta">0 种</span></span>
-        </div>
-        <div class="note" id="priceNote">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
-        <div class="tabs" id="priceTabs"></div>
-        <div class="bars" id="priceCompare"></div>
       </article>
 
       <article class="card desktop-span">
@@ -1297,14 +1305,15 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v108</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v109</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-btn active" data-view="dietLog"><b>▤</b><span>饮食</span></button>
-  <button class="nav-btn" data-view="shopping"><b>＋</b><span>采购</span></button>
-  <button class="nav-btn" data-view="foods"><b>★</b><span>食材</span></button>
-  <button class="nav-btn" data-view="home"><b>◎</b><span>目标</span></button>
+  <button class="nav-btn" data-view="shopping"><b>🥬</b><span>食材</span></button>
+  <button class="nav-btn" data-view="buying"><b>＋</b><span>采购</span></button>
+  <button class="nav-btn" data-view="foods"><b>★</b><span>营养</span></button>
+  <button class="nav-btn" data-view="home"><b>◎</b><span>计划</span></button>
 </nav>
 
 <div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="小票照片大图" hidden>
@@ -4089,8 +4098,9 @@ document.getElementById("dietLogList")?.addEventListener("toggle", syncWeekFoldB
 // 其他页面改成搜索小icon，搜索本页的内容"。
 const SEARCH_SCOPES = {
   dietLog: ["diet", "purchase", "dining", "food"],
-  shopping: ["purchase", "dining"],
-  foods: ["food"],
+  shopping: ["purchase"],          // 食材页：现有食材 + 单价对比
+  buying: ["purchase", "dining"],  // 采购页：采购历史 + 在外就餐
+  foods: ["food"],                 // 营养页：食材库
 };
 function currentViewId(){
   const active = document.querySelector(".nav-btn.active");
