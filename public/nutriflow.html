@@ -387,6 +387,19 @@ h3{margin:0;font-size:15px;letter-spacing:0}
    分隔线，反而比下面 16px 的日期还弱，层级看着是反的（用户："太丑了，
    标题设计和字没存在感，还不如每日的显眼"）。现在做成一条实心绿标头。 */
 .week-block + .week-block{margin-top:22px}
+/* 每周计划：一周一段，本周展开、过去的折叠。每天一个 textarea，像备忘录一样随手写。 */
+.plan-week + .plan-week{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.plan-week-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;cursor:pointer;list-style:none}
+.plan-week-head::-webkit-details-marker{display:none}
+.plan-week-head strong{font-size:14px;font-weight:600}
+.plan-days{display:grid;gap:8px}
+.plan-day{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:start}
+.plan-day label{font-size:13px;color:var(--muted);padding-top:9px;line-height:1.2}
+.plan-day label small{display:block;font-size:11px;opacity:.75}
+.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit;font-size:14px;line-height:1.5;resize:vertical}
+.plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:-2px}
+.plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--text);padding:5px 10px;font-size:13px;white-space:nowrap}
+.plan-chip:active{opacity:.6}
 .week-block-head{
   display:flex;
   align-items:center;
@@ -1231,6 +1244,17 @@ summary.week-block-head::after{
 
   <section class="view active" id="dietLog">
     <div class="stack desktop-grid">
+      <article class="card desktop-span">
+        <div class="section-title">
+          <h2>每周计划</h2>
+          <span class="subtle"><button class="price-fold" type="button" id="planFold" title="收起每周计划" aria-label="收起每周计划">▾</button>想吃啥先记下</span>
+        </div>
+        <div id="planBody">
+          <div class="note">像备忘录一样写，随手改随时存。点下面的食材可以直接加进当天。</div>
+          <div id="mealPlanList"></div>
+        </div>
+      </article>
+
       <article class="card hero desktop-span">
         <div class="section-title">
           <h2>本周吃到<span id="weekMeta"></span></h2>
@@ -1264,7 +1288,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v104</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v105</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1972,6 +1996,12 @@ const SYNC_DOCS = [
     rerender: () => { void renderShopping(); renderFoods(); },
   },
   {
+    key: "meal_plan",
+    get: () => mealPlans,
+    set: (value) => { mealPlans = value; localStorage.setItem(MEAL_PLAN_KEY, JSON.stringify(mealPlans)); },
+    rerender: () => { renderMealPlan(); },
+  },
+  {
     key: "remaining",
     get: () => remaining,
     set: (value) => { remaining = value; persist(REMAINING_KEY, remaining); },
@@ -2645,6 +2675,20 @@ function saveConsumed(){
 }
 // 「现有食材」每条下面那根细进度条：手动拖，记还剩多少（0–100%）。没拖过就是 100%。
 // 按用户定的规则「手动录入的数据默认接入云同步」，它登记进 SYNC_DOCS。
+// 每周计划：像备忘录一样按天写「这顿打算吃啥」。按日期存纯文本，
+// 展示时再按自然周分组——这样加一天/跨周都不用迁移数据结构。
+const MEAL_PLAN_KEY = "nutriflow_meal_plan_v1";
+let mealPlans = load(MEAL_PLAN_KEY, {});
+function saveMealPlans(){
+  localStorage.setItem(MEAL_PLAN_KEY, JSON.stringify(mealPlans));
+  schedulePush("meal_plan");
+}
+function setMealPlan(day, text){
+  const value = String(text || "");
+  if (value.trim()) mealPlans[day] = value;
+  else delete mealPlans[day];   // 清空就删掉，别留一堆空串占地方
+  saveMealPlans();
+}
 const REMAINING_KEY = "nutriflow_remaining_v1";
 let remaining = load(REMAINING_KEY, {});
 function saveRemaining(){
@@ -3148,6 +3192,7 @@ function render(){
   void renderDining();
   renderFoods();
   renderWeekSummary();
+  renderMealPlan();
   void renderDietLog();
 }
 // 把某天归到它所在自然周的周一（和 currentWeek 一样以周一为起点）。
@@ -3219,6 +3264,82 @@ function weeksFromRecords(){
   return Array.from(buckets.values())
     .sort((a, b) => b.monday - a.monday)
     .map(bucket => Object.assign({}, bucket, tallyByCategory(bucket.records)));
+}
+const PLAN_FOLD_KEY = "nutriflow_plan_folded";
+function planFolded(){ return localStorage.getItem(PLAN_FOLD_KEY) === "1"; }
+function applyPlanFold(){
+  const folded = planFolded();
+  const btn = document.getElementById("planFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开每周计划" : "收起每周计划";
+  }
+  const body = document.getElementById("planBody");
+  if (body) body.hidden = folded;
+}
+// 现有食材：写计划时点一下就加进当天，省得手打。和「现有食材」清单同一个口径
+// （调料油水不算），已经勾掉吃完的也不再出现。
+function planIngredients(){
+  const seen = new Map();
+  allPurchases().forEach(row => {
+    if (!row.bought || row.pantry || NOT_INGREDIENT.includes(row.foodId)) return;
+    if (consumed[row.id]) return;
+    const name = priceFoodNames[row.foodId] || shortItem(row.item);
+    if (name && !seen.has(name)) seen.set(name, row.foodId);
+  });
+  return Array.from(seen.entries()).map(([name, foodId]) => ({name, foodId}));
+}
+function renderMealPlan(){
+  const box = document.getElementById("mealPlanList");
+  if (!box) return;
+  applyPlanFold();
+  const {monday} = currentWeek();
+  // 本周永远排最前且展开；往前再列 3 周，过去的默认折叠（用户要求）。
+  const weeks = Array.from({length: 4}, (unused, offset) => {
+    const start = new Date(monday);
+    start.setDate(monday.getDate() - offset * 7);
+    return {start, current: offset === 0};
+  });
+  const chips = planIngredients();
+  box.innerHTML = weeks.map(week => {
+    const days = Array.from({length: 7}, (unused, index) => {
+      const date = new Date(week.start);
+      date.setDate(week.start.getDate() + index);
+      const value = dayValue(date);
+      return `<div class="plan-day">
+        <label for="plan-${value}">${WEEKDAY_NAMES[date.getDay()] === "日" ? "周日" : `周${WEEKDAY_NAMES[date.getDay()]}`} <small>${date.getMonth() + 1}/${date.getDate()}</small></label>
+        <textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="2" placeholder="早/午/晚想吃啥">${escapeAttribute(mealPlans[value] || "")}</textarea>
+      </div>`;
+    }).join("");
+    const body = `<div class="plan-days">${days}</div>`;
+    return week.current
+      ? `<section class="plan-week"><div class="plan-week-head"><strong>本周 ${weekLabel(week.start)}</strong></div>${body}</section>`
+      : `<details class="plan-week"><summary class="plan-week-head"><strong>${weekLabel(week.start)}</strong><span class="subtle">${Array.from({length: 7}, (u, i) => { const d = new Date(week.start); d.setDate(week.start.getDate() + i); return mealPlans[dayValue(d)]; }).filter(Boolean).length} 天有计划</span></summary>${body}</details>`;
+  }).join("");
+  // 输入即存。不重渲染——重渲染会把正在打字的框换掉、光标和键盘一起跳走。
+  box.querySelectorAll("[data-plan-day]").forEach(area => {
+    area.addEventListener("input", () => setMealPlan(area.dataset.planDay, area.value));
+    area.addEventListener("focus", () => showPlanChips(area, chips));
+  });
+}
+// 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
+function showPlanChips(area, chips){
+  document.querySelectorAll(".plan-chips").forEach(row => row.remove());
+  if (!chips.length) return;
+  const row = document.createElement("div");
+  row.className = "plan-chips";
+  row.innerHTML = chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
+  area.insertAdjacentElement("afterend", row);
+  row.querySelectorAll("[data-plan-add]").forEach(button => {
+    // 用 mousedown/touchstart：click 之前 textarea 已经 blur 了，插入位置会丢。
+    button.addEventListener("mousedown", event => {
+      event.preventDefault();
+      const name = button.dataset.planAdd;
+      area.value = area.value.trim() ? `${area.value.replace(/\s+$/, "")} ${name}` : name;
+      setMealPlan(area.dataset.planDay, area.value);
+      area.focus();
+    });
+  });
 }
 function renderWeekSummary(){
   const {monday} = currentWeek();
@@ -4039,6 +4160,15 @@ function applyWeeklyFold(){
   const box = document.getElementById("weeklySummary");
   if (box) box.hidden = folded;
 }
+(function initPlanFold(){
+  const btn = document.getElementById("planFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(PLAN_FOLD_KEY, planFolded() ? "0" : "1");
+    applyPlanFold();
+  });
+  applyPlanFold();
+})();
 (function initWeeklyFold(){
   const btn = document.getElementById("weeklyFold");
   if (!btn) return;

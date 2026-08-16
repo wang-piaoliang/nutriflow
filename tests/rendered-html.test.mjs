@@ -1140,13 +1140,40 @@ test("folds the weekly shopping goal and merges the two target cards", async () 
   assert.doesNotMatch(elements.get("weeklySummary").innerHTML, /库内/);
 });
 
+test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 按日期存纯文本，展示时再按自然周分组——加一天/跨周都不用迁移数据结构。
+  evaluate('setMealPlan("2026-08-12", "番茄炒蛋")');
+  assert.equal(evaluate('mealPlans["2026-08-12"]'), "番茄炒蛋");
+  // 清空就删掉，别留一堆空串。
+  evaluate('setMealPlan("2026-08-12", "   ")');
+  assert.equal(evaluate('mealPlans["2026-08-12"]'), undefined);
+
+  // 计划是手动录入的，按既定规则接入云同步。
+  assert.match(html, /key: "meal_plan"/);
+
+  // 本周展开、过去的折叠（用户："过去了的周就折叠"）。
+  assert.match(html, /<section class="plan-week">/);
+  assert.match(html, /<details class="plan-week">/);
+
+  // 可点添加的食材和「现有食材」同一个口径：调料油水不算，吃完勾掉的不再出现。
+  assert.match(html, /NOT_INGREDIENT.includes\(row.foodId\)\) return;/);
+  assert.match(html, /if \(consumed\[row.id\]\) return;/);
+  // 用 mousedown 而不是 click：click 之前 textarea 已经 blur，插入位置会丢。
+  assert.match(html, /button.addEventListener\("mousedown", event => \{/);
+  // 输入即存但不重渲染，否则正在打字的框会被换掉。
+  assert.match(html, /area.addEventListener\("input", \(\) => setMealPlan\(area.dataset.planDay, area.value\)\);/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v104"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v105"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

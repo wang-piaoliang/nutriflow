@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v104`
+- 当前离线缓存：`nutriflow-pwa-v105`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**新增「每周计划」备忘录**（用户：「加一个每周计划食物的 notepad 区域，就像 iphone 的 notepad 即可…每周一个区域，过去了的周就折叠，编辑的时候把现有食材里面的食物呈现来，可以点击添加，当然也可以直接打字编辑」）。饮食页顶部新卡片，本周展开（`<section class="plan-week">`）、往前 3 周默认折叠（`<details>`，summary 上标「N 天有计划」）。**数据按日期存纯文本**（`mealPlans[YYYY-MM-DD] = "..."`，`nutriflow_meal_plan_v1`），展示时才按自然周分组——加一天/跨周都不用迁移结构；清空即删，不留空串。按既定规则登记进 `SYNC_DOCS`（key `meal_plan`）。每天一个 `<textarea>`，**输入即存但不重渲染**（重渲染会把正在打字的框换掉、光标和键盘一起跳走）。`planIngredients()` 取可点添加的食材，和「现有食材」同口径：`NOT_INGREDIENT`（调料油水）不算、`consumed` 勾掉的不再出现、`pantry` 不算；名字优先用 `priceFoodNames` 的短名，否则 `shortItem()` 剥品牌。**chip 只挂在当前正在编辑的那天下面**（`showPlanChips` 先清掉旧的），七天七排太吵。**chip 的事件必须用 `mousedown` + `preventDefault` 而不是 `click`**——click 触发前 textarea 已经 blur，插入位置会丢。整卡可折叠（`nutriflow_plan_folded`）。CDP 实测：4 个周区块（1 展开 3 折叠）、每周 7 天、聚焦某天冒出 21 个可点食材、打字即存进 localStorage、点 chip 正确追加成「番茄炒蛋 牛油果」、页面横向溢出 0。测试增至 40 项。离线缓存与版本号升至 v105。
 
 - 2026-08-06：**目标页合并两张目标卡 + 每周采购目标默认折叠**（用户："每天目标是不是可合每顿目标，和最上面的每天吃到这些合并，感觉有点重复"；"每周采购目标默认折叠吧，组内 xx 种食物这句话都删掉"）。① 「每顿目标」和「每天目标」两张卡并成一张「目标」，卡内用 `.goal-sub` 小标题分成「每顿 · 早餐/午餐/晚餐」和「每天 · 全天总量」两段，`#mealList` / `#dailyList` 两个容器 id 都保留、渲染逻辑一行没动。保留 hero「今天吃到这些」不动——现在是"吃到（hero）vs 目标（一张卡）"的干净对照，不再三卡讲同一件事。② 「每周采购目标」加折叠 icon 并**默认收起**：它是长期参考、不像别的卡天天看。**注意默认值和别处相反**——没存过就是折叠，所以 `weeklyFolded()` 判的是 `!== "0"`（其他几个折叠是 `=== "1"`）；`renderFoods` 里回填，否则一渲染就自己展开。③ 删掉每类末尾的「库内 N 组食材可轮换」。CDP 实测：目标页卡片变成「今天吃到这些 | 目标 | 每周采购目标 | 云同步 | 照片识别」，合并卡内两段小标题都在、两份清单都在，每周采购目标默认 hidden、点开变 ▾，「库内」已无，页面横向溢出 0。测试增至 39 项。离线缓存与版本号升至 v104。
 
