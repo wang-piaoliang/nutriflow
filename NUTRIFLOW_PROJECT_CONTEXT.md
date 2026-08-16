@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v102`
+- 当前离线缓存：`nutriflow-pwa-v103`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**记一餐的日期改成最近几天的横向 chip**（用户："日期是滚轮的形式，不要一整个日历选，一般都是往前一两天的饭…如果是太多天以前，可以加一个展开，再看整个日历"）。新增 `dayValue()`、`dayChipLabel(date, offset)`（0/1/2 → 今天/昨天/前天，再往前写 `M/D 周X`——光写「大前天」数不清）、`recentDayChips(today, selected)` 摆最近 7 天。**原生 `<input type="date">` 保留但默认 `hidden`，仍是唯一的日期来源**——点 chip 只是往它里面写值，后面所有读 `#dietFormDate.value` 的地方一行都不用改；末尾的 📅 才把它放出来（优先 `showPicker()`，不支持就 `focus()`）。`.diet-form-days` 用 `overflow-x:auto` 横滑，**必须同时写 `min-width:0`**，否则又是 grid item 被内容撑破那个老陷阱（单价对比柱子溢出就是这么来的）。CDP 实测：7 个 chip「今天✓ 昨天 前天 8/13 周四 …」、日历默认收起、点「前天」写入正确日期并切换选中态、点 📅 露出日历、这一行 scrollWidth 597 > clientWidth 318 可横滑而**页面横向溢出仍为 0**。测试增至 38 项。离线缓存与版本号升至 v103。
 
 - 2026-08-06：**搜索结果可点击跳转 + 采购统计**（用户 6 条反馈里最后两条，至此全部做完）。① **搜索跳转**：每条命中从 `<span>` 改成带 `data-goto`（目标 tab）和 `data-anchor`（CSS 选择器）的 `<button>`；结果是 `innerHTML` 重建的，所以在 `#searchResults` 上做**事件委托**而不是逐条绑。新增 `gotoSearchHit(view, anchor)`：先 `.nav-btn.click()` 走原有切页逻辑（顺带收起面板、同步顶栏按钮），延时 260ms 等 DOM 就绪再找目标——**目标可能藏在折叠的 `<details>` 小票里，必须先 `box.open = true` 并同步 `openReceipts`，否则滚过去是空的**——然后 `scrollIntoView({block:"center"})` 并加 1.6s 的 `.search-flash` 高亮（不闪一下人不知道该看哪条）。为此给三处列表补了锚点：`.diet-day[data-day]`、`.dining-entry[data-dining-entry]`、`.item.tall[data-food]`（小票的 `data-receipt` 早就有）。② **采购统计**（采购页新卡片，在「在外就餐」之前）：`spendByPeriod(mode)` 按自然周（复用 `weekMondayOf`）或按月汇总金额、新到旧；`categoryTotals()` 按 `purchaseGroupRules` 大类汇总花费/重量/明细，未归类的进「其他」，`NOT_INGREDIENT` 里的调料油水不计。UI：周/月 chip 切换 + 金额条（按最贵那期缩放，各期可直接比高低）+ 分类占比条，**点一类展开这一类具体买了啥**（`openSpendCategory`）。同样加了折叠 icon（`nutriflow_stats_folded`）。CDP 实测：3 个周条 / 1 个月条、7 个分类、点「肉类」展开 4 条明细；搜「南瓜」3 条命中全部可点，点第一条跳到饮食页、面板收起、目标高亮。测试增至 37 项。**测试注意**：`data-spend-mode="month"` 这类属性是模板拼出来的，源码里只能查模板本身（`data-spend-mode="\$\{mode\}"`）。离线缓存与版本号升至 v102。
 

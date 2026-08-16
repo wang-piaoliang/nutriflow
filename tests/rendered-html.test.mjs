@@ -1090,13 +1090,40 @@ test("search results jump to the record they point at", async () => {
   assert.match(html, /box.open = true;/);
 });
 
+test("picks the day from a strip of recent days, with the calendar behind a tap", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 记的基本都是今天或往前一两天，整个日历太重（用户："日期是滚轮的形式，不要一整个
+  // 日历选…如果是太多天以前，可以加一个展开，再看整个日历"）。
+  const label = (offset) => evaluate(`(() => { const d = new Date(2026, 7, 15); d.setDate(d.getDate() - ${offset}); return dayChipLabel(d, ${offset}); })()`);
+  assert.equal(label(0), "今天");
+  assert.equal(label(1), "昨天");
+  assert.equal(label(2), "前天");
+  // 再往前就写日期加星期，光写「大前天」数不清。
+  assert.match(label(3), /^\d+\/\d+ 周[日一二三四五六]$/);
+
+  const chips = evaluate('recentDayChips(new Date(2026, 7, 15), "2026-08-15")');
+  assert.equal(chips.match(/data-day-pick=/g).length, 7);
+  // 当天默认选中。
+  assert.match(chips, /class="day-chip active" data-day-pick="2026-08-15"/);
+
+  // 原生日历默认收起，点 📅 才放出来；它仍是唯一的日期来源，读日期的地方不用改。
+  assert.match(html, /id="dietFormDate" class="diet-form-date" value="\$\{value\}" aria-label="日期" hidden/);
+  assert.match(html, /id="dietFormMoreDays"/);
+  assert.match(html, /dateInput.hidden = false;/);
+  // 这一行要能横滑，且不能把外层撑破。
+  assert.match(html, /\.diet-form-days\{[^}]*overflow-x:auto/);
+  assert.match(html, /\.diet-form-days\{[^}]*min-width:0/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v102"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v103"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

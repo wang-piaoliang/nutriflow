@@ -304,6 +304,14 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 /* 手填是退路，收起来，标题做得很轻。 */
 /* 餐次选择：从「或者手动填」里提到显眼位置，一排 chip，选中的绿底。
    照片认不出第几餐，只能由人来点。 */
+/* 日期 chip 横向排一行，可左右滑；最近几天最常用，所以默认就摆出来。
+   这一行必须能横向滚，但 -webkit-overflow-scrolling 之外还要 min-width:0，
+   否则它会把外层撑破（和单价对比那次一样的 grid item 陷阱）。 */
+.diet-form-days{display:flex;gap:8px;overflow-x:auto;min-width:0;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.diet-form-days::-webkit-scrollbar{display:none}
+.day-chip{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:8px 12px;font-size:14px;white-space:nowrap}
+.day-chip.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.day-chip.more{padding:8px 10px}
 .diet-form-meals{display:flex;gap:8px;flex-wrap:wrap}
 .meal-chip{flex:1 1 0;min-width:64px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:9px 6px;font-size:14px;white-space:nowrap}
 .meal-chip.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
@@ -1258,7 +1266,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v102</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v103</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3661,6 +3669,28 @@ function guessMealByClock(now = new Date()){
   if (hour < 21) return "晚餐";
   return "加餐";
 }
+// 记的基本都是今天或往前一两天的饭，整个日历太重（用户："日期是滚轮的形式，
+// 不要一整个日历选…如果是太多天以前，可以加一个展开，再看整个日历"）。
+// 所以默认摆最近 7 天的横向 chip，最早的三天用「今天/昨天/前天」，其余写 M/D 周X；
+// 真要选更早的，点末尾的 📅 才把原生日历放出来。
+const WEEKDAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
+function dayValue(date){
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function dayChipLabel(date, offset){
+  if (offset === 0) return "今天";
+  if (offset === 1) return "昨天";
+  if (offset === 2) return "前天";
+  return `${date.getMonth() + 1}/${date.getDate()} 周${WEEKDAY_NAMES[date.getDay()]}`;
+}
+function recentDayChips(today, selected){
+  return Array.from({length: 7}, (unused, offset) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const value = dayValue(date);
+    return `<button type="button" class="day-chip${value === selected ? " active" : ""}" data-day-pick="${value}">${dayChipLabel(date, offset)}</button>`;
+  }).join("");
+}
 function dietDayFormMarkup(){
   const today = new Date();
   const value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
@@ -3668,7 +3698,11 @@ function dietDayFormMarkup(){
   // 餐次和手打食物很少用到，缩到下面一行（用户明确要求这个主次）。
   const meal = guessMealByClock();
   return `<div class="diet-form" id="dietDayForm" hidden>
-    <input type="date" id="dietFormDate" class="diet-form-date" value="${value}" aria-label="日期">
+    <div class="diet-form-days" id="dietFormDays" role="group" aria-label="哪一天">
+      ${recentDayChips(today, value)}
+      <button type="button" class="day-chip more" id="dietFormMoreDays" title="选更早的日期" aria-label="选更早的日期">📅</button>
+    </div>
+    <input type="date" id="dietFormDate" class="diet-form-date" value="${value}" aria-label="日期" hidden>
     <div class="diet-form-meals" id="dietFormMeals" role="group" aria-label="这是哪一餐">
       ${MEAL_ORDER.map(name => `<button type="button" class="meal-chip${name === meal ? " active" : ""}" data-meal-pick="${name}">${name}</button>`).join("")}
     </div>
@@ -3713,6 +3747,30 @@ function bindDietForm(container){
   });
   // 全新的一天在列表里还不存在，也就没有它自己的 📷——不给这里一个入口的话，
   // 想靠照片记一顿就必须先打字建一条，和"都不要必填"是矛盾的。
+  // 日期 chip：点一下就写进那个隐藏的 <input type="date">，后面所有读日期的地方不用改。
+  const dateInput = container.querySelector("#dietFormDate");
+  const syncDayChips = () => {
+    container.querySelectorAll("[data-day-pick]").forEach(chip => {
+      chip.classList.toggle("active", chip.dataset.dayPick === (dateInput ? dateInput.value : ""));
+    });
+  };
+  container.querySelectorAll("[data-day-pick]").forEach(button => {
+    button.addEventListener("click", () => {
+      if (dateInput) dateInput.value = button.dataset.dayPick;
+      syncDayChips();
+    });
+  });
+  const moreDays = container.querySelector("#dietFormMoreDays");
+  moreDays?.addEventListener("click", () => {
+    if (!dateInput) return;
+    // 放出原生日历。之后再点回某个 chip 也能把它收起来，免得一直占着一行。
+    dateInput.hidden = false;
+    moreDays.classList.add("active");
+    if (typeof dateInput.showPicker === "function"){ try{ dateInput.showPicker(); }catch{ dateInput.focus(); } }
+    else dateInput.focus();
+  });
+  dateInput?.addEventListener("change", syncDayChips);
+
   container.querySelectorAll("[data-meal-pick]").forEach(button => {
     button.addEventListener("click", () => {
       container.querySelectorAll("[data-meal-pick]").forEach(other => other.classList.remove("active"));
