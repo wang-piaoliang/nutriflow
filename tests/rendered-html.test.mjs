@@ -219,8 +219,11 @@ test("renders the confirmed diet log by day", async () => {
   assert.match(list, /虾 · 肉丸 · 鸡肉 · 番茄 · 花菜 · 胡萝卜 · 毛豆 · 藜麦米饭/);
 
   // Newest day first, regardless of the order inside the source array.
-  assert.ok(list.indexOf("2026-07-22") < list.indexOf("2026-07-21"));
-  assert.ok(list.indexOf("2026-07-21") < list.indexOf("2026-07-20"));
+  // 查天块自己的锚点，不要查裸日期——表单顶部的日期 chip 也含日期字符串，
+  // 会先被 indexOf 匹配到，测的就不是列表顺序了。
+  const dayAt = day => list.indexOf(`data-day="${day}"`);
+  assert.ok(dayAt("2026-07-22") < dayAt("2026-07-21"));
+  assert.ok(dayAt("2026-07-21") < dayAt("2026-07-20"));
 
   // Days fall back to a plain meal count; no 未提供估算量 wording anywhere.
   assert.match(list, /2 餐/);
@@ -304,7 +307,7 @@ test("summarises past weeks in the timeline but never the current one twice", as
   // hero above already shows it, and printing it here said the same thing twice.
   // It reappears here on its own once the week is over and it becomes a past week.
   assert.doesNotMatch(list, /7\/20–7\/26/);
-  assert.ok(list.indexOf("2026-07-27") < list.indexOf("2026-07-26"));
+  assert.ok(list.indexOf('data-day="2026-07-27"') < list.indexOf('data-day="2026-07-26"'));
 
   // Shown exactly once, in the hero.
   // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，
@@ -1105,6 +1108,10 @@ test("picks the day from a strip of recent days, with the calendar behind a tap"
 
   const chips = evaluate('recentDayChips(new Date(2026, 7, 15), "2026-08-15")');
   assert.equal(chips.match(/data-day-pick=/g).length, 7);
+  // 从旧到新排，今天在最右——和日历、和"时间往右走"的直觉一致
+  // （用户："昨天不应该在今天的前面吗"）。
+  assert.ok(chips.indexOf("2026-08-09") < chips.indexOf("2026-08-14"));
+  assert.ok(chips.indexOf("2026-08-14") < chips.indexOf("2026-08-15"));
   // 当天默认选中。
   assert.match(chips, /class="day-chip active" data-day-pick="2026-08-15"/);
 
@@ -1167,13 +1174,35 @@ test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
   assert.match(html, /area.addEventListener\("input", \(\) => setMealPlan\(area.dataset.planDay, area.value\)\);/);
 });
 
+test("never lets iOS zoom the page when a field gets focus", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  const css = html.split("<style>")[1].split("</style>")[0];
+
+  // iOS 对 font-size < 16px 的输入框，一聚焦就把整页放大（用户："现在点编辑，
+  // 整个页面会放大，有点奇怪"）。所有可输入控件必须 ≥ 16px。
+  const offenders = [];
+  for (const match of css.matchAll(/([^{}\n]*)\{([^}]*font-size:(\d+)px[^}]*)\}/g)){
+    const [, selector, , size] = match;
+    if (Number(size) < 16 && /input|textarea|\.plan-text|receipt-field|dining-field/i.test(selector)){
+      offenders.push(`${selector.trim()} @ ${size}px`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+
+  // 每周计划归在「目标」页，不在饮食页。
+  const homeStart = html.indexOf('id="home"');
+  const homeEnd = html.indexOf("</section>", homeStart);
+  const plan = html.indexOf("<h2>每周计划</h2>");
+  assert.ok(plan > homeStart && plan < homeEnd);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v105"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v106"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

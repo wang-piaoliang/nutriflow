@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v105`
+- 当前离线缓存：`nutriflow-pwa-v106`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：四处小调整。① **日期 chip 改成按时间顺序**（用户："昨天不应该在今天的前面吗，很奇怪，这个按时间顺序吧，默认是今天"）：`recentDayChips` 从「新→旧」改成「旧→新」（`offset = 6 - index`），今天在最右端，📅 挪到最左（更早的在左边）；因为今天在最右而这一行横向滚动，`bindDietForm` 里打开时 `dayStrip.scrollLeft = dayStrip.scrollWidth` 先滚到最右，否则默认选中的「今天」在屏幕外、看着像没选。**连带修了测试**：`assert.ok(list.indexOf("2026-07-22") < ...)` 查的是裸日期字符串，会被表单顶部的日期 chip 先匹配到，测的就不是列表顺序了——改成查天块锚点 `data-day="…"`。② **「每周计划」从饮食页挪到目标页**（用户要求）。③ **计划里的食材 chip 字号 13px → 11px**、颜色改 `--muted`——它只是辅助输入，不该喧宾夺主。④ **修「点编辑整页放大」**（用户反馈）：iOS 对 `font-size < 16px` 的输入框，一聚焦就自动放大整页。把 `.plan-text`(14) / `.dining-field`(15) / `.receipt-field`(14) / `.buy-add input,.buy-line input`(15) 全部钉到 16px。新增测试**扫描 CSS 里所有含 input/textarea 的选择器、断言没有 < 16px 的**，避免以后再手滑写小。CDP 实测：chip 顺序「8/10 周一 … 前天 昨天 今天✓」、每周计划在 home 页、chip 字号 11px、所有输入框 16px、页面横向溢出 0。测试增至 41 项。离线缓存与版本号升至 v106。
 
 - 2026-08-06：**新增「每周计划」备忘录**（用户：「加一个每周计划食物的 notepad 区域，就像 iphone 的 notepad 即可…每周一个区域，过去了的周就折叠，编辑的时候把现有食材里面的食物呈现来，可以点击添加，当然也可以直接打字编辑」）。饮食页顶部新卡片，本周展开（`<section class="plan-week">`）、往前 3 周默认折叠（`<details>`，summary 上标「N 天有计划」）。**数据按日期存纯文本**（`mealPlans[YYYY-MM-DD] = "..."`，`nutriflow_meal_plan_v1`），展示时才按自然周分组——加一天/跨周都不用迁移结构；清空即删，不留空串。按既定规则登记进 `SYNC_DOCS`（key `meal_plan`）。每天一个 `<textarea>`，**输入即存但不重渲染**（重渲染会把正在打字的框换掉、光标和键盘一起跳走）。`planIngredients()` 取可点添加的食材，和「现有食材」同口径：`NOT_INGREDIENT`（调料油水）不算、`consumed` 勾掉的不再出现、`pantry` 不算；名字优先用 `priceFoodNames` 的短名，否则 `shortItem()` 剥品牌。**chip 只挂在当前正在编辑的那天下面**（`showPlanChips` 先清掉旧的），七天七排太吵。**chip 的事件必须用 `mousedown` + `preventDefault` 而不是 `click`**——click 触发前 textarea 已经 blur，插入位置会丢。整卡可折叠（`nutriflow_plan_folded`）。CDP 实测：4 个周区块（1 展开 3 折叠）、每周 7 天、聚焦某天冒出 21 个可点食材、打字即存进 localStorage、点 chip 正确追加成「番茄炒蛋 牛油果」、页面横向溢出 0。测试增至 40 项。离线缓存与版本号升至 v105。
 
