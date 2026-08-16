@@ -761,7 +761,9 @@ test("merges every receipt photo instead of only the first", async () => {
   // （用户："上传三张照片，但只识别了四样东西"）。
   assert.match(html, /async function recognizeReceipts\(blobs/);
   assert.doesNotMatch(html, /recognizeReceipt\(pendingPhotos\[0\]\)/);
-  assert.match(html, /recognizeReceipts\(pendingPhotos/);
+  // 识别在后台跑，照片先从表单端走再送去识别。
+  assert.match(html, /const files = pendingPhotos;/);
+  assert.match(html, /await recognizeReceipts\(files\)/);
   // 相邻截图会重叠，按「名称 + 规格」去重。
   assert.match(html, /\$\{item\.name\}\|\$\{item\.amount\}/);
 
@@ -774,9 +776,9 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
   const { context, elements, evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
-  // 识别完直接入账，不再等人点保存。
-  assert.match(html, /const saved = await commitPurchase\(\);/);
-  assert.match(html, /已自动记下 \$\{saved\} 件/);
+  // 识别完直接写进采购历史，不再回填表单、也不等人点保存。
+  assert.match(html, /const \{receiptId\} = addPurchaseReceipt\(\{date, store, items: rows\}\);/);
+  assert.match(html, /已记下 \$\{items.length\} 件/);
 
   evaluate('addPurchaseReceipt({date:"2026-08-06 15:03", store:"盒马鲜生", items:[{name:"丘比 沙拉酱", amount:"150g", price:13.11}]})');
   await context.renderShopping();
@@ -855,11 +857,12 @@ test("never records the same receipt twice", async () => {
 
   // 识别三张图要好几秒，期间 iOS 会再发一次 change 或人又选了一遍，两条 async
   // 流程并发跑完 commitPurchase()，同一单被记两遍（用户："识别重复了"）。
-  assert.match(html, /let recognizing = false;/);
-  assert.match(html, /if \(recognizing\) return;/);
-  assert.match(html, /recognizing = false;/);
+  // 连拍每张都触发 change，防抖到没有新照片才开始，四张算一单而不是四单。
+  assert.match(html, /clearTimeout\(recognizeTimer\);/);
+  // 照片一被端走 pendingPhotos 就清空，同一批不会被第二次送去识别。
+  assert.match(html, /const files = pendingPhotos;\n    pendingPhotos = \[\];/);
 
-  // 保存前再挡一道：指纹一样就不新建，不管重复来自哪儿。
+  // 入账前再挡一道：指纹一样就不新建，不管重复来自哪儿。
   assert.match(html, /const signature = receiptSignature\(store, date, rows\);/);
   assert.match(html, /这单刚记过了/);
 
@@ -1222,13 +1225,36 @@ test("accumulates receipt photos across camera shots and shows them", async () =
   assert.match(html, /pendingUrls.forEach\(url => URL.revokeObjectURL\(url\)\);/);
 });
 
+test("recognises receipts in the background so the form frees up at once", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 上传完就腾空表单让人接着记下一单，识别放后台（用户："别我上传完照片就卡在
+  // 这里不动了，我还得继续记录下一个"）。照片先端走再 await，否则还是卡着。
+  const job = html.slice(html.indexOf("async function startRecognize()"));
+  assert.ok(job.indexOf("const files = pendingPhotos;") < job.indexOf("await recognizeReceipts(files)"));
+  assert.ok(job.indexOf("showPending();") < job.indexOf("await recognizeReceipts(files)"));
+  // 可以同时跑好几单，提示里带上还有几单在跑。
+  assert.match(html, /let backgroundJobs = 0;/);
+  assert.match(html, /还有 \$\{backgroundJobs\} 单在跑/);
+
+  // 饮食页那条路同样不能干等：照片存好先 render() 放开入口，识别不 await。
+  const dietJob = html.slice(html.indexOf('const owner = dietPhotoOwner(date);'));
+  assert.match(dietJob.slice(0, 1400), /后台识别中…可以接着记/);
+  assert.match(dietJob.slice(0, 1400), /void autoRecognize\(owner, saved/);
+  assert.ok(dietJob.indexOf("render();") < dietJob.indexOf("void autoRecognize"));
+
+  // 识别失败也别让照片白传：存成一条待补充的采购，照片挂上去。
+  assert.match(html, /照片已存成一条待补充的采购/);
+  assert.match(job.slice(job.indexOf("catch")), /savePrivatePhoto\(receiptId, file\)/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v107"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v108"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
