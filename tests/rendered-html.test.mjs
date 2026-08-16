@@ -1297,13 +1297,47 @@ test("shows every daily category once, with notes behind a tap", async () => {
   assert.doesNotMatch(html, /<details class="pagoda" open>/);
 });
 
+test("ties the category breakdown to the period picked above it", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 之前不管上面选了哪一期，下面永远统计全部，点开的明细和上面的金额对不上
+  // （用户："下面的展开不跟随上面选的时间区域变"）。
+  const all = evaluate('categoryTotals("week", "")');
+  const weeks = evaluate('spendByPeriod("week")');
+  const one = evaluate(`categoryTotals("week", ${JSON.stringify(weeks[0].key)})`);
+  const sum = list => Math.round(list.reduce((total, group) => total + group.spend, 0) * 100);
+  assert.ok(sum(one) < sum(all));
+  // 分桶口径必须和金额条一致，否则两处数字对不上。
+  assert.match(html, /function periodOf\(date, mode\)/);
+
+  // 周期条可点选，再点一次取消。
+  assert.match(html, /data-period="\$\{bucket.key\}"/);
+  assert.match(html, /selectedPeriod = selectedPeriod === button.dataset.period \? "" : button.dataset.period;/);
+  // 切周/月时要清掉选择——两种口径的 key 不通用，留着会指向不存在的一期。
+  assert.match(html, /spendMode = button.dataset.spendMode; selectedPeriod = "";/);
+});
+
+test("shows the meal photos on the matching eating-out record", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 餐食照片挂在饮食页那一天（owner 是 diet:日期），在外就餐这边原来一张也看不到
+  // （用户："在外就餐的图片要从饮食那边拉过来，不然我也不知道具体吃了啥"）。
+  assert.match(html, /const borrowed = photosByOwner\[dietPhotoOwner\(String\(entry.date \|\| ""\).slice\(0, 10\)\)\] \|\| \[\];/);
+  // 自己挂的排前面，借来的去重后接上。
+  assert.match(html, /borrowed.filter\(photo => !seenPhotos.has\(photo.id\)\)/);
+  // 借来的只是显示，不能带删除属性——它归属别处，在这里删会把原处那张一起删掉。
+  assert.match(html, /photo.borrowed\n      \? ""/);
+  assert.match(html, /\{\.\.\.photo, borrowed: true\}/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v110"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v111"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
