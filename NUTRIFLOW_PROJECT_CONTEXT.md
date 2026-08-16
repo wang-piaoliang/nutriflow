@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v106`
+- 当前离线缓存：`nutriflow-pwa-v107`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**修采购照片「传不了多张 / 看不出传了啥 / 拍第二张覆盖第一张」**（用户三连反馈）。根因：`photoEl.change` 里写的是 `pendingPhotos = Array.from(photoEl.files)`——**整体赋值**。用相机时一次只回来一张，再拍一张又触发一次 change，于是后一张把前一张顶掉；多选虽然能进来，但没有任何可见反馈。修法：① 新增 `mergePending()` **累加**而不是赋值，按 `name|size|lastModified` 去重（同一张选两次不该记两遍），并在合并后 `photoEl.value = ""`——否则下次选同一张不触发 change。② **加缩略图**：新增 `#buyPendingThumbs` 容器和 `showPending()` 里的 objectURL 渲染，每张右上角有 ✕ 可单独去掉；**每次重画先 `URL.revokeObjectURL` 释放上一批**，否则连拍几张会攒一堆内存。③ **识别改防抖**：连拍每张都触发 change，`clearTimeout` + 1600ms 后才 `startRecognize()`，四张作为「一单的四段」一起识别，而不是各自记成一单（原来的 `recognizing` 锁只能挡住并发、挡不住"分成四单"）。**踩坑记录**：第一次 patch 时目标字符串在「在外就餐」表单里先出现，累加逻辑被装到了 dining 上（`photoEl` 在 2500 行是 `diningPhotoInput`、4467 行才是 `buyPhotoInput`），CDP 实测缩略图为 0 才发现——已挪回采购表单，dining 保持原样（那边一次只传一张，没这个问题）。CDP 实测：模拟相机连拍 4 次 change 各带一张 → 缩略图 4 张、容器可见、点 ✕ 剩 3 张、页面横向溢出 0。测试增至 42 项。离线缓存与版本号升至 v107。
 
 - 2026-08-06：四处小调整。① **日期 chip 改成按时间顺序**（用户："昨天不应该在今天的前面吗，很奇怪，这个按时间顺序吧，默认是今天"）：`recentDayChips` 从「新→旧」改成「旧→新」（`offset = 6 - index`），今天在最右端，📅 挪到最左（更早的在左边）；因为今天在最右而这一行横向滚动，`bindDietForm` 里打开时 `dayStrip.scrollLeft = dayStrip.scrollWidth` 先滚到最右，否则默认选中的「今天」在屏幕外、看着像没选。**连带修了测试**：`assert.ok(list.indexOf("2026-07-22") < ...)` 查的是裸日期字符串，会被表单顶部的日期 chip 先匹配到，测的就不是列表顺序了——改成查天块锚点 `data-day="…"`。② **「每周计划」从饮食页挪到目标页**（用户要求）。③ **计划里的食材 chip 字号 13px → 11px**、颜色改 `--muted`——它只是辅助输入，不该喧宾夺主。④ **修「点编辑整页放大」**（用户反馈）：iOS 对 `font-size < 16px` 的输入框，一聚焦就自动放大整页。把 `.plan-text`(14) / `.dining-field`(15) / `.receipt-field`(14) / `.buy-add input,.buy-line input`(15) 全部钉到 16px。新增测试**扫描 CSS 里所有含 input/textarea 的选择器、断言没有 < 16px 的**，避免以后再手滑写小。CDP 实测：chip 顺序「8/10 周一 … 前天 昨天 今天✓」、每周计划在 home 页、chip 字号 11px、所有输入框 16px、页面横向溢出 0。测试增至 41 项。离线缓存与版本号升至 v106。
 

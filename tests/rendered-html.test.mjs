@@ -1196,13 +1196,39 @@ test("never lets iOS zoom the page when a field gets focus", async () => {
   assert.ok(plan > homeStart && plan < homeEnd);
 });
 
+test("accumulates receipt photos across camera shots and shows them", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用相机时一次只回来一张，再拍一张又触发一次 change。原来直接整体覆盖，
+  // 所以「拍第二张就把第一张顶掉了」（用户反馈）。必须累加而不是赋值。
+  // 采购表单的那段（在外就餐仍是整体赋值，那边一次只传一张、没这个问题）。
+  const buyForm = html.slice(html.indexOf('document.getElementById("buyPhotoInput")'));
+  assert.match(buyForm, /pendingPhotos.push\(file\);/);
+  assert.ok(buyForm.indexOf("pendingPhotos.push(file);") < buyForm.indexOf("startRecognize"));
+  // 同一张选两次不该记两遍。
+  assert.match(html, /\$\{file.name\}\|\$\{file.size\}\|\$\{file.lastModified\}/);
+  // 清空 input，否则下次选同一张不会触发 change。
+  assert.match(html, /photoEl.value = "";\n  \};/);
+
+  // 连拍时每张都触发 change，要等没有新照片了再一起识别，否则各自记成一单。
+  assert.match(html, /clearTimeout\(recognizeTimer\);/);
+  assert.match(html, /setTimeout\(\(\) => void startRecognize\(\), 1600\);/);
+
+  // 只显示张数看不出传了什么，要有缩略图，且能单张去掉。
+  assert.match(html, /id="buyPendingThumbs"/);
+  assert.match(html, /class="pending-tile"/);
+  assert.match(html, /data-pending-del=/);
+  // objectURL 每次重画都要释放，否则连拍几张会攒一堆内存。
+  assert.match(html, /pendingUrls.forEach\(url => URL.revokeObjectURL\(url\)\);/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v106"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v107"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

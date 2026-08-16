@@ -939,6 +939,11 @@ summary.week-block-head::after{
 .buy-add-manual>summary{padding:4px 0;color:var(--muted);font-size:13px;cursor:pointer;list-style:none}
 .buy-add-manual>summary::-webkit-details-marker{display:none}
 .buy-add-manual .buy-add-row{margin-top:8px}
+/* 待识别小票的缩略图：只显示张数看不出传了什么。 */
+.pending-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+.pending-tile{position:relative;width:66px;height:66px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.pending-tile img{width:100%;height:100%;object-fit:cover;display:block}
+.pending-del{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;padding:0}
 .buy-add-hint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .receipt-del{margin:8px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:13px}
 /* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
@@ -1195,7 +1200,8 @@ summary.week-block-head::after{
             <!-- 和饮食页一个规矩：拍张小票就够了，日期店名商品都从照片里读。
                  手填是退路，收进下面那个折叠里（用户："和饮食一样，应该是上传图为主"）。 -->
             <label class="diet-form-photo" id="buyPendingPhoto" title="拍小票，自动读出商品和价格" aria-label="拍小票，自动读出商品和价格">📷 拍张小票就行<input class="photo-input" type="file" accept="image/*" multiple id="buyPhotoInput"></label>
-            <p class="buy-add-hint">传照片就自动识别并记下，不用再点保存。认错了在下面的采购历史里点开直接改。没配 key 或者认不出来，也会先把照片存着、回头再补。</p>
+            <div class="pending-thumbs" id="buyPendingThumbs" hidden></div>
+            <p class="buy-add-hint">可以一次多选，也可以连拍几张——都算同一单。传完自动识别并记下，不用再点保存。认错了在下面的采购历史里点开直接改。没配 key 或者认不出来，也会先把照片存着、回头再补。</p>
             <details class="buy-add-manual" id="buyManual">
               <summary>或者手动填</summary>
               <div class="buy-add-row">
@@ -1291,7 +1297,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v106</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v107</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -4468,10 +4474,28 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     if (photoEl) photoEl.value = "";
     showPending();
   };
+  // 只显示个数看不出传了啥（用户："也不知道上传了什么-没有显示小图"），补上缩略图。
+  // 每次重画都先把上一批 objectURL 释放掉，否则连拍几张会攒一堆内存。
+  let pendingUrls = [];
   function showPending(){
-    if (!photoLabel) return;
-    photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
-    if (photoEl) photoLabel.appendChild(photoEl);
+    if (photoLabel){
+      photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
+      if (photoEl) photoLabel.appendChild(photoEl);
+    }
+    const box = document.getElementById("buyPendingThumbs");
+    if (!box) return;
+    pendingUrls.forEach(url => URL.revokeObjectURL(url));
+    pendingUrls = pendingPhotos.map(file => URL.createObjectURL(file));
+    box.innerHTML = pendingPhotos.map((file, index) =>
+      `<div class="pending-tile"><img src="${pendingUrls[index]}" alt="待识别的小票 ${index + 1}"><button type="button" class="pending-del" data-pending-del="${index}" title="去掉这张" aria-label="去掉这张">✕</button></div>`
+    ).join("");
+    box.hidden = !pendingPhotos.length;
+    box.querySelectorAll("[data-pending-del]").forEach(button => {
+      button.addEventListener("click", () => {
+        pendingPhotos.splice(Number(button.dataset.pendingDel), 1);
+        showPending();
+      });
+    });
   }
 
   linesEl.innerHTML = lineMarkup();
@@ -4490,11 +4514,32 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   // 识别三张图要好几秒。这期间 iOS 的选图器有时会再发一次 change，或者人又选了一遍，
   // 于是两条 async 流程并发跑完 commitPurchase()，同一单被记两遍
   // （用户："识别重复了，导致上面都重复了"）。自动保存之后这条路更没人拦，必须加锁。
+  // 用相机时一次只回来一张，再拍一张又触发一次 change——原来直接整体覆盖，
+  // 所以「拍第二张就把第一张顶掉了」（用户反馈）。改成累加，并按
+  // 名字+大小+修改时间去重（同一张被选两次不该记两遍）。
+  const mergePending = () => {
+    const seen = new Set(pendingPhotos.map(file => `${file.name}|${file.size}|${file.lastModified}`));
+    Array.from(photoEl.files || []).forEach(file => {
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      pendingPhotos.push(file);
+    });
+    // 清空 input，否则下次选同一张不会触发 change。
+    photoEl.value = "";
+  };
   let recognizing = false;
-  photoEl?.addEventListener("change", async () => {
-    if (recognizing) return;
-    pendingPhotos = Array.from(photoEl.files || []);
+  let recognizeTimer = null;
+  photoEl?.addEventListener("change", () => {
+    mergePending();
     showPending();
+    // 连拍时每张都会触发一次 change。等 1.6 秒没有新照片再开始识别，
+    // 这样四张会作为「一单的四段」一起识别，而不是各自记成一单。
+    clearTimeout(recognizeTimer);
+    recognizeTimer = setTimeout(() => void startRecognize(), 1600);
+  });
+  async function startRecognize(){
+    if (recognizing) return;
     if (!pendingPhotos.length) return;
     const hintEl = document.querySelector(".buy-add-hint");
     const hintText = hintEl?.textContent;
@@ -4532,7 +4577,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     }finally{
       recognizing = false;
     }
-  });
+  }
 
   async function commitPurchase(){
     const items = Array.from(linesEl.querySelectorAll(".buy-line")).map(row => ({
