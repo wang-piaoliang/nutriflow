@@ -438,6 +438,9 @@ summary.week-block-head::after{
 /* 收起时把下边距去掉，免得留一条空白。 */
 .week-block:not([open]) > summary.week-block-head{margin-bottom:0}
 /* 采购统计：分类一行一条，点标题展开这一类具体买了啥。 */
+/* 周期条可点选：选中的那一期高亮，下面的分类明细只看这一期。 */
+.period-row{width:100%;text-align:left;border:1px solid transparent;background:none;padding:6px 8px;border-radius:8px;cursor:pointer;display:grid;gap:6px}
+.period-row.on{border-color:var(--green);background:var(--surface-2)}
 .cat-row{display:grid;gap:5px;padding:9px 0}
 .cat-row + .cat-row{border-top:1px solid var(--line)}
 .cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;border:0;background:none;color:var(--text);font-size:14px;padding:0;text-align:left;cursor:pointer;min-width:0}
@@ -1314,7 +1317,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v110</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v111</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2461,7 +2464,17 @@ async function renderDining(){
   if (meta) meta.textContent = `${entries.length} 笔 · ¥${totalKnown.toFixed(2).replace(/\.00$/, "")}${missing ? ` · ${missing} 笔待补价` : ""}`;
   list.innerHTML = entries.map(entry => {
     const owner = diningOwner(entry.id);
-    const photos = photosByOwner[owner] || [];
+    // 这一笔的照片：自己挂的 + 当天饮食记录里那顿的。餐食照片是传在饮食页
+    // 那一天上的（owner 是 diet:日期），在外就餐这边原来一张也看不到，
+    // 只剩个店名和金额（用户："在外就餐的图片要从饮食那边拉过来，不然我也不知道
+    // 具体吃了啥"）。这里只是把同一批照片借过来显示，不复制、不改归属——
+    // 删照片仍然只在它原本挂的地方删。
+    const borrowed = photosByOwner[dietPhotoOwner(String(entry.date || "").slice(0, 10))] || [];
+    const own = photosByOwner[owner] || [];
+    const seenPhotos = new Set(own.map(photo => photo.id));
+    const photos = own.concat(
+      borrowed.filter(photo => !seenPhotos.has(photo.id)).map(photo => ({...photo, borrowed: true}))
+    );
     const priceVal = (entry.price == null || isNaN(entry.price)) ? "" : entry.price;
     const label = entry.place || "在外就餐";
     const editing = entry.id === editingDining;
@@ -2902,7 +2915,12 @@ function photoSectionMarkup(scope, ownerId, photos, label){
   // 添加按钮排在缩略图之后，作为网格的最后一格。
   const tiles = photos.map(photo => {
     const url = photoUrl(scope, photo.blob);
-    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}" data-delete-photo="${photo.id}" data-photo-belongs="${ownerId}" data-photo-alt="${label}照片" aria-label="打开${label}照片，长按可删除"><img src="${url}" alt="${label}照片"></button></div>`;
+    // 借来显示的照片（比如在外就餐借当天饮食的那几张）不给删除属性——它归属别处，
+    // 在这里长按删掉会把原处那张一起删了，很意外。要删就回它自己的地方删。
+    const removable = photo.borrowed
+      ? ""
+      : ` data-delete-photo="${photo.id}" data-photo-belongs="${ownerId}"`;
+    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}"${removable} data-photo-alt="${label}照片" aria-label="打开${label}照片${photo.borrowed ? "" : "，长按可删除"}"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
   const grid = tiles ? `<div class="photo-grid">${tiles}</div>` : "";
   // 饮食页每天的加照片入口移到了标题行的小相机（photoAddLabel），这里就不再放大相机按钮，
@@ -3437,23 +3455,27 @@ function shortItem(item){
 // 总量/类别/比例等可以互动式的统计"）----
 let spendMode = "week";      // week | month
 let openSpendCategory = "";  // 展开哪一类的明细
+let selectedPeriod = "";     // 只看哪一期（空 = 全部）
 // 按周（周一起）或按月把采购金额汇总起来。返回新到旧。
+// 一条采购属于哪一期。抽出来给分类统计复用，免得两边分桶口径对不上。
+function periodOf(date, mode){
+  const day = String(date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  if (mode === "month") return {key: day.slice(0, 7), label: `${Number(day.slice(5, 7))} 月`};
+  const monday = weekMondayOf(day);
+  return {
+    key: `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`,
+    label: weekLabel(monday),
+  };
+}
 function spendByPeriod(mode){
   const buckets = new Map();
   allPurchases().forEach(row => {
     const price = Number(row.totalPrice || 0);
     if (!price) return;
-    const day = String(row.date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
-    let key, label;
-    if (mode === "month"){
-      key = day.slice(0, 7);
-      label = `${Number(key.slice(5, 7))} 月`;
-    } else {
-      const monday = weekMondayOf(day);
-      key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
-      label = weekLabel(monday);
-    }
+    const period = periodOf(row.date, mode);
+    if (!period) return;
+    const {key, label} = period;
     const bucket = buckets.get(key) || {key, label, total: 0, count: 0};
     bucket.total += price;
     bucket.count += 1;
@@ -3463,11 +3485,17 @@ function spendByPeriod(mode){
 }
 // 买过的东西按大类汇总：花了多少、买了多重、占比多少，点开能看到具体买了啥。
 // 只统计按重量买的（计件商品换算重量没意义），但金额全都算。
-function categoryTotals(){
+// 传 periodKey 就只统计那一期。之前不管上面选了哪一期，下面永远统计全部，
+// 点开看到的明细和上面的金额对不上（用户："下面的展开不跟随上面选的时间区域变"）。
+function categoryTotals(mode, periodKey){
   const groups = purchaseGroupRules.map(rule => ({name: rule.name, icon: rule.icon, spend: 0, grams: 0, items: new Map()}));
   const other = {name: "其他", icon: "🛒", spend: 0, grams: 0, items: new Map()};
   allPurchases().forEach(row => {
     if (NOT_INGREDIENT.includes(row.foodId)) return;
+    if (periodKey){
+      const period = periodOf(row.date, mode);
+      if (!period || period.key !== periodKey) return;
+    }
     const index = purchaseGroupRules.findIndex(rule => rule.ids.includes(row.foodId));
     const group = index < 0 ? other : groups[index];
     const price = Number(row.totalPrice || 0);
@@ -3514,20 +3542,34 @@ function renderStats(){
     tabs.innerHTML = [["week", "🗓 按周"], ["month", "📆 按月"]]
       .map(([mode, label]) => `<button class="tab-chip${spendMode === mode ? " active" : ""}" type="button" data-spend-mode="${mode}">${label}</button>`).join("");
     tabs.querySelectorAll("[data-spend-mode]").forEach(button => {
-      button.addEventListener("click", () => { spendMode = button.dataset.spendMode; renderStats(); });
+      button.addEventListener("click", () => { spendMode = button.dataset.spendMode; selectedPeriod = ""; renderStats(); });
     });
   }
   // 条长按最贵的那一期缩放，这样各期之间能直接比高低。
   const ceiling = periods.reduce((max, bucket) => Math.max(max, bucket.total), 0);
   const chart = document.getElementById("spendChart");
   if (chart){
-    chart.innerHTML = periods.length ? periods.map(bucket => `<div class="bar-row">
+    chart.innerHTML = periods.length ? periods.map(bucket => `<button type="button" class="bar-row period-row${bucket.key === selectedPeriod ? " on" : ""}" data-period="${bucket.key}" aria-pressed="${bucket.key === selectedPeriod}">
       <div class="bar-head"><span>${bucket.label} · ${bucket.count} 件</span><b>¥${bucket.total.toFixed(2).replace(/\.00$/, "")}</b></div>
       <div class="track"><div class="fill" style="width:${ceiling ? Math.max(4, Math.round(bucket.total / ceiling * 100)) : 0}%"></div></div>
-    </div>`).join("") : `<div class="note">还没有带金额的采购记录。</div>`;
+    </button>`).join("") : `<div class="note">还没有带金额的采购记录。</div>`;
+    chart.querySelectorAll("[data-period]").forEach(button => {
+      button.addEventListener("click", () => {
+        // 再点一次取消选择，回到看全部。
+        selectedPeriod = selectedPeriod === button.dataset.period ? "" : button.dataset.period;
+        renderStats();
+      });
+    });
   }
 
-  const groups = categoryTotals();
+  // 选中的那一期若已不存在（数据变了），退回看全部。
+  if (selectedPeriod && !periods.some(bucket => bucket.key === selectedPeriod)) selectedPeriod = "";
+  const groups = categoryTotals(spendMode, selectedPeriod);
+  const scopeLabel = selectedPeriod ? (periods.find(bucket => bucket.key === selectedPeriod) || {}).label : "";
+  const noteEl = document.getElementById("statsNote");
+  if (noteEl) noteEl.textContent = scopeLabel
+    ? `下面只看 ${scopeLabel} 买了些什么，点一类展开明细。再点上面那一条可以取消、看全部。`
+    : "下面按大类看买过些什么，点一类展开具体买了啥；点上面某一期只看那一期。调料、油、饮用水不计。";
   const spendAll = groups.reduce((sum, group) => sum + group.spend, 0) || 1;
   const box = document.getElementById("categoryChart");
   if (!box) return;
