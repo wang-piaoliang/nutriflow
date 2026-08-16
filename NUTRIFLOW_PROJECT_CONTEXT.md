@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v109`
+- 当前离线缓存：`nutriflow-pwa-v110`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**计划页去重 + 说明改成点开才看 + 宝塔折叠 + 底栏图标统一**。① **「每天目标」整段删掉**（用户："今天吃到这些，和下面的每天总量基本类似啊？下面的每天总量是不是不要了，少了几个类别补充在上面"）——原来 hero 只放 `dailyTargets.slice(0,3)`、下面再用「每天目标」把全部重列一遍，两处讲同一件事。现在 hero 摆**全部** 5 类，`#dailyList` 连同那张卡的那一段一起移除，卡片标题从「目标」改回「每顿目标」。② **类别说明改成点开才显示**（用户："原来的小字可以变成点这几个食物类别的按钮出来的提示"）：磁贴从 `<div>` 变 `<button data-daily-note>`，点一下在 `#dailyNote` 里展开该类的 `note`，再点收起，切换时先把其他磁贴的 `aria-expanded` 复位。**磁贴变按钮要补 `button.metric{border:0;font:inherit;text-align:left}`**，否则带上浏览器默认外观。③ **每顿目标去掉 `<small>${target.note}</small>`**（用户："下面的那行小字去掉，没啥用"）。④ **膳食宝塔包进 `<details class="pagoda">` 默认折叠**。⑤ **底栏「食材」的 🥬 换成 ◧**——彩色 emoji 会被系统渲染成彩色，和其余 ▤ ＋ ★ ◎ 完全两种质感（用户："食材标题的 icon 和别的风格明显不一致"）。加了断言扫 `<nav>` 块里的图标、禁止出现 `\p{Extended_Pictographic}`；**注意这个正则必须限定在 nav 块内**，否则会把脚本里 metric 磁贴的模板字符串也匹配进去。CDP 实测：hero 5 块磁贴、说明默认隐藏、点第 2 块展开「🥦 蔬菜 350-500g · 深绿叶菜…」、再点收起、每顿目标无小字、宝塔默认折叠、横向溢出 0。测试增至 44 项。离线缓存与版本号升至 v110。
 
 - 2026-08-06：**底栏改成五个 tab**（用户："采购 → 食材，单独加一个采购-就用来保存采购记录，食材 → 营养，目标 → 计划"）。新顺序 **饮食 | 食材 | 采购 | 营养 | 计划**，`grid-template-columns` 从 4 列改 5 列、`.nav-btn b` 字号 20→19px。**view id 全部保持不变**（`shopping` / `foods` / `home`），只改标签和内容归属——这样所有按 id 取元素的渲染逻辑一行都不用动，只有新加的 `buying` 是新 id。内容重新分配：`shopping`（食材）留「现有食材 + 食材单价对比」，新建 `buying`（采购）收「采购历史 + 采购统计 + 在外就餐」，`foods` 改叫营养、`home` 改叫计划，内容不动。`SEARCH_SCOPES` 同步：`shopping: ["purchase"]`、新增 `buying: ["purchase","dining"]`。`syncTopbarButtons` 不用改——它只判 `view === "home"`，⚙ 仍只在计划页。CDP 实测五页内容归属正确、顶栏 🔍/⚙ 正确、390px 与 320px 下底栏和页面横向溢出均为 0。测试断言里写死的「目标」标签和四 tab 顺序已更新。离线缓存与版本号升至 v109。
 

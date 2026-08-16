@@ -153,6 +153,12 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /<section class="view active" id="dietLog">/);
   assert.match(html, /data-view="home"><b>◎<\/b><span>计划<\/span>/);
   assert.match(html, /grid-template-columns:repeat\(5,1fr\)/);
+  // 五个 tab 的图标都用单色字形，别混彩色 emoji 进去（用户："icon 和别的风格
+  // 明显不一致"）。emoji 会被系统渲染成彩色，和 ▤ ＋ ★ ◎ 完全两种质感。
+  const navBlock = html.slice(html.indexOf('<nav class="bottom-nav"'), html.indexOf("</nav>"));
+  const navIcons = [...navBlock.matchAll(/<b>([^<]+)<\/b><span>[^<]+<\/span>/g)].map(m => m[1]);
+  assert.equal(navIcons.length, 5);
+  assert.ok(navIcons.every(icon => !/\p{Extended_Pictographic}/u.test(icon)), `底栏出现彩色 emoji：${navIcons.join(" ")}`);
 
   // 采购记录单独成页，食材页只留现有食材和单价对比。
   const viewOf = name => {
@@ -1149,12 +1155,12 @@ test("folds the weekly shopping goal and merges the two target cards", async () 
 
   // 「每顿目标」和「每天目标」并成一张卡，和上面的「今天吃到这些」不再三卡重复
   // （用户："感觉有点重复"）。两份清单都还在，只是各自带个小标题。
-  assert.doesNotMatch(html, /<h2>每顿目标<\/h2>/);
+  // 「每天目标」和上面的「今天吃到这些」讲的是同一件事，整段删掉，类别全部补到
+  // 上面的磁贴里；只留「每顿目标」（用户："下面的每天总量是不是不要了"）。
   assert.doesNotMatch(html, /<h2>每天目标<\/h2>/);
-  assert.match(html, /<h3 class="goal-sub">每顿 · 早餐 \/ 午餐 \/ 晚餐<\/h3>/);
-  assert.match(html, /<h3 class="goal-sub">每天 · 全天总量<\/h3>/);
+  assert.doesNotMatch(html, /id="dailyList"/);
+  assert.match(html, /<h2>每顿目标<\/h2>/);
   assert.match(html, /id="mealList"/);
-  assert.match(html, /id="dailyList"/);
 
   // 「每周采购目标」默认收起：它是长期参考，不像别的卡天天要看。
   // 默认值和别处相反——没存过就是折叠，所以判的是 !== "0"。
@@ -1264,13 +1270,40 @@ test("recognises receipts in the background so the form frees up at once", async
   assert.match(job.slice(job.indexOf("catch")), /savePrivatePhoto\(receiptId, file\)/);
 });
 
+test("shows every daily category once, with notes behind a tap", async () => {
+  const { elements, evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 原来 hero 只放前 3 类、下面再用「每天目标」把全部重列一遍，两处讲同一件事。
+  // 现在全部类别只在 hero 出现一次。
+  const core = elements.get("homeCore").innerHTML;
+  const total = evaluate("dailyTargets.length");
+  assert.ok(total > 3);
+  assert.equal(core.match(/data-daily-note=/g).length, total);
+  assert.doesNotMatch(html, /dailyTargets.slice\(0,3\)/);
+
+  // 说明文字不常驻，点磁贴才出来。
+  assert.match(core, /id="dailyNote"/);
+  assert.match(html, /noteBox.hidden = false;/);
+  // 磁贴变成了按钮，得有按钮的基础样式，否则会带上浏览器默认外观。
+  assert.match(html, /button.metric\{[^}]*border:0/);
+
+  // 每顿目标只留类别和克数，那行小字去掉。
+  const mealMarkup = html.slice(html.indexOf('document.getElementById("mealList")'));
+  assert.doesNotMatch(mealMarkup.slice(0, 400), /<small>\$\{target.note\}<\/small>/);
+
+  // 膳食宝塔是长期参考，默认折叠。
+  assert.match(html, /<details class="pagoda">/);
+  assert.doesNotMatch(html, /<details class="pagoda" open>/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v109"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v110"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
