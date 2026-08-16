@@ -179,6 +179,12 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 #home .target-row strong{font-size:13px}
 #home .target-row b{font-size:14px}
 #home .target-row small{font-size:12px}
+/* 膳食宝塔默认折叠：它是长期参考，不用每次进页面都占大半屏（用户要求）。 */
+.pagoda{margin:14px 0 0}
+.pagoda > summary{list-style:none;cursor:pointer;color:var(--muted);font-size:13px;padding:8px 0}
+.pagoda > summary::-webkit-details-marker{display:none}
+/* 点开的类别说明：只在点某块磁贴时出现，不常驻。 */
+.daily-note{grid-column:1/-1;margin:2px 0 0;color:var(--hero-copy);font-size:12px;line-height:1.5}
 .reference-figure{margin:14px 0 0}
 .reference-figure a{
   display:block;
@@ -235,6 +241,8 @@ h3{margin:0;font-size:15px;letter-spacing:0}
 .hero .pill{background:var(--hero-tile);color:var(--hero-value);border-color:var(--hero-accent)}
 .metrics,.grid2{display:grid;grid-template-columns:1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+/* 磁贴现在是可点的按钮（点开看该类别的说明），补上按钮基础样式。 */
+button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .metric,.target{
   min-width:0;
   padding:13px 10px;
@@ -1103,19 +1111,20 @@ summary.week-block-head::after{
 
       <article class="card">
         <div class="section-title">
-          <h2>目标</h2>
-          <span class="subtle">每顿 / 每天</span>
+          <h2>每顿目标</h2>
+          <span class="subtle">早餐 / 午餐 / 晚餐</span>
         </div>
-        <h3 class="goal-sub">每顿 · 早餐 / 午餐 / 晚餐</h3>
         <div class="list" id="mealList"></div>
-        <h3 class="goal-sub">每天 · 全天总量</h3>
-        <div class="list" id="dailyList"></div>
-        <figure class="reference-figure">
+
+        <details class="pagoda">
+          <summary>📖 中国居民平衡膳食宝塔</summary>
+          <figure class="reference-figure">
           <a href="./balanced-diet-pagoda-2022.png" target="_blank" rel="noopener" aria-label="打开高清版中国居民平衡膳食宝塔">
             <img src="./balanced-diet-pagoda-2022.png" alt="中国居民平衡膳食宝塔（2022），展示每日各类食物建议摄入量" loading="lazy" decoding="async">
           </a>
           <figcaption>《中国居民平衡膳食宝塔（2022）》。图中克数和毫升数都是每天的建议量，“每周至少 2 次水产品”是频率建议。点击图片看高清版。</figcaption>
-        </figure>
+          </figure>
+        </details>
       </article>
 
       <article class="card desktop-span">
@@ -1305,12 +1314,12 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v109</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v110</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-btn active" data-view="dietLog"><b>▤</b><span>饮食</span></button>
-  <button class="nav-btn" data-view="shopping"><b>🥬</b><span>食材</span></button>
+  <button class="nav-btn" data-view="shopping"><b>◧</b><span>食材</span></button>
   <button class="nav-btn" data-view="buying"><b>＋</b><span>采购</span></button>
   <button class="nav-btn" data-view="foods"><b>★</b><span>营养</span></button>
   <button class="nav-btn" data-view="home"><b>◎</b><span>计划</span></button>
@@ -3189,19 +3198,30 @@ function weeklyBought(food){
 function render(){
   const today = new Date();
   document.getElementById("todayLabel").textContent = `${today.getMonth()+1}/${today.getDate()}`;
-  document.getElementById("homeCore").innerHTML = dailyTargets.slice(0,3).map(target => `
-    <div class="metric"><b>${target.amount}</b><span>${target.icon} ${target.name}</span></div>
-  `).join("");
-  document.getElementById("dailyList").innerHTML = dailyTargets.map(target => `
-    <div class="target-row">
-      <div class="target-row-head"><strong>${target.icon} ${target.name}</strong><b>${target.amount}</b></div>
-      <small>${target.note}</small>
-    </div>
-  `).join("");
+  // 原来这里只放前 3 类、下面再用「每天目标」把全部重列一遍，两处讲同一件事
+  // （用户："今天吃到这些，和下面的每天总量基本类似啊？下面的每天总量是不是不要了，
+  // 少了几个类别补充在上面"）。现在全部类别都摆在上面，「每天目标」那段整个删掉。
+  // 说明文字不再常驻——点一块磁贴才展开那一类的注解（用户："原来的小字可以变成
+  // 点这几个食物类别的按钮出来的提示"）。
+  document.getElementById("homeCore").innerHTML = dailyTargets.map((target, index) => `
+    <button type="button" class="metric" data-daily-note="${index}" aria-expanded="false"><b>${target.amount}</b><span>${target.icon} ${target.name}</span></button>
+  `).join("") + `<p class="daily-note" id="dailyNote" hidden></p>`;
+  const noteBox = document.getElementById("dailyNote");
+  document.querySelectorAll("[data-daily-note]").forEach(button => {
+    button.addEventListener("click", () => {
+      const target = dailyTargets[Number(button.dataset.dailyNote)];
+      const open = button.getAttribute("aria-expanded") === "true";
+      document.querySelectorAll("[data-daily-note]").forEach(other => other.setAttribute("aria-expanded", "false"));
+      if (open){ noteBox.hidden = true; return; }
+      button.setAttribute("aria-expanded", "true");
+      noteBox.textContent = `${target.icon} ${target.name} ${target.amount} · ${target.note}`;
+      noteBox.hidden = false;
+    });
+  });
+  // 每顿目标下面那行小字没什么用（用户要求去掉），只留类别和克数。
   document.getElementById("mealList").innerHTML = mealTargets.map(target => `
     <div class="target-row">
       <div class="target-row-head"><strong>${target.icon} ${target.name}</strong><b>${target.amount}</b></div>
-      <small>${target.note}</small>
     </div>
   `).join("");
   void renderShopping();
