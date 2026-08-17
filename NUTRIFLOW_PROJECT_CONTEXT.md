@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v123`
+- 当前离线缓存：`nutriflow-pwa-v124`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**现有食材分块可折叠、撤掉计划里的 emoji、补上前两周的计划**。离线缓存与版本号升至 v124。
+  - **「蔬菜／肉／其他」每块自己能收起来**（用户："现有食材，蔬菜，肉，也可以折叠"）。小标题从 `<h3>` 换成 `<button data-stock-group>`，和采购统计一个写法：`closedStockGroups` 记的是**收起了哪几块**（新冒出来的分块默认展开），存 localStorage。按钮必须显式写 `color` 和 `text-align:left`——iOS 会给 button 一套自己的蓝字和居中，采购统计的金额栽过一次。
+  - **撤掉 v123 那个自动补 emoji**（用户："每周计划的icon去掉吧，有点乱"）。光删代码不够：v123 已经把带图标的文本写进 `mealPlans` 并同步上了云，所以留了 `stripPlanIcons()` + `cleanStoredPlanIcons()`，渲染前把存量剥干净（只压行内多余空格，保住换行）。三文鱼的 🍣 是用户单独要求的，没跟着一起撤。顺带解决了用户报的"第一行显示不完"——那是图标把行撑宽导致的，图标去掉后用户自己说"这个不用改了"。
+  - **补上 8/10 和 8/3 两周的计划**（用户发了备忘录截图："你帮我填到前两周的计划里去"）。写成 `MEAL_PLAN_SEED` **底稿**而不是一次性写进 localStorage——云同步的拉取是**整份替换**，写进 localStorage 的话下一次拉取就没了；底稿在每台设备的代码里都有，永远不会丢。`planTextFor(day)` 优先取存下来的值，没存过才读底稿。配套：有底稿的那天被清空时要留一个**空串**把底稿压住（`setMealPlan` 和 `cleanStoredPlanIcons` 都改了），否则用户刚删完下次渲染又冒出来。
+  - **空白的过去周不再显示**（用户："再往前的那周就删掉吧，没有计划"）。原来固定列 4 周，改成往前扫 13 周、只留 `weekPlanCount(start) > 0` 的那几周，本周永远显示。实测：本周 8/17 + 8/10（5 天）+ 8/3（4 天），再往前的空周不出现。
 
 - 2026-08-17：**四件套：食材归类、计划框字号、计划里补 emoji、采购历史可折叠**。离线缓存与版本号升至 v123。
   - **玉米/土豆/毛豆算蔬菜，只有牛油果归其他**（用户："只有牛油果是其他，别的玉米/土豆/毛豆，都算蔬菜吧"）。新增共用的 `stockBucket(foodId)`：蔬菜 0 / 肉+水产 1 / 其他 2，`AS_VEGETABLE = ["corn","potato","sweetPotato","edamame","tofu","enoki","mushroom"]` 单独并进蔬菜。「现有食材」和计划里的食材 chip 都改走这一个函数——这两处已经因为顺序和分组各自跑偏过两次，共用一个来源才不会再分家。实测：菜 15 → 肉 5 → 其他 1（只剩牛油果）。

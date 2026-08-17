@@ -1182,11 +1182,28 @@ test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
   // 按日期存纯文本，展示时再按自然周分组——加一天/跨周都不用迁移数据结构。
-  evaluate('setMealPlan("2026-08-12", "番茄炒蛋")');
-  assert.equal(evaluate('mealPlans["2026-08-12"]'), "番茄炒蛋");
+  evaluate('setMealPlan("2026-09-12", "番茄炒蛋")');
+  assert.equal(evaluate('mealPlans["2026-09-12"]'), "番茄炒蛋");
   // 清空就删掉，别留一堆空串。
-  evaluate('setMealPlan("2026-08-12", "   ")');
-  assert.equal(evaluate('mealPlans["2026-08-12"]'), undefined);
+  evaluate('setMealPlan("2026-09-12", "   ")');
+  assert.equal(evaluate('mealPlans["2026-09-12"]'), undefined);
+
+  // 用户备忘录里那两周的计划写成底稿：没存过的那天读底稿，存过的以存的为准。
+  // 底稿不写进 localStorage——云同步是整份替换，写进去下一次拉取就没了。
+  assert.equal(evaluate('planTextFor("2026-08-11")'), "番茄炒蛋\n冬瓜排骨汤 煎三文鱼");
+  assert.equal(evaluate('planTextFor("2026-08-05")'), "牛肉牛肉丸生菜鸡蛋面");
+  assert.equal(evaluate('planTextFor("2026-08-06")'), "");
+  // 有底稿的那天被清空，要留一个空串把底稿压住，否则删完又冒出来。
+  evaluate('setMealPlan("2026-08-11", "")');
+  assert.equal(evaluate('mealPlans["2026-08-11"]'), "");
+  assert.equal(evaluate('planTextFor("2026-08-11")'), "");
+  evaluate('delete mealPlans["2026-08-11"]');
+
+  // 空白的过去周不显示（用户："再往前的那周就删掉吧，没有计划"）。
+  assert.equal(evaluate('weekPlanCount(new Date(2026, 7, 10))'), 5);
+  assert.equal(evaluate('weekPlanCount(new Date(2026, 7, 3))'), 4);
+  assert.equal(evaluate('weekPlanCount(new Date(2026, 6, 27))'), 0);
+  assert.match(html, /\.filter\(week => week.current \|\| week.filled\)/);
 
   // 计划是手动录入的，按既定规则接入云同步。
   assert.match(html, /key: "meal_plan"/);
@@ -1396,7 +1413,7 @@ test("splits the stock list into meat and vegetables only", async () => {
   const stock = elements.get("boughtFoods").innerHTML;
 
   // 用户明确"只分这两类"，分太细每块只剩一两样，反而不如不分。
-  const heads = [...stock.matchAll(/class="stock-sub">([^<]+)</g)].map(m => m[1].replace(/\s+/g, ""));
+  const heads = [...stock.matchAll(/data-stock-group="([^"]+)"/g)].map(m => m[1]);
   assert.ok(heads.length <= 3);
   assert.ok(heads.every(head => /肉|蔬菜|其他/.test(head)));
   // 先菜后肉，和计划里的食材 chip 一个顺序，别一个页面一个样。
@@ -1406,6 +1423,17 @@ test("splits the stock list into meat and vegetables only", async () => {
   assert.match(html, /rule.name === "肉类" \|\| rule.name === "水产"/);
   // 空的那块不出小标题。
   assert.match(html, /\.filter\(group => group.rows.length\)/);
+
+  // 每块自己也能收起来（用户："蔬菜，肉，也可以折叠"）。记的是"收起了哪几块"，
+  // 新冒出来的分块默认展开。
+  assert.match(html, /const STOCK_GROUP_KEY = "nutriflow_stock_groups_closed";/);
+  assert.match(stock, /aria-expanded="true"/);
+  assert.match(stock, /▾ 🥦 蔬菜/);
+  assert.match(html, /localStorage.setItem\(STOCK_GROUP_KEY, JSON.stringify\(\[...closedStockGroups\]\)\)/);
+  // 小标题变成了 <button>，iOS 会给它一套自己的蓝字和居中，必须显式压掉。
+  const css = html.split("<style>")[1].split("</style>")[0];
+  assert.match(css, /\.stock-sub\{[^}]*color:var\(--muted\)/);
+  assert.match(css, /\.stock-sub\{[^}]*text-align:left/);
 });
 
 test("inserts plan chips at the caret and measures height once visible", async () => {
@@ -1448,21 +1476,23 @@ test("keeps the plan font the same size before and after focus", async () => {
   assert.match(css, /\.plan-chips\{[^}]*margin-top:6px/);
 });
 
-test("labels plan entries with the matching food icon", async () => {
+test("strips the plan icons that v123 left behind", async () => {
   const { evaluate } = await runAppScript();
 
-  // 用户："我打完每周计划，你能帮我加上小icon么，代表这个食物的"。
-  const decorated = evaluate('decoratePlanText("三文鱼 香菇 土豆 生菜")');
-  assert.equal(decorated, "🍣三文鱼 🍄香菇 🥔土豆 🥬生菜");
-  // 三文鱼原来和鳕鱼共用一个 🐟（用户："三文鱼对应的icon也不太对"）。
+  // v123 试过自动补 emoji，用户看完说"有点乱"，撤了。代码删掉不够——那一版已经把
+  // 带图标的文本存进了 mealPlans 并同步上云，得在渲染前把存量剥干净。
+  assert.equal(evaluate('stripPlanIcons("🍣三文鱼 🍄香菇 🥔土豆 🥬生菜")'), "三文鱼 香菇 土豆 生菜");
+  assert.equal(evaluate('stripPlanIcons("🥬萝卜🥩排骨汤 🌽玉米烙 （炒）")'), "萝卜排骨汤 玉米烙 （炒）");
+  // 没图标的原样返回，不能顺手改动用户自己打的字。
+  assert.equal(evaluate('stripPlanIcons("番茄炒蛋 （炒）")'), "番茄炒蛋 （炒）");
+  // 多行要保住换行，只压行内的多余空格。
+  assert.equal(evaluate('stripPlanIcons("🍣三文鱼\\n🌽玉米")'), "三文鱼\n玉米");
+  // 三文鱼那个图标本身是用户单独要求改的，别跟着一起撤。
   assert.equal(evaluate('iconForFood("salmon")'), "🍣");
-  // 幂等：每次失焦都会再跑一遍，不能越跑图标越多。
-  assert.equal(evaluate(`decoratePlanText(decoratePlanText("萝卜排骨汤 玉米烙"))`), evaluate('decoratePlanText("萝卜排骨汤 玉米烙")'));
-  // 长词优先，"白萝卜"不能被"萝卜"抢先切开。
-  assert.equal(evaluate('decoratePlanText("白萝卜")'), "🥬白萝卜");
-  // 单字词不参与匹配——"鱼""米""牛"会在三文鱼、玉米、牛油果里到处误伤。
-  assert.equal(evaluate('decoratePlanText("牛油果")'), "🥑牛油果");
-  assert.equal(evaluate('planIconVocabulary().every(entry => entry.word.length >= 2)'), true);
+
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.ok(!/decoratePlanText/.test(html), "自动补图标的代码应该已经撤掉");
+  assert.match(html, /cleanStoredPlanIcons\(\);/);
 });
 
 test("folds the purchase history but leaves the add form open", async () => {
@@ -1512,7 +1542,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v123"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v124"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

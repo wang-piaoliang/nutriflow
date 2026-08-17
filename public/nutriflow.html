@@ -637,7 +637,9 @@ summary.week-block-head::after{
    滑条才能和条目共用同一块底色、看起来是一整条；滑条本身在 label 外面，避免误勾「吃完」。
    轨道只有 4px 高，输入框撑到 18px 只是为了好按，整体多占约 22px。 */
 /* 现有食材的分区小标题：只分肉和蔬菜，其余归其他。 */
-.stock-sub{display:flex;align-items:baseline;gap:6px;margin:14px 0 6px;font-size:13px;font-weight:600;color:var(--muted)}
+/* 小标题现在是按钮（点了折叠这一块）。iOS 的 button 有自带的蓝色和居中，
+   必须显式写 color / text-align，否则字会变蓝——采购统计的金额栽过一次。 */
+.stock-sub{display:flex;align-items:baseline;gap:6px;margin:14px 0 6px;width:100%;border:0;background:none;padding:0;text-align:left;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:var(--muted)}
 .stock-sub:first-child{margin-top:0}
 .stock-sub span{color:var(--muted);font-weight:500;opacity:.75}
 .buy-item{background:var(--surface-2);border-radius:8px}
@@ -1341,7 +1343,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v123</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v124</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2792,10 +2794,38 @@ function saveMealPlans(){
   localStorage.setItem(MEAL_PLAN_KEY, JSON.stringify(mealPlans));
   schedulePush("meal_plan");
 }
+// 用户备忘录里已经写好的两周计划，让我补进来。放在代码里当"底稿"而不是一次性写进
+// localStorage：写进去会被云同步的下一次拉取覆盖掉（拉取是整份替换），而底稿在每台
+// 设备上都在，永远不会丢。哪天用户在页面上改了那天，存下来的值就盖住底稿。
+const MEAL_PLAN_SEED = {
+  "2026-08-10": "南瓜\n鸭翅 南瓜 玉米排骨金针菇汤",
+  "2026-08-11": "番茄炒蛋\n冬瓜排骨汤 煎三文鱼",
+  "2026-08-12": "外卖\n煎鸡排 小炒青菜",
+  "2026-08-13": "面\n番茄炒蛋",
+  "2026-08-14": "土豆 玉米烙\n煎牛肉 煎三文鱼",
+  "2026-08-03": "螺狮粉 煮点牛肉、青菜\n丝瓜汤 剩下的菜吃掉 饭\n煮米饭",
+  "2026-08-04": "番茄炒蛋\n玉米排骨汤米饭",
+  "2026-08-05": "牛肉牛肉丸生菜鸡蛋面",
+  "2026-08-07": "玉米烙\n滑蛋豆腐\n处理下辣椒"
+};
+function planTextFor(day){
+  const saved = mealPlans[day];
+  return saved === undefined ? (MEAL_PLAN_SEED[day] || "") : saved;
+}
+// 这一周有几天写了东西——决定折叠头上的「N 天有计划」，也决定这周要不要显示。
+function weekPlanCount(start){
+  return Array.from({length: 7}, (unused, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return planTextFor(dayValue(date)).trim();
+  }).filter(Boolean).length;
+}
 function setMealPlan(day, text){
   const value = String(text || "");
-  if (value.trim()) mealPlans[day] = value;
-  else delete mealPlans[day];   // 清空就删掉，别留一堆空串占地方
+  // 清空就删掉，别留一堆空串占地方。但这天要是有底稿，得留一个空串把底稿压住，
+  // 否则用户刚删完，下次渲染底稿又冒出来。
+  if (value.trim() || MEAL_PLAN_SEED[day] !== undefined) mealPlans[day] = value;
+  else delete mealPlans[day];
   saveMealPlans();
 }
 const REMAINING_KEY = "nutriflow_remaining_v1";
@@ -3409,6 +3439,11 @@ function applyPlanFold(){
 // 玉米、土豆、毛豆在营养分类里算主食/豆类，但下厨时就是菜，按用户的用法归到菜
 // （"只有牛油果是其他，别的玉米/土豆/毛豆，都算蔬菜吧"）。
 const AS_VEGETABLE = ["corn", "potato", "sweetPotato", "edamame", "tofu", "enoki", "mushroom"];
+// 记的是「收起了哪几块」而不是「展开了哪几块」：这样以后多出新分块也默认展开。
+const STOCK_GROUP_KEY = "nutriflow_stock_groups_closed";
+const closedStockGroups = new Set((() => {
+  try { return JSON.parse(localStorage.getItem(STOCK_GROUP_KEY) || "[]"); } catch { return []; }
+})());
 function stockBucket(foodId){
   const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
   if (vegIds.includes(foodId) || AS_VEGETABLE.includes(foodId)) return 0;
@@ -3439,37 +3474,29 @@ function planIngredients(){
     .map(([name, foodId]) => ({name, foodId, rank: stockBucket(foodId)}))
     .sort((a, b) => a.rank - b.rank);
 }
-// 计划里写的是菜名，光秃秃一行字很难扫（用户："你能帮我加上小icon么，代表这个食物的"）。
-// 认出食材名就在前面补一个 emoji。复用小票那份关键词表，两边认的东西才一致。
-// 只认两个字以上的词——「鱼」「米」「牛」「面」这类单字会在「三文鱼」「玉米」
-// 「牛油果」里到处误伤。长词排前面，「白萝卜」不会被「萝卜」抢先。
-let planIconWords = null;
-function planIconVocabulary(){
-  if (planIconWords) return planIconWords;
-  planIconWords = purchaseItemAliases
-    .filter(alias => alias.id !== "bag")
-    .flatMap(alias => alias.keywords.map(word => ({word, icon: iconForFood(alias.id)})))
-    .filter(entry => entry.word.length >= 2)
-    .sort((a, b) => b.word.length - a.word.length);
-  return planIconWords;
+// v123 试过自动给菜名补 emoji，用户看完说"有点乱"，撤了。但那一版已经把带图标的
+// 文本存进了 mealPlans（也同步上了云），光删代码是清不掉的——所以留一个清理函数，
+// 渲染前把存量里的 emoji 剥掉。剥完顺手压掉多余空格和空行。
+function stripPlanIcons(text){
+  return String(text || "")
+    .replace(/[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{200D}]/gu, "")
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/^[^\S\n]+|[^\S\n]+$/gm, "");
 }
-// 幂等：已经带图标的词不会再补一个，所以每次失焦都能安全地再跑一遍。
-function decoratePlanText(text){
-  const words = planIconVocabulary();
-  let out = "";
-  let index = 0;
-  while (index < text.length){
-    const hit = words.find(entry => text.startsWith(entry.word, index));
-    if (!hit){
-      out += text[index];
-      index += 1;
-      continue;
-    }
-    if (!out.endsWith(hit.icon)) out += hit.icon;
-    out += hit.word;
-    index += hit.word.length;
-  }
-  return out;
+// 存量清理只跑一次：逐天剥掉图标，真有变化才写回去（写回去会触发一次云同步）。
+let planIconsCleaned = false;
+function cleanStoredPlanIcons(){
+  if (planIconsCleaned) return;
+  planIconsCleaned = true;
+  let changed = false;
+  Object.keys(mealPlans).forEach(day => {
+    const cleaned = stripPlanIcons(mealPlans[day]);
+    if (cleaned === mealPlans[day]) return;
+    if (cleaned.trim() || MEAL_PLAN_SEED[day] !== undefined) mealPlans[day] = cleaned;
+    else delete mealPlans[day];
+    changed = true;
+  });
+  if (changed) saveMealPlans();
 }
 // 隐藏元素的 scrollHeight 是 0——渲染发生在「计划」页还没显示的时候，
 // 高度就被钉死在最小值，写了两行只露出一行（用户："没显示完"）。
@@ -3493,14 +3520,16 @@ function growAllPlanTexts(){
 function renderMealPlan(){
   const box = document.getElementById("mealPlanList");
   if (!box) return;
+  cleanStoredPlanIcons();
   applyPlanFold();
   const {monday} = currentWeek();
-  // 本周永远排最前且展开；往前再列 3 周，过去的默认折叠（用户要求）。
-  const weeks = Array.from({length: 4}, (unused, offset) => {
+  // 本周永远排最前且展开；往前的周只列「真写过东西」的那几周，空白周不占地方
+  // （用户："再往前的那周就删掉吧，没有计划"）。过去的周默认折叠。
+  const weeks = Array.from({length: 13}, (unused, offset) => {
     const start = new Date(monday);
     start.setDate(monday.getDate() - offset * 7);
-    return {start, current: offset === 0};
-  });
+    return {start, current: offset === 0, filled: weekPlanCount(start)};
+  }).filter(week => week.current || week.filled);
   const chips = planIngredients();
   box.innerHTML = weeks.map(week => {
     const days = Array.from({length: 7}, (unused, index) => {
@@ -3509,13 +3538,13 @@ function renderMealPlan(){
       const value = dayValue(date);
       return `<div class="plan-day">
         <label for="plan-${value}">${WEEKDAY_NAMES[date.getDay()] === "日" ? "周日" : `周${WEEKDAY_NAMES[date.getDay()]}`} <small>${date.getMonth() + 1}/${date.getDate()}</small></label>
-        <div class="plan-text-wrap"><textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="1" placeholder="想吃啥">${escapeAttribute(decoratePlanText(mealPlans[value] || ""))}</textarea></div>
+        <div class="plan-text-wrap"><textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="1" placeholder="想吃啥">${escapeAttribute(planTextFor(value))}</textarea></div>
       </div>`;
     }).join("");
     const body = `<div class="plan-days">${days}</div>`;
     return week.current
       ? `<section class="plan-week"><div class="plan-week-head"><strong>本周 ${weekLabel(week.start)}</strong></div>${body}</section>`
-      : `<details class="plan-week"><summary class="plan-week-head"><strong>${weekLabel(week.start)}</strong><span class="subtle">${Array.from({length: 7}, (u, i) => { const d = new Date(week.start); d.setDate(week.start.getDate() + i); return mealPlans[dayValue(d)]; }).filter(Boolean).length} 天有计划</span></summary>${body}</details>`;
+      : `<details class="plan-week"><summary class="plan-week-head"><strong>${weekLabel(week.start)}</strong><span class="subtle">${week.filled} 天有计划</span></summary>${body}</details>`;
   }).join("");
   // 输入即存。不重渲染——重渲染会把正在打字的框换掉、光标和键盘一起跳走。
   box.querySelectorAll("[data-plan-day]").forEach(area => {
@@ -3524,15 +3553,6 @@ function renderMealPlan(){
     grow();
     area.addEventListener("input", () => { setMealPlan(area.dataset.planDay, area.value); grow(); });
     area.addEventListener("focus", () => showPlanChips(area, chips));
-    // 补图标放在写完之后（blur），不能边打边补：中文输入法还没上屏就动 value，
-    // 光标和候选词会一起乱掉。
-    area.addEventListener("blur", () => {
-      const decorated = decoratePlanText(area.value);
-      if (decorated === area.value) return;
-      area.value = decorated;
-      setMealPlan(area.dataset.planDay, decorated);
-      grow();
-    });
   });
 }
 // 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
@@ -3905,9 +3925,25 @@ async function renderShopping(){
   const stockGroups = [["蔬菜", "🥦"], ["肉", "🥩"], ["其他", "🛒"]]
     .map(([name, icon], index) => ({name, icon, rows: activeItems.filter(purchase => stockBucket(purchase.foodId) === index)}))
     .filter(group => group.rows.length);
-  document.getElementById("boughtFoods").innerHTML = stockGroups.length
-    ? stockGroups.map(group => `<h3 class="stock-sub">${group.icon} ${group.name}<span>${group.rows.length}</span></h3>${group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`).join("")
+  // 每块自己也能收起来（用户："蔬菜，肉，也可以折叠"）——菜买多了这一段能拉很长，
+  // 只想看肉还剩啥的时候得划半天。和采购统计一个写法：记"收起了哪几块"，
+  // 这样新冒出来的分块默认是展开的。
+  const stockBox = document.getElementById("boughtFoods");
+  stockBox.innerHTML = stockGroups.length
+    ? stockGroups.map(group => {
+      const folded = closedStockGroups.has(group.name);
+      return `<button class="stock-sub" type="button" data-stock-group="${group.name}" aria-expanded="${!folded}">${folded ? "▸" : "▾"} ${group.icon} ${group.name}<span>${group.rows.length}</span></button>${folded ? "" : group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`;
+    }).join("")
     : `<div class="note">当前没有正在吃的食品。</div>`;
+  stockBox.querySelectorAll("[data-stock-group]").forEach(button => {
+    button.addEventListener("click", () => {
+      const name = button.dataset.stockGroup;
+      if (closedStockGroups.has(name)) closedStockGroups.delete(name);
+      else closedStockGroups.add(name);
+      localStorage.setItem(STOCK_GROUP_KEY, JSON.stringify([...closedStockGroups]));
+      renderShopping();
+    });
+  });
   const recentConsumed = consumedItems.slice(0,1);
   const olderConsumed = consumedItems.slice(1);
   document.getElementById("consumedFoods").innerHTML = consumedItems.length ? `
