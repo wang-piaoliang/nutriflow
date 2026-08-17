@@ -1495,6 +1495,27 @@ test("strips the plan icons that v123 left behind", async () => {
   assert.match(html, /cleanStoredPlanIcons\(\);/);
 });
 
+test("writes Member's Mark as 山姆 and always shows the buy count", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 山姆自有品牌在小票上是「Member's Mark」，一行里光牌子就占掉小半行，品名被挤到
+  // 第二行（用户："太长了，搞得每次都要换行"）。撇号有直的和弯的两种，都要认。
+  assert.equal(evaluate(`shortBrand("Member's Mark 智利大西洋鲑鱼")`), "山姆 智利大西洋鲑鱼");
+  assert.equal(evaluate('shortBrand("Member’s Mark 有机鸡蛋")'), "山姆 有机鸡蛋");
+  assert.equal(evaluate('shortBrand("MEMBERS MARK 牛肉")'), "山姆 牛肉");
+  assert.equal(evaluate('shortBrand("盒马日日鲜 冰鲜鸡小胸")'), "盒马日日鲜 冰鲜鸡小胸");
+  // 存量也要换：只在录入时处理的话，已经记下的那些永远不变。
+  assert.match(html, /const short = shortBrand\(row.item\);/);
+  assert.match(html, /item: shortBrand\(item.name\),/);
+
+  // 买过一次的也写「1 次」，省略掉右边那列就对不齐（用户："只买了一次的就写1次"）。
+  const times = evaluate('categoryTotals("month", "").flatMap(group => group.items.map(item => item.times))');
+  assert.ok(times.includes(1), "样本里应该有只买过一次的东西");
+  assert.ok(!/item.times > 1/.test(html), "不该再按次数决定要不要显示「N 次」");
+  assert.match(html, /\$\{item.spend.toFixed\(2\).replace\(\/\\.00\$\/, ""\)\} · \$\{item.times\} 次/);
+});
+
 test("folds the purchase history but leaves the add form open", async () => {
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
@@ -1542,7 +1563,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v125"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v126"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

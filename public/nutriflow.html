@@ -1343,7 +1343,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v125</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v126</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2327,8 +2327,24 @@ function dedupeManualReceipts(){
   saveManualPurchases();
   return doomed.length;
 }
+// 山姆自有品牌在小票上写成「Member's Mark」，一行里光这个牌子就占掉小半行，
+// 品名被挤到第二行去（用户："太长了，搞得每次都要换行"）。统一写成「山姆」。
+// 撇号有直的 ' 和弯的 ’ 两种，识别出来的是哪种全看小票和模型，都得认。
+function shortBrand(item){
+  return String(item || "").replace(/member\s*['’`]?\s*s\s*mark/gi, "山姆");
+}
 function healManualFoodIds(){
   let changed = false;
+  manualPurchases.forEach(row => {
+    // 存量里的长牌子名也一起换掉——只在录入时处理的话，已经记下的那些永远不变。
+    if (row && typeof row.item === "string"){
+      const short = shortBrand(row.item);
+      if (short !== row.item){
+        row.item = short;
+        changed = true;
+      }
+    }
+  });
   manualPurchases.forEach(row => {
     // 原来只补 custom: 开头的，于是「已经归错类」的行永远轮不到——鲑鱼早就被存成
     // whiteFish，别名表后来加了「鲑鱼」也纹丝不动（用户："三文鱼，不要写白肉鱼，
@@ -2450,7 +2466,7 @@ function addPurchaseReceipt({date, store, items}){
     id: `${receiptId}-${String(index + 1).padStart(2, "0")}`,
     date,
     foodId: foodIdForItem(item.name),
-    item: item.name,
+    item: shortBrand(item.name),
     amount: item.amount || "",
     packageSpec: "",
     totalPrice: item.price == null ? 0 : Number(item.price),
@@ -3827,7 +3843,9 @@ function renderStats(){
       </button>
       ${folded ? "" : `<div class="chart-row">
         ${donutSvg(items.map(item => ({label: item.name, value: item.spend, text: `¥${item.spend.toFixed(2).replace(/\.00$/, "")}`})), 104)}
-        <div class="legend">${items.map((item, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${item.name}<b>¥${item.spend.toFixed(2).replace(/\.00$/, "")}${item.times > 1 ? ` · ${item.times} 次` : ""}</b></span>`).join("")}${group.items.length > items.length ? `<span class="legend-item more">还有 ${group.items.length - items.length} 样</span>` : ""}</div>
+        <!-- 买过一次的也写「1 次」：省略掉之后每行长短不一，右边那列对不齐
+             （用户："只买了一次的就写1次，不然和别的对不齐"）。 -->
+        <div class="legend">${items.map((item, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${item.name}<b>¥${item.spend.toFixed(2).replace(/\.00$/, "")} · ${item.times} 次</b></span>`).join("")}${group.items.length > items.length ? `<span class="legend-item more">还有 ${group.items.length - items.length} 样</span>` : ""}</div>
       </div>`}
     </section>`;
   }).join("");
