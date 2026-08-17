@@ -1425,13 +1425,29 @@ test("inserts plan chips at the caret and measures height once visible", async (
   assert.match(html, /if \(!folded\) growAllPlanTexts\(\);/);
 });
 
+test("strips the brand even when it trails in half-width brackets", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 「冰鲜 猪汤骨 (盒马日日鲜)」的品牌写在**末尾的半角括号**里。原来只剥全角括号，
+  // 品牌留了下来，再取后 6 字正好把它截出来——chip 上只剩「盒马日日鲜)」，
+  // 看不出买的是什么（用户："有一个只显示了盒马日日鲜，具体的菜是啥不知道"）。
+  assert.equal(evaluate('shortItem("冰鲜 猪汤骨 (盒马日日鲜)")'), "冰鲜 猪汤骨");
+  assert.equal(evaluate('shortItem("盒马日日鲜 油菜 (上海青)")'), "油菜");
+
+  // 计划里的 chip 一个都不该带括号或品牌尾巴。
+  const names = evaluate("planIngredients().map(chip => chip.name)");
+  assert.ok(names.length > 0);
+  assert.ok(names.every(name => !/[（()）]/.test(name)), `chip 带括号：${names.join(" ")}`);
+  assert.ok(names.every(name => !name.includes("盒马")), `chip 带品牌：${names.join(" ")}`);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v119"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v120"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

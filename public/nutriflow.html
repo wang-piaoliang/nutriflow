@@ -1340,7 +1340,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v119</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v120</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3411,7 +3411,11 @@ function planIngredients(){
     // 名字太长没法扫（用户："不用写品牌，写实际是什么就行，比如 排骨、小里脊、后腿肉"）。
     // 先用短名表，再退回剥掉品牌的原名，最后硬截断——chip 是给人快速点的，不是标签全称。
     let name = priceFoodNames[row.foodId] || shortItem(row.item);
-    if (name.length > 6) name = name.slice(-6);   // 品类词通常在后面：「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」
+    // 剥完品牌还长就截尾——品类词通常在后面（「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」）。
+    // 但先把前面的修饰词整段丢掉再截，否则「冰鲜 猪汤骨」这种带空格的会被从中间切开。
+    const tail = name.split(/\s+/).filter(Boolean).pop() || name;
+    if (tail.length >= 2 && tail.length <= 6) name = tail;
+    else if (name.length > 6) name = name.slice(-6);
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
   return Array.from(seen.entries()).map(([name, foodId]) => ({name, foodId}));
@@ -3554,7 +3558,10 @@ function shortItem(item){
   return String(item || "")
     .replace(/^(盒马日日鲜|盒马烘焙|盒马树上熟|盒适|盒马)\s*/, "")
     .replace(/^鲜\s+/, "")
-    .replace(/（[^）]*）/g, "")
+    // 半角括号也要剥：「冰鲜 猪汤骨 (盒马日日鲜)」的品牌写在**末尾的括号里**，
+    // 只剥全角就会把品牌留下（用户："有一个只显示了盒马日日鲜"）。
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 // ---- 采购统计（用户："出一个每个月、每周的采购金额统计；再出一份购买过的食物的
