@@ -1360,6 +1360,10 @@ test("draws the spending split as donuts and drops cross-receipt duplicates", as
   // 统计会翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。
   evaluate("manualPurchases.length = 0");
   const line = (rid, id) => `{receiptId:"${rid}",id:"${id}",date:"2026-08-10 10:00",foodId:"egg",item:"精选鲜鸡蛋",amount:"1.59kg",totalPrice:18.9,store:"山姆",bought:true,manual:true}`;
+  // 同一样东西两次记录的写法常差一点：名字带不带规格、规格写不写单位后缀。
+  // 按原文比对抓不住（用户截图：牛奶出现两次，实际只买过一笔）。
+  assert.equal(evaluate('normalizeItemName("悦鲜活 鲜牛奶 950ml")'), evaluate('normalizeItemName("悦鲜活 鲜牛奶")'));
+  assert.notEqual(evaluate('normalizeItemName("盒马日日鲜 生菜")'), evaluate('normalizeItemName("盒马日日鲜 油菜 (上海青)")'));
   evaluate(`manualPurchases.push(${line("A", "A-01")}, ${line("B", "B-01")})`);
   assert.equal(evaluate("dedupeManualLines()"), 1);
   assert.equal(evaluate("manualPurchases.length"), 1);
@@ -1386,7 +1390,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v115"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v116"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

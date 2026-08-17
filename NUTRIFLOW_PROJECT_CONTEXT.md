@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v115`
+- 当前离线缓存：`nutriflow-pwa-v116`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**去重再放宽一档：先归一化再比**（用户截图：「悦鲜活 鲜牛奶 950ml」和「悦鲜活 鲜牛奶」在现有食材里并排出现，实际只买过一笔）。v113 的 `dedupeManualLines` 按**原文**比 `item` 和 `amount`，而同一样东西两次记录的写法常常差一点：名字带不带规格（`…950ml` vs 不带）、规格写不写单位后缀（`950ml/瓶` vs `950ml`）、门店写法不一（`盒马鲜生（大钟寺店）` vs `大钟寺店`），于是一条都没抓住。现在 key 改成 `shortStore(store) | 当天 | normalizeItemName(item) | parseAmount(amount)`：新增 `normalizeItemName()` 剥掉「数字+单位」的规格串和括号补充说明、压平空格与 ·×* 分隔符；门店走已有的 `shortStore` 归一。**金额不进 key**——识别跑两遍时价格也可能差一点（读到的是优惠前/后），但同店同天同物同重量就是同一笔。仍然**只跨单去重**。实测：两条牛奶合成一条，生菜/油菜不会被误判成同一样。离线缓存与版本号升至 v116。
 
 - 2026-08-06：**每周计划排版收拾干净**（用户："这个页面，每周计划很不和谐"，附截图）。截图里暴露了几处：① **括号不闭合**——做法 chip 只插「炒」，人自己敲的「（」全没合上，满屏「（空气炸锅」。改成整体插 `（${name}）`。② **每天的框一样高**——`rows="2"` 写死，空白的天和写满两行的天一样高，一片虚胖。改 `rows="1"` + `grow()` 按 `scrollHeight` 自适应，渲染时、输入时、点 chip 追加后都要重算（追加那次容易漏）。③ **和别的板块不是一路**——`.plan-text` 原来是白底 + 1px 边框，像表单；改成和列表同款的 `--surface-2` 底色、去边框、`resize:none` + `overflow:hidden`（自适应高度后拖拽把手没意义）。周标题压成灰色小字。④ 删掉卡片顶部那段占两行的说明，改成标题旁一句「点一天就能写」。离线缓存与版本号升至 v115。
 

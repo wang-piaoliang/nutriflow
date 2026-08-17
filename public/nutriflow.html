@@ -1336,7 +1336,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v115</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v116</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2266,6 +2266,16 @@ function manualReceiptSignatures(){
 // 一次，统计就翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。
 // 这里按「门店 + 当天 + 商品名 + 规格 + 金额」去重，**只跨单去重**——
 // 同一张单里真有两行一样的，那是小票本来就写了两行，不动它。
+// 同一样东西两次记录的写法常常差一点：「悦鲜活 鲜牛奶 950ml」vs「悦鲜活 鲜牛奶」、
+// 规格「950ml/瓶」vs「950ml」。按原文比对就抓不住（用户截图：牛奶出现两次，
+// 实际只买过一笔）。所以先把规格数字和单位从名字里剥掉、空格压平再比。
+function normalizeItemName(name){
+  return String(name || "")
+    .replace(/\d+(?:\.\d+)?\s*(kg|g|ml|l|克|千克|公斤|毫升|升|个|袋|盒|瓶|份|箱|包|枚|片)/gi, "")
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(/[\s·*×x]+/gi, "")
+    .trim();
+}
 function dedupeManualLines(){
   const seen = new Map();
   const doomed = [];
@@ -2273,12 +2283,13 @@ function dedupeManualLines(){
     .slice()
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)))
     .forEach(row => {
+      // 金额不进 key：识别跑两遍时价格也可能差一点（读到的是优惠前/后），
+      // 但同一家店同一天买的同一样东西、同样重量，就是同一笔。
       const key = [
-        String(row.store || "").trim(),
+        shortStore(row.store),
         String(row.date || "").slice(0, 10),
-        String(row.item || "").trim(),
-        String(row.amount || "").trim(),
-        Number(row.totalPrice || 0),
+        normalizeItemName(row.item),
+        parseAmount(row.amount),
       ].join("|");
       const first = seen.get(key);
       if (!first){ seen.set(key, row); return; }
