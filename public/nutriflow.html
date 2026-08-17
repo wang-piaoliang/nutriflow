@@ -633,6 +633,10 @@ summary.week-block-head::after{
 /* 「现有食材」每条下面的剩余量细条。背景和圆角从 .buy-row 挪到外层 .buy-item，
    滑条才能和条目共用同一块底色、看起来是一整条；滑条本身在 label 外面，避免误勾「吃完」。
    轨道只有 4px 高，输入框撑到 18px 只是为了好按，整体多占约 22px。 */
+/* 现有食材的分区小标题：只分肉和蔬菜，其余归其他。 */
+.stock-sub{display:flex;align-items:baseline;gap:6px;margin:14px 0 6px;font-size:13px;font-weight:600;color:var(--muted)}
+.stock-sub:first-child{margin-top:0}
+.stock-sub span{color:var(--muted);font-weight:500;opacity:.75}
 .buy-item{background:var(--surface-2);border-radius:8px}
 .buy-item > .buy-row{background:transparent;border-radius:0}
 .buy-item.done{opacity:.56}
@@ -1336,7 +1340,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v117</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v118</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3785,7 +3789,20 @@ async function renderShopping(){
       </label>${meter}
     </div>`;
   };
-  document.getElementById("boughtFoods").innerHTML = activeItems.map(purchase => renderBoughtItem(purchase, false)).join("") || `<div class="note">当前没有正在吃的食品。</div>`;
+  // 只分「肉」和「蔬菜」两块，其余归「其他」——用户明确"只分这两类"，
+  // 分太细反而每块只剩一两样，还不如不分。空的那块不出小标题。
+  const meatIds = purchaseGroupRules
+    .filter(rule => rule.name === "肉类" || rule.name === "水产")
+    .flatMap(rule => rule.ids);
+  const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
+  const bucketOf = purchase => meatIds.includes(purchase.foodId) ? "肉"
+    : vegIds.includes(purchase.foodId) ? "蔬菜" : "其他";
+  const stockGroups = [["肉", "🥩"], ["蔬菜", "🥦"], ["其他", "🛒"]]
+    .map(([name, icon]) => ({name, icon, rows: activeItems.filter(purchase => bucketOf(purchase) === name)}))
+    .filter(group => group.rows.length);
+  document.getElementById("boughtFoods").innerHTML = stockGroups.length
+    ? stockGroups.map(group => `<h3 class="stock-sub">${group.icon} ${group.name}<span>${group.rows.length}</span></h3>${group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`).join("")
+    : `<div class="note">当前没有正在吃的食品。</div>`;
   const recentConsumed = consumedItems.slice(0,1);
   const olderConsumed = consumedItems.slice(1);
   document.getElementById("consumedFoods").innerHTML = consumedItems.length ? `

@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v117`
+- 当前离线缓存：`nutriflow-pwa-v118`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**「现有食材」分区**（用户："按照 蔬菜，肉，稍微分区下，只分这两类"）。`renderShopping` 把 `activeItems` 分成「🥩 肉」（`purchaseGroupRules` 里的肉类 + 水产合并）、「🥦 蔬菜」、「🛒 其他」三块，小标题带件数（`.stock-sub`）。**只分这两类是用户明确要求**——按完整分类拆会变成每块只剩一两样，反而不如不分。空的那块不出小标题。实测：肉 7 件 / 蔬菜 13 件 / 其他 5 件。离线缓存与版本号升至 v118。
 
 - 2026-08-06：**牛奶还是两条——真因是「同一张单里」重复，不是缓存**（用户："我还是在现有食材里看到了两个悦鲜活"）。v116 只放宽了比对口径，但 `dedupeManualLines` 有一条 `if (first.receiptId === row.receiptId) return;`——**特意跳过同单重复**，理由是"小票本来就写了两行"。可这两条恰恰在同一张单里：一单要滚好几屏截图，重叠部分被读了两遍，而 `recognizeReceipts` 合并多张照片时用的是**原文** key（`${item.name}|${item.amount}`），两遍的写法差一点（带不带 `950ml`）就都进来了。两处一起修：① `recognizeReceipts` 的合并 key 改成 `normalizeItemName(name)|parseAmount(amount)`，重复在入账前就挡掉；② 去掉 `dedupeManualLines` 里的同单豁免——**v99 加了 `count` 之后，真买两份是同一行 `count:2`，不会写成两行一模一样的**，那条豁免已经没有存在理由。实测：同一张单里的两条牛奶被清成一条，生菜不受影响。离线缓存与版本号升至 v117。
 

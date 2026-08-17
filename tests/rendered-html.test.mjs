@@ -1390,13 +1390,28 @@ test("offers the three cooking methods while editing a plan day", async () => {
   assert.doesNotMatch(chipFn.slice(0, 600), /if \(!chips.length\) return;/);
 });
 
+test("splits the stock list into meat and vegetables only", async () => {
+  const { elements } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  const stock = elements.get("boughtFoods").innerHTML;
+
+  // 用户明确"只分这两类"，分太细每块只剩一两样，反而不如不分。
+  const heads = [...stock.matchAll(/class="stock-sub">([^<]+)</g)].map(m => m[1].replace(/\s+/g, ""));
+  assert.ok(heads.length <= 3);
+  assert.ok(heads.every(head => /肉|蔬菜|其他/.test(head)));
+  // 肉和水产合成一块「肉」。
+  assert.match(html, /rule.name === "肉类" \|\| rule.name === "水产"/);
+  // 空的那块不出小标题。
+  assert.match(html, /\.filter\(group => group.rows.length\)/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v117"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v118"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
