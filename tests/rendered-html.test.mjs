@@ -1495,6 +1495,25 @@ test("strips the plan icons that v123 left behind", async () => {
   assert.match(html, /cleanStoredPlanIcons\(\);/);
 });
 
+test("keeps chillies out of the rice bucket", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 「小米椒」既不含「小米辣」也不含「辣椒」，前面两条规则都拦不住，一路掉到
+  // rice 的「小米」上（用户："小米椒被归到大米类别了"）。
+  assert.equal(evaluate('foodIdForItem("小米椒")'), "seasoning");
+  assert.equal(evaluate('foodIdForItem("朝天椒")'), "seasoning");
+  assert.equal(evaluate('foodIdForItem("小米辣")'), "seasoning");
+  // 真的米别被误伤。
+  assert.equal(evaluate('foodIdForItem("五常大米")'), "rice");
+  assert.equal(evaluate('foodIdForItem("泰国香米")'), "rice");
+  assert.equal(evaluate('foodIdForItem("小米")'), "rice");
+  // 调料不进「现有食材」，也不进单价对比。
+  assert.equal(evaluate('NOT_INGREDIENT.includes("seasoning")'), true);
+  // 存量里已经归错的行靠启动时的重推导修正，不用用户手工改。
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /const fresh = foodIdForItem\(row.item\);/);
+});
+
 test("writes Member's Mark as 山姆 and always shows the buy count", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1563,7 +1582,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v126"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v127"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

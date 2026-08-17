@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v126`
+- 当前离线缓存：`nutriflow-pwa-v127`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**小米椒被归成大米**（用户："小米椒被归到大米类别了"）。`purchaseItemAliases` 里 `seasoning` 只写了「小米辣」、`pepper` 只写了「辣椒」，「小米椒」两条都不匹配，一路掉到最后 `rice` 的「小米」上。给 `seasoning` 补「小米椒」「朝天椒」（它排在 `rice` 前面，先命中）。真的米（五常大米/泰国香米/小米）不受影响。存量里已经归错的行靠启动时 `healManualFoodIds()` 的重推导自动修正，用户不用手工改。离线缓存与版本号升至 v127。
 
 - 2026-08-17：**「Member's Mark」缩成「山姆」、统计里买过一次的也写「1 次」**。离线缓存与版本号升至 v126。
   - 山姆自有品牌在小票上写作「Member's Mark」，一行里光牌子就占掉小半行，品名被挤到第二行（用户："太长了，搞得每次都要换行"）。新增 `shortBrand()`，撇号的直体 `'`、弯体 `’`、反引号和「members mark」都认。**录入时换、存量也换**——只在录入时处理的话，已经记下的那些永远不变，所以 `healManualFoodIds()` 里加了一趟改名（和 v112 修分类时踩过的坑一样）。
