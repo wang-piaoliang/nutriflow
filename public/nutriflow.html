@@ -565,7 +565,7 @@ summary.week-block-head::after{
 .dining-add-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .dining-add-row input{flex:1 1 120px;min-width:0}
 .dining-add-row button{flex:0 0 auto;padding:9px 18px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
-.dining-entry{padding:12px 0;border-top:1px solid var(--line)}
+.dining-entry{padding:10px 0;border-top:1px solid var(--line)}
 .dining-entry:first-child{border-top:none}
 /* 一条记录 = 一行：店名 + 右边「¥价格 · 日期 · 照片」+ 一支小铅笔。
    价格原来独占一行，一条记录就要三行，列表拉得老长（用户："价格也不用独立成行"）。 */
@@ -573,7 +573,6 @@ summary.week-block-head::after{
 .dining-head strong{font-size:15px;overflow-wrap:anywhere;min-width:0}
 .dining-meta{margin-left:auto;display:flex;align-items:baseline;gap:6px;white-space:nowrap;color:var(--muted);font-size:13px}
 .dining-meta .price{color:var(--text);font-size:15px;font-weight:600}
-.dining-meta .price.missing{color:var(--muted);font-size:13px;font-weight:400}
 /* 编辑按钮就一支线条铅笔，和顶栏的设置图标一个质感——emoji ✏️ 在 iOS 上是彩色
    立体的，跟这一页格格不入（用户："编辑的小icon太丑了，就用那种小笔"）。 */
 .dining-edit{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
@@ -583,9 +582,15 @@ summary.week-block-head::after{
 .dining-field{flex:1 1 120px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:6px 9px;font-size:16px;min-width:0}
 .dining-field.place{flex:1 1 100%;font-weight:600}
 .dining-del{margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--muted);font-size:13px;cursor:pointer}
+/* 在外就餐是个流水列表：一条记录三四张大图就占满整屏，九笔要划半天（用户："乱七八糟"）。
+   这里的缩略图只当索引用——小方块排成一行，多了横向滑，点开照样是大图。
+   饮食页那边是"看今天吃了啥"，图大一点有意义，所以只收窄 .dining-entry 里的。 */
+.dining-entry .photo-grid{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none}
+.dining-entry .photo-grid::-webkit-scrollbar{display:none}
+.dining-entry .photo-tile{flex:0 0 auto;width:54px;height:54px;aspect-ratio:auto;border-radius:7px}
 .dining-note{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5}
 /* 这顿吃了什么。比备注显眼一点，用正文色。 */
-.dining-items{display:block;margin-top:6px;color:var(--text);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.dining-items{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
 .hero .metric span{color:#5f6e63}
 /* 本周吃到磁贴：图标和数字放一起当主体，分类名放大一点、更清楚。 */
 #dietLog .metric b{font-size:17px}
@@ -1242,6 +1247,7 @@ summary.week-block-head::after{
           <span class="subtle"><button class="price-fold" type="button" id="priceFold" title="收起单价对比" aria-label="收起单价对比">▾</button><span id="priceMeta">0 种</span></span>
         </div>
         <div class="note" id="priceNote">统一换算成元/kg，条越长越贵。同一食材多次采购时，最贵的那次标红、最便宜的标绿，中间的标黄。只统计按重量购买且有金额的食材。</div>
+        <div class="bars" id="priceCategoryAvg"></div>
         <div class="tabs" id="priceTabs"></div>
         <div class="bars" id="priceCompare"></div>
       </article>
@@ -1361,7 +1367,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v129</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v130</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2012,6 +2018,8 @@ async function autoRecognize(owner, saved, options){
         }
       }
       addDietEntry(context.date, meal, items, place, diningId);
+      // 餐次写回照片本身：「在外就餐」靠它只借属于那一顿的照片，不然一借借一天。
+      void stampPhotoMeal(photo.id, meal);
       markRecognized(photo.id);
       dequeueRecognition(photo.id);
       added += 1;
@@ -2241,6 +2249,44 @@ function addDining(entry){
   saveDining();
   // 返回这条记录，好让调用方把刚选的照片挂到它的 id 上。
   return record;
+}
+// 照片是零零散散补的：可能只是给「已经记过的那顿饭」补一张账单
+// （用户："我会上传一些照片，你自己增量去补充里面的信息，有可能是一顿已经记录的饭的价格"）。
+// 所以识别完之后回头看一眼——同一天同一顿要是已经有一笔了，就并进去，而不是并排放两条。
+// **只在两条互补时才合并**：同一个字段两边都填了且值不一样，那多半真是吃了两顿，不能动。
+function mergeableDining(left, right){
+  if (String(left.date || "").slice(0, 10) !== String(right.date || "").slice(0, 10)) return false;
+  const leftMeal = diningMealOf(left);
+  const rightMeal = diningMealOf(right);
+  if (leftMeal && rightMeal && leftMeal !== rightMeal) return false;
+  const clash = (a, b) => a != null && a !== "" && b != null && b !== "" && String(a) !== String(b);
+  if (clash(left.price, right.price)) return false;
+  if (clash(left.place, right.place)) return false;
+  return true;
+}
+async function mergeDiningWithExisting(entryId){
+  const entry = diningEntries.find(item => item.id === entryId);
+  if (!entry) return entryId;
+  const target = diningEntries.find(other => other.id !== entry.id && mergeableDining(entry, other));
+  if (!target) return entryId;
+  // 谁有值算谁的。两边都空就还是空。
+  if (target.price == null || target.price === "") target.price = entry.price;
+  if (!target.place) target.place = entry.place;
+  if (!target.note) target.note = entry.note;
+  // 识别出来的菜挂在 dietEntries 上，跟着换个 diningId，不然菜和这笔就断开了。
+  dietEntries.forEach(record => { if (record.diningId === entry.id) record.diningId = target.id; });
+  saveDietEntries();
+  // 照片改挂到留下来的那一笔上，否则删掉临时记录后它们就成了孤儿。
+  try{
+    const photos = await listPrivatePhotos();
+    await Promise.all(photos
+      .filter(photo => photo.receiptId === diningOwner(entry.id))
+      .map(photo => putPrivatePhoto({...photo, receiptId: diningOwner(target.id)})));
+  }catch(error){
+    console.warn("NutriFlow could not move photos to the merged dining record", error);
+  }
+  removeDining(entry.id);
+  return target.id;
 }
 function updateDiningPrice(id, price){
   const entry = diningEntries.find(e => e.id === id);
@@ -2576,9 +2622,9 @@ async function renderDining(){
   resetPhotoUrls("dining");
   const entries = diningEntries.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const totalKnown = entries.reduce((sum, e) => sum + (typeof e.price === "number" && !isNaN(e.price) ? e.price : 0), 0);
-  const missing = entries.filter(e => e.price == null || isNaN(e.price)).length;
   const meta = document.getElementById("diningMeta");
-  if (meta) meta.textContent = `${entries.length} 笔 · ¥${totalKnown.toFixed(2).replace(/\.00$/, "")}${missing ? ` · ${missing} 笔待补价` : ""}`;
+  // 原来还会写「N 笔缺价格」，按用户要求去掉：没写金额本身就看得出来。
+  if (meta) meta.textContent = `${entries.length} 笔 · ¥${totalKnown.toFixed(2).replace(/\.00$/, "")}`;
   list.innerHTML = entries.map(entry => {
     const owner = diningOwner(entry.id);
     // 这一笔的照片：自己挂的 + 当天饮食记录里那顿的。餐食照片是传在饮食页
@@ -2587,16 +2633,13 @@ async function renderDining(){
     // 具体吃了啥"）。这里只是把同一批照片借过来显示，不复制、不改归属——
     // 删照片仍然只在它原本挂的地方删。
     // 但整天一起借就借多了：中午在外面吃、晚上在家做，晚饭那几张也被拉过来
-    // （用户："把不是在外就餐的那张图也拉过来了，要区分下是午餐的图还是晚餐的图"）。
-    // 照片存的时候现在会记下是哪一顿，按餐次挑。老照片没有这个标记——那一天要是
-    // 一张带标记的都没有，就维持原样全部借过来，免得历史记录突然空掉。
+    // （用户两次反馈："把不是在外就餐的那张图也拉过来了"、"还是会把午餐的照片拉到晚餐来"）。
+    // 照片现在带餐次标记（存的时候写、识别的时候再补一次），**只借标记对得上的那几张**。
+    // 第一版留了个"这一天没有任何标记就全借"的退路，结果等于没改——老照片全都没标记，
+    // 于是每天都走退路。宁可老记录少几张图，也别把晚饭的照片挂到午饭上。
     const dayPhotos = photosByOwner[dietPhotoOwner(String(entry.date || "").slice(0, 10))] || [];
     const diningMeal = diningMealOf(entry);
-    const dayHasMealTags = dayPhotos.some(photo => photo.meal);
-    const borrowed = dayPhotos.filter(photo => {
-      if (!diningMeal || !dayHasMealTags) return true;
-      return photo.meal === diningMeal;
-    });
+    const borrowed = dayPhotos.filter(photo => diningMeal ? photo.meal === diningMeal : !photo.meal);
     const own = photosByOwner[owner] || [];
     const seenPhotos = new Set(own.map(photo => photo.id));
     const photos = own.concat(
@@ -2610,8 +2653,8 @@ async function renderDining(){
       <div class="dining-head">
         <strong>${label}</strong>
         <span class="dining-meta">
-          <span class="price${priceVal === "" ? " missing" : ""}">${priceVal === "" ? "待补价" : `¥${priceVal}`}</span>
-          <span>· ${mealTag}${(entry.date || "").slice(5)} · ${photoAddLabel(owner, photos.length)}</span>
+          ${priceVal === "" ? "" : `<span class="price">¥${priceVal}</span>`}
+          <span>${priceVal === "" ? "" : "· "}${mealTag}${(entry.date || "").slice(5)} · ${photoAddLabel(owner, photos.length)}</span>
         </span>
         <button type="button" class="dining-edit${editing ? " on" : ""}" data-dining-edit="${entry.id}" title="${editing ? "改完了" : "编辑这一笔"}" aria-label="${editing ? "改完了" : "编辑这一笔"}">${editing ? CHECK_ICON : PENCIL_ICON}</button>
       </div>
@@ -2710,10 +2753,14 @@ function bindDiningForm(){
       return;
     }
     hint("后台识别中…可以接着记下一笔。");
-    void autoRecognize(owner, saved).then(added => {
+    void autoRecognize(owner, saved).then(async added => {
+      // 识别完再判断：这张图要是给「已经记过的那顿」补的价，就并进那一笔，别多出一条。
+      const merged = await mergeDiningWithExisting(entry.id);
       render();
       void renderDining();
-      hint(added ? "已记下。店名或价格认错了，点那条的铅笔直接改。" : "没认出来，点那条的铅笔手填，或者点开大图重试。");
+      hint(added
+        ? (merged === entry.id ? "已记下。店名或价格认错了，点那条的铅笔直接改。" : "已经补到那天原来那笔上了。")
+        : "没认出来，点那条的铅笔手填，或者点开大图重试。");
       setTimeout(() => hint(""), 6000);
     }).catch(error => {
       console.error(error);
@@ -3027,6 +3074,19 @@ async function normalizePhotoBlob(blob){
   }
   const normalized = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.86));
   return normalized || blob;
+}
+// 给一张已经存好的照片补上餐次。识别的时候才知道这是午饭还是晚饭，
+// 而「在外就餐」要靠这个标记挑照片（用户："在外就餐还是会把午餐的照片拉到晚餐来"）。
+async function stampPhotoMeal(photoId, meal){
+  if (!photoId || !meal) return;
+  try{
+    const photos = await listPrivatePhotos();
+    const photo = photos.find(item => item.id === photoId);
+    if (!photo || photo.meal === meal) return;
+    await putPrivatePhoto({...photo, meal});
+  }catch(error){
+    console.warn("NutriFlow could not tag a photo with its meal", error);
+  }
 }
 async function putPrivatePhoto(record){
   const database = await openPhotoDatabase();
@@ -3361,6 +3421,30 @@ function comparablePurchases(){
       totalPrice: Number(purchase.totalPrice),
       perKilo: pricePerKilo(purchase)
     }));
+}
+// 各大类的平均单价（用户："对比下肉类、水产，等的平均单价，就是说这类别的均价"）。
+// 用「这一类的总金额 ÷ 总重量」，不是各食材单价的算术平均——后者会让买 150g 的金针菇
+// 和买 5kg 的米一样重，算出来的均价没法拿来判断"这一类贵不贵"。
+function categoryUnitPrices(){
+  const totals = new Map();
+  comparablePurchases().forEach(entry => {
+    const name = priceCategoryOf(entry.foodId) || "其他";
+    const acc = totals.get(name) || {name, spend: 0, grams: 0, kinds: new Set()};
+    acc.spend += entry.totalPrice;
+    acc.grams += entry.grams;
+    acc.kinds.add(entry.key);
+    totals.set(name, acc);
+  });
+  return Array.from(totals.values())
+    .filter(acc => acc.grams > 0 && acc.spend > 0)
+    .map(acc => ({
+      name: acc.name,
+      icon: (purchaseGroupRules.find(rule => rule.name === acc.name) || {icon: "🛒"}).icon,
+      perKilo: acc.spend / (acc.grams / 1000),
+      kinds: acc.kinds.size,
+      grams: acc.grams
+    }))
+    .sort((a, b) => b.perKilo - a.perKilo);
 }
 function groupPricesByFood(){
   const groups = new Map();
@@ -4015,6 +4099,19 @@ function renderPriceComparison(){
       renderPriceComparison();
     });
   });
+  // 各类均价排在分类筛选之上，且不跟着筛选变——它存在的意义就是横向比几类之间的贵贱。
+  const averages = categoryUnitPrices();
+  const avgCeiling = averages.reduce((max, row) => Math.max(max, row.perKilo), 0);
+  const avgBox = document.getElementById("priceCategoryAvg");
+  if (avgBox){
+    avgBox.innerHTML = averages.length ? `<div class="price-group">
+      <div class="price-group-head"><strong>📊 各类均价</strong><span class="subtle">总金额 ÷ 总重量</span></div>
+      ${averages.map(row => `<div class="bar-row">
+        <div class="bar-head"><span>${row.icon} ${row.name} · ${row.kinds} 种</span><b>${row.perKilo.toFixed(1)} 元/kg</b></div>
+        <div class="track"><div class="fill" style="width:${avgCeiling ? Math.max(4, Math.round(row.perKilo / avgCeiling * 100)) : 0}%"></div></div>
+      </div>`).join("")}
+    </div>` : "";
+  }
   const groups = activePriceCategory === "all"
     ? allGroups
     : allGroups.filter(group => priceCategoryOf(group.latest.foodId) === activePriceCategory);
@@ -4654,7 +4751,7 @@ function applyPriceFold(){
     btn.textContent = folded ? "▸" : "▾";
     btn.title = btn.ariaLabel = folded ? "展开单价对比" : "收起单价对比";
   }
-  ["priceNote", "priceTabs", "priceCompare"].forEach(id => {
+  ["priceNote", "priceCategoryAvg", "priceTabs", "priceCompare"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.hidden = folded;
   });

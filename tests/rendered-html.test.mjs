@@ -996,7 +996,9 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   assert.match(html, /data-dining-edit="/);
   assert.match(html, /data-dining-field="place"/);
   assert.match(html, /data-dining-field="date"/);
-  assert.match(html, /class="price\$\{priceVal === "" \? " missing" : ""\}"/);
+  // 「待补价」按用户要求去掉：没写金额本身就看得出来。
+  assert.match(html, /\$\{priceVal === "" \? "" : `<span class="price">¥\$\{priceVal\}<\/span>`\}/);
+  assert.ok(!/待补价/.test(html), "「待补价」该删掉");
 });
 
 test("keeps the quantity when a receipt line has more than one unit", async () => {
@@ -1363,9 +1365,11 @@ test("shows the meal photos on the matching eating-out record", async () => {
   assert.match(html, /const dayPhotos = photosByOwner\[dietPhotoOwner\(String\(entry.date \|\| ""\).slice\(0, 10\)\)\] \|\| \[\];/);
   // 但不能整天一起借：中午在外面吃、晚上在家做，晚饭那几张也会被拉过来
   // （用户："把不是在外就餐的那张图也拉过来了"）。按餐次挑。
-  assert.match(html, /return photo.meal === diningMeal;/);
-  // 老照片没有餐次标记——那一天一张带标记的都没有时维持原样，免得历史记录突然空掉。
-  assert.match(html, /if \(!diningMeal \|\| !dayHasMealTags\) return true;/);
+  assert.match(html, /const borrowed = dayPhotos.filter\(photo => diningMeal \? photo.meal === diningMeal : !photo.meal\);/);
+  // 第一版留了个"这一天没有任何标记就全借"的退路，等于没改——老照片全都没标记。
+  assert.ok(!/dayHasMealTags/.test(html), "不该再有整天全借的退路");
+  // 识别的时候也要把餐次补回照片，不然只有新拍的才有标记。
+  assert.match(html, /void stampPhotoMeal\(photo.id, meal\);/);
   // 自己挂的排前面，借来的去重后接上。
   assert.match(html, /borrowed.filter\(photo => !seenPhotos.has\(photo.id\)\)/);
   // 借来的只是显示，不能带删除属性——它归属别处，在这里删会把原处那张一起删掉。
@@ -1574,6 +1578,36 @@ test("folds the purchase history but leaves the add form open", async () => {
   assert.match(css, /\.section-title\.tappable\{[^}]*cursor:pointer/);
 });
 
+test("averages the unit price per category", async () => {
+  const { evaluate, elements } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户："对比下肉类、水产，等的平均单价，就是说这类别的均价"。
+  const rows = evaluate("categoryUnitPrices()");
+  assert.ok(rows.length > 1, "至少要能比出两类来");
+  // 均价是「总金额 ÷ 总重量」，不是各食材单价的算术平均——后者会让 150g 的金针菇
+  // 和 5kg 的米一样重，算出来没法判断这一类贵不贵。
+  const meat = rows.find(row => row.name === "肉类");
+  assert.ok(meat, `应该有肉类：${rows.map(row => row.name).join(" ")}`);
+  const byHand = evaluate(`(() => {
+    const rows = comparablePurchases().filter(entry => priceCategoryOf(entry.foodId) === "肉类");
+    const spend = rows.reduce((sum, entry) => sum + entry.totalPrice, 0);
+    const grams = rows.reduce((sum, entry) => sum + entry.grams, 0);
+    return spend / (grams / 1000);
+  })()`);
+  assert.equal(Math.round(meat.perKilo * 100), Math.round(byHand * 100));
+  // 贵的排前面。
+  const prices = rows.map(row => row.perKilo);
+  assert.deepEqual(prices, prices.slice().sort((a, b) => b - a));
+  // 排在分类筛选之上，而且不跟着筛选走——横向比几类之间的贵贱才是它存在的意义。
+  const avg = elements.get("priceCategoryAvg").innerHTML;
+  assert.match(avg, /各类均价/);
+  assert.match(avg, /元\/kg/);
+  assert.ok(html.indexOf('id="priceCategoryAvg"') < html.indexOf('id="priceTabs"'));
+  // 跟着单价对比一起折叠，否则收起来还剩半张卡片。
+  assert.match(html, /\["priceNote", "priceCategoryAvg", "priceTabs", "priceCompare"\]/);
+});
+
 test("breaks the spend down by store and titles the overall donut", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1631,7 +1665,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v129"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v130"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
