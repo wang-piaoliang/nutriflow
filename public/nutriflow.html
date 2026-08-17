@@ -400,17 +400,17 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .plan-week + .plan-week{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .plan-week-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;cursor:pointer;list-style:none}
 .plan-week-head::-webkit-details-marker{display:none}
-.plan-week-head strong{font-size:14px;font-weight:600}
+.plan-week-head strong{font-size:13px;font-weight:600;color:var(--muted)}
 .plan-days{display:grid;gap:6px}
 .plan-day{display:grid;grid-template-columns:50px minmax(0,1fr);gap:6px;align-items:start}
-.plan-day label{font-size:12px;color:var(--muted);padding-top:6px;line-height:1.2}
+.plan-day label{font-size:12px;color:var(--muted);padding-top:8px;line-height:1.25}
 .plan-day label small{display:block;font-size:11px;opacity:.75}
 /* 字号不能低于 16px——低了 iOS 一聚焦就把整页放大（v106 刚修过）。
    要显得小一点只能收紧行高和内边距，不能动字号。 */
 /* iOS 只在「聚焦那一刻」按 font-size 决定要不要放大整页。所以平时用小字号，
    :focus 时才升到 16px——既看着小，聚焦也不会把页面顶大（用户两次反馈：
    先是"点编辑整个页面会放大"，后是"框里的字太大了"）。 */
-.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit;font-size:13px;line-height:1.45;resize:vertical}
+.plan-text{width:100%;min-width:0;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:7px 9px;font:inherit;font-size:13px;line-height:1.5;resize:none;overflow:hidden;min-height:32px}
 .plan-text:focus{font-size:16px}
 .plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:-2px}
 /* 食材 chip 只是辅助输入，字要比正文小一档，别喧宾夺主（用户要求调小）。 */
@@ -1152,10 +1152,10 @@ summary.week-block-head::after{
       <article class="card desktop-span">
         <div class="section-title">
           <h2>每周计划</h2>
-          <span class="subtle"><button class="price-fold" type="button" id="planFold" title="收起每周计划" aria-label="收起每周计划">▾</button>想吃啥先记下</span>
+          <span class="subtle"><button class="price-fold" type="button" id="planFold" title="收起每周计划" aria-label="收起每周计划">▾</button>点一天就能写</span>
         </div>
         <div id="planBody">
-          <div class="note">像备忘录一样写，随手改随时存。点下面的食材可以直接加进当天。</div>
+          
           <div id="mealPlanList"></div>
         </div>
       </article>
@@ -1336,7 +1336,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v114</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v115</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3416,7 +3416,7 @@ function renderMealPlan(){
       const value = dayValue(date);
       return `<div class="plan-day">
         <label for="plan-${value}">${WEEKDAY_NAMES[date.getDay()] === "日" ? "周日" : `周${WEEKDAY_NAMES[date.getDay()]}`} <small>${date.getMonth() + 1}/${date.getDate()}</small></label>
-        <textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="2" placeholder="早/午/晚想吃啥">${escapeAttribute(mealPlans[value] || "")}</textarea>
+        <textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="1" placeholder="想吃啥">${escapeAttribute(mealPlans[value] || "")}</textarea>
       </div>`;
     }).join("");
     const body = `<div class="plan-days">${days}</div>`;
@@ -3426,7 +3426,10 @@ function renderMealPlan(){
   }).join("");
   // 输入即存。不重渲染——重渲染会把正在打字的框换掉、光标和键盘一起跳走。
   box.querySelectorAll("[data-plan-day]").forEach(area => {
-    area.addEventListener("input", () => setMealPlan(area.dataset.planDay, area.value));
+    // 高度跟着内容走：固定行数会让空白的天和写满的天一样高，看着虚胖。
+    const grow = () => { area.style.height = "auto"; area.style.height = `${area.scrollHeight}px`; };
+    grow();
+    area.addEventListener("input", () => { setMealPlan(area.dataset.planDay, area.value); grow(); });
     area.addEventListener("focus", () => showPlanChips(area, chips));
   });
 }
@@ -3437,8 +3440,10 @@ function showPlanChips(area, chips){
   row.className = "plan-chips";
   // 做法只有这三种（用户明确："只有三种，炒、空气炸锅、蒸"），排在食材前面——
   // 一般是先想"怎么做"再挑料，而且它固定三个、位置稳定，好按。
+  // 插的是完整的「（炒）」而不是光一个「炒」——用户自己补括号就总有一半没闭上
+  // （截图里满屏的「（空气炸锅」）。
   const methods = ["炒", "空气炸锅", "蒸"]
-    .map(name => `<button type="button" class="plan-chip method" data-plan-add="${name}">${name}</button>`).join("");
+    .map(name => `<button type="button" class="plan-chip method" data-plan-add="（${name}）">${name}</button>`).join("");
   row.innerHTML = methods + chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
   area.insertAdjacentElement("afterend", row);
   row.querySelectorAll("[data-plan-add]").forEach(button => {
@@ -3448,6 +3453,8 @@ function showPlanChips(area, chips){
       const name = button.dataset.planAdd;
       area.value = area.value.trim() ? `${area.value.replace(/\s+$/, "")} ${name}` : name;
       setMealPlan(area.dataset.planDay, area.value);
+      area.style.height = "auto";
+      area.style.height = `${area.scrollHeight}px`;
       area.focus();
     });
   });

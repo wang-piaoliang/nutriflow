@@ -1199,7 +1199,11 @@ test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
   // 用 mousedown 而不是 click：click 之前 textarea 已经 blur，插入位置会丢。
   assert.match(html, /button.addEventListener\("mousedown", event => \{/);
   // 输入即存但不重渲染，否则正在打字的框会被换掉。
-  assert.match(html, /area.addEventListener\("input", \(\) => setMealPlan\(area.dataset.planDay, area.value\)\);/);
+  assert.match(html, /area.addEventListener\("input", \(\) => \{ setMealPlan\(area.dataset.planDay, area.value\); grow\(\); \}\);/);
+  // 高度跟着内容走：固定行数会让空白的天和写满的天一样高。
+  assert.match(html, /area.style.height = `\$\{area.scrollHeight\}px`;/);
+  // 做法插的是完整的「（炒）」，不让人自己补括号——否则满屏都是没闭合的左括号。
+  assert.match(html, /data-plan-add="（\$\{name\}）"/);
 });
 
 test("never lets iOS zoom the page when a field gets focus", async () => {
@@ -1382,7 +1386,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v114"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v115"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

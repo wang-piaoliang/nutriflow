@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v114`
+- 当前离线缓存：`nutriflow-pwa-v115`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**每周计划排版收拾干净**（用户："这个页面，每周计划很不和谐"，附截图）。截图里暴露了几处：① **括号不闭合**——做法 chip 只插「炒」，人自己敲的「（」全没合上，满屏「（空气炸锅」。改成整体插 `（${name}）`。② **每天的框一样高**——`rows="2"` 写死，空白的天和写满两行的天一样高，一片虚胖。改 `rows="1"` + `grow()` 按 `scrollHeight` 自适应，渲染时、输入时、点 chip 追加后都要重算（追加那次容易漏）。③ **和别的板块不是一路**——`.plan-text` 原来是白底 + 1px 边框，像表单；改成和列表同款的 `--surface-2` 底色、去边框、`resize:none` + `overflow:hidden`（自适应高度后拖拽把手没意义）。周标题压成灰色小字。④ 删掉卡片顶部那段占两行的说明，改成标题旁一句「点一天就能写」。离线缓存与版本号升至 v115。
 
 - 2026-08-06：**每周计划编辑时可以选做法**（用户："只有三种，炒、空气炸锅、蒸"）。`showPlanChips` 里在食材 chip **前面**插三个做法 chip——一般先想"怎么做"再挑料，而且做法固定三个、位置稳定好按；样式上用绿框绿字（`.plan-chip.method`）和食材 chip 区分开。**顺带修了一个隐患**：原来 `if (!chips.length) return;` 会在「现有食材为空」时整行不显示，那样连做法也选不了，已去掉。点击仍走 `mousedown` + `preventDefault`（click 之前 textarea 已 blur，插入位置会丢）。CDP 实测：点做法 chip 正确追加成「番茄炒蛋 炒」。离线缓存与版本号升至 v114。
 
