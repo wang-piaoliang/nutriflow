@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v130`
+- 当前离线缓存：`nutriflow-pwa-v131`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**底栏顺序改成 饮食 → 采购 → 食材 → 营养 → 计划**（用户要求）。采购和食材对调：先记账再看库存，跟实际动作的先后一致。断言里的顺序一并改掉。离线缓存与版本号升至 v131。
 
 - 2026-08-17：**在外就餐缩略图收窄、照片真按餐次分、各类均价、增量补价**。离线缓存与版本号升至 v130。
   - **缩略图从 86px 网格改成 54px 一排**（用户："乱七八糟"）。九笔记录、每笔三四张大图，一屏只能看一条。在外就餐这里的图只当索引用：小方块横向排，多了横滑，点开照样是大图。只收窄 `.dining-entry` 里的——饮食页那边是"看今天吃了啥"，图大一点有意义。

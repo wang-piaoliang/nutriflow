@@ -150,11 +150,11 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /-webkit-touch-callout:none/);
   assert.match(html, /id="photoViewer"/);
   assert.match(html, /photoViewerImage"\)\.addEventListener\("click", closePhotoViewer\)/);
-  // 底栏顺序：饮食 → 食材 → 采购 → 营养 → 计划，饮食是落地页。
+  // 底栏顺序：饮食 → 采购 → 食材 → 营养 → 计划（用户定的），饮食是落地页。
   const navAt = view => html.indexOf(`data-view="${view}"`);
-  assert.ok(navAt("dietLog") < navAt("shopping"));
-  assert.ok(navAt("shopping") < navAt("buying"));
-  assert.ok(navAt("buying") < navAt("foods"));
+  assert.ok(navAt("dietLog") < navAt("buying"));
+  assert.ok(navAt("buying") < navAt("shopping"));
+  assert.ok(navAt("shopping") < navAt("foods"));
   assert.ok(navAt("foods") < navAt("home"));
   assert.match(html, /<section class="view active" id="dietLog">/);
   assert.match(html, /data-view="home"><b>◎<\/b><span>计划<\/span>/);
@@ -1665,7 +1665,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v130"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v131"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
