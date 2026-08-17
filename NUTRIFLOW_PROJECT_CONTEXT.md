@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v122`
+- 当前离线缓存：`nutriflow-pwa-v123`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**四件套：食材归类、计划框字号、计划里补 emoji、采购历史可折叠**。离线缓存与版本号升至 v123。
+  - **玉米/土豆/毛豆算蔬菜，只有牛油果归其他**（用户："只有牛油果是其他，别的玉米/土豆/毛豆，都算蔬菜吧"）。新增共用的 `stockBucket(foodId)`：蔬菜 0 / 肉+水产 1 / 其他 2，`AS_VEGETABLE = ["corn","potato","sweetPotato","edamame","tofu","enoki","mushroom"]` 单独并进蔬菜。「现有食材」和计划里的食材 chip 都改走这一个函数——这两处已经因为顺序和分组各自跑偏过两次，共用一个来源才不会再分家。实测：菜 15 → 肉 5 → 其他 1（只剩牛油果）。
+  - **计划框的字一点就变大**（用户："我一点开又变得很奇怪，字又放大了，丑得很，和下面也贴的太近"）。原来靠 `.plan-text:focus{font-size:16px}` 躲 iOS 的聚焦缩放，代价就是聚焦那一下字会突然变大。改成字号恒定 16px（iOS 不缩放）+ 整个框 `transform:scale(.82)`（视觉上仍是 13px），聚焦前后完全一致。缩放不改布局高度，所以外面套一层 `.plan-text-wrap`，`growPlanText` 按同样比例钉它的高度，否则框下面会空一截；chip 那排也要挂到外壳后面，塞进外壳会被 `overflow:hidden` 切掉。`.plan-chips` 上边距 -2px → 6px。实测 390px 宽下框 288×52、chip 距离 12px、无横向溢出。
+  - **计划里的菜名自动配 emoji**（用户："我打完每周计划，你能帮我加上小icon么，代表这个食物的；三文鱼对应的icon也不太对"）。新增 `decoratePlanText()`，复用小票那份 `purchaseItemAliases` 关键词表认菜名并在前面补图标——两边认的东西才一致。只认 **2 字以上**的词（「鱼」「米」「牛」会在三文鱼、玉米、牛油果里到处误伤），长词优先（「白萝卜」不被「萝卜」抢先）。补图标放在 **blur** 而不是 input：中文输入法还没上屏就动 value 会把光标和候选词一起搞乱。函数幂等，反复失焦不会越叠越多。`salmon` 的图标 🐟 → 🍣（原来和鳕鱼、鲈鱼共用一个）。实测「三文鱼 香菇 土豆 生菜／萝卜排骨汤 玉米烙」→「🍣三文鱼 🍄香菇 🥔土豆 🥬生菜／🥬萝卜🥩排骨汤 🌽玉米烙」。
+  - **采购历史可折叠，记一次采购不再折叠**（用户："采购历史没法折叠，其他都可以好像"、"下面那些小字都删掉，直接展开采购的功能，不用折叠，这是最常用的功能"）。`purchaseFold` 按现有 `stockFold` 的写法加，只折 `#purchaseHistory`；`buyAddBox` 从 `<details>` 改成常驻 `<div>`。删掉两段说明小字，但 `.buy-add-hint` 元素保留并默认 `hidden`——识别进度（`jobHint`）就写在这儿，有话说时才冒出来。搜索跳转命中折起来的历史时会先自动展开，否则滚过去是一片空白。
 
 - 2026-08-06：**「现有食材」分区顺序改成 菜 → 肉 → 其他**（用户："顺序反了"）。v118 加分区时写的是肉在前，和 v121 计划里食材 chip 的「先菜后肉」不一致——同一批东西在两个页面两个顺序，用起来会别扭。已加断言锁住顺序，避免以后两处再走偏。实测：🥦 蔬菜 13 → 🥩 肉 7 → 🛒 其他 5。离线缓存与版本号升至 v122。
 

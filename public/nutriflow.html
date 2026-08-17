@@ -405,14 +405,15 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .plan-day{display:grid;grid-template-columns:50px minmax(0,1fr);gap:6px;align-items:start}
 .plan-day label{font-size:12px;color:var(--muted);padding-top:8px;line-height:1.25}
 .plan-day label small{display:block;font-size:11px;opacity:.75}
-/* 字号不能低于 16px——低了 iOS 一聚焦就把整页放大（v106 刚修过）。
-   要显得小一点只能收紧行高和内边距，不能动字号。 */
-/* iOS 只在「聚焦那一刻」按 font-size 决定要不要放大整页。所以平时用小字号，
-   :focus 时才升到 16px——既看着小，聚焦也不会把页面顶大（用户两次反馈：
-   先是"点编辑整个页面会放大"，后是"框里的字太大了"）。 */
-.plan-text{width:100%;min-width:0;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:7px 9px;font:inherit;font-size:13px;line-height:1.5;resize:none;overflow:hidden;min-height:32px}
-.plan-text:focus{font-size:16px}
-.plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:-2px}
+/* 字号不能低于 16px——低了 iOS 一聚焦就把整页放大。但 16px 在这儿又太大，
+   而 :focus 时才升到 16px 的做法会让字"一点就突然变大"（用户："我一点开又变得
+   很奇怪，字又放大了"）。所以改成：字号恒定 16px（iOS 不放大），整个框用
+   transform 缩到 .82（视觉上就是 13px），聚焦前后一模一样，不再跳。
+   宽度按 1/.82 放大回来，缩放后正好铺满一行；外面套一层 .plan-text-wrap 负责
+   占位高度（缩放不影响布局高度，不套壳下面会多出一截空白）。 */
+.plan-text-wrap{grid-column:2;min-width:0;overflow:hidden}
+.plan-text{width:calc(100% / .82);min-width:0;border:0;border-radius:10px;background:var(--surface-2);color:var(--text);padding:8px 11px;font:inherit;font-size:16px;line-height:1.5;resize:none;overflow:hidden;min-height:39px;transform:scale(.82);transform-origin:0 0}
+.plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 /* 食材 chip 只是辅助输入，字要比正文小一档，别喧宾夺主（用户要求调小）。 */
 .plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap}
 .plan-chip:active{opacity:.6}
@@ -844,7 +845,6 @@ summary.week-block-head::after{
 }
 .receipt-line small{display:block;margin-top:3px;color:var(--muted);line-height:1.35}
 .price{font-weight:760;text-align:right;white-space:nowrap}
-.private-note{margin:0 0 12px;color:var(--muted);font-size:12px;line-height:1.4}
 /* 隐藏的原生 file input。iOS Safari 的 input[type=file] 不吃 width:1px，会按固有宽度
    （约 166px）铺开；而它是 position:absolute，祖先里若没有定位元素，包含块就是视口——
    于是 .card / .view.active / .app / body 上那几层 overflow:clip 统统裁不到它，它直接
@@ -954,9 +954,6 @@ summary.week-block-head::after{
 .pull-refresh.settling{transition:transform .18s ease,opacity .18s ease}
 /* 自己记一次采购。默认收起来，别把采购历史挤下去。 */
 .buy-add{margin:0 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
-.buy-add>summary{padding:10px 12px;color:var(--muted);font-size:14px;cursor:pointer;list-style:none}
-.buy-add>summary::-webkit-details-marker{display:none}
-.buy-add[open]>summary{border-bottom:1px solid var(--line);color:var(--text);font-weight:600}
 .buy-add-body{padding:12px}
 /* 日期 / 店名 / 📷 必须挤在一行——用 flex-wrap 时 375px 下相机会被挤到第二行，很难看。 */
 .buy-add-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:8px}
@@ -1246,17 +1243,19 @@ summary.week-block-head::after{
       <article class="card">
         <div class="section-title">
           <h2>采购历史</h2>
-          <span class="subtle" id="purchaseMeta">0 条</span>
+          <span class="subtle"><button class="price-fold" type="button" id="purchaseFold" title="收起采购历史" aria-label="收起采购历史">▾</button><span id="purchaseMeta">0 条</span></span>
         </div>
-        <p class="private-note">小票照片仅保存在这台设备，不上传 GitHub；轻点看大图，长按可删除。</p>
-        <details class="buy-add" id="buyAddBox">
-          <summary>＋ 记一次采购</summary>
+        <!-- 记一次采购是这一页最常用的功能，所以不折叠、直接摊开（用户："直接展开
+             采购的功能，不用折叠，这是最常用的功能"）。折叠留给下面的采购历史。 -->
+        <div class="buy-add" id="buyAddBox">
           <div class="buy-add-body">
             <!-- 和饮食页一个规矩：拍张小票就够了，日期店名商品都从照片里读。
                  手填是退路，收进下面那个折叠里（用户："和饮食一样，应该是上传图为主"）。 -->
             <label class="diet-form-photo" id="buyPendingPhoto" title="拍小票，自动读出商品和价格" aria-label="拍小票，自动读出商品和价格">📷 拍张小票就行<input class="photo-input" type="file" accept="image/*" multiple id="buyPhotoInput"></label>
             <div class="pending-thumbs" id="buyPendingThumbs" hidden></div>
-            <p class="buy-add-hint">可以一次多选，也可以连拍几张——都算同一单。传完自动识别并记下，不用再点保存。认错了在下面的采购历史里点开直接改。没配 key 或者认不出来，也会先把照片存着、回头再补。</p>
+            <!-- 留空：这里原来是一段说明小字，用户嫌啰嗦要求删掉。元素本身得留着——
+                 识别进度和结果（jobHint）就写在这儿，只在真有事说的时候才出现。 -->
+            <p class="buy-add-hint" hidden></p>
             <details class="buy-add-manual" id="buyManual">
               <summary>或者手动填</summary>
               <div class="buy-add-row">
@@ -1270,7 +1269,7 @@ summary.week-block-head::after{
             </details>
             <button type="button" id="buySave">保存这次采购</button>
           </div>
-        </details>
+        </div>
         <div id="purchaseHistory"></div>
       </article>
 
@@ -1342,7 +1341,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v122</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v123</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3095,7 +3094,7 @@ function iconForFood(foodId){
     shellfish:"🍤",
     whiteFish:"🐟",
     mackerel:"🐟",
-    salmon:"🐟",
+    salmon:"🍣",
     sardine:"🐟",
     cod:"🐟",
     shrimp:"🍤",
@@ -3405,6 +3404,19 @@ function applyPlanFold(){
 }
 // 现有食材：写计划时点一下就加进当天，省得手打。和「现有食材」清单同一个口径
 // （调料油水不算），已经勾掉吃完的也不再出现。
+// 「菜 / 肉 / 其他」的判定。现有食材和计划里的 chip 共用这一套——
+// 之前两处各写各的，顺序和归类就走偏过（用户连着提了两次）。
+// 玉米、土豆、毛豆在营养分类里算主食/豆类，但下厨时就是菜，按用户的用法归到菜
+// （"只有牛油果是其他，别的玉米/土豆/毛豆，都算蔬菜吧"）。
+const AS_VEGETABLE = ["corn", "potato", "sweetPotato", "edamame", "tofu", "enoki", "mushroom"];
+function stockBucket(foodId){
+  const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
+  if (vegIds.includes(foodId) || AS_VEGETABLE.includes(foodId)) return 0;
+  const meatIds = purchaseGroupRules
+    .filter(rule => rule.name === "肉类" || rule.name === "水产")
+    .flatMap(rule => rule.ids);
+  return meatIds.includes(foodId) ? 1 : 2;
+}
 function planIngredients(){
   const seen = new Map();
   allPurchases().forEach(row => {
@@ -3423,22 +3435,57 @@ function planIngredients(){
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
   // 先菜后肉（用户要求这个顺序）：配菜想得比主料多，摆前面手指少滑一段。
-  const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
-  const meatIds = purchaseGroupRules
-    .filter(rule => rule.name === "肉类" || rule.name === "水产")
-    .flatMap(rule => rule.ids);
-  const rank = foodId => vegIds.includes(foodId) ? 0 : meatIds.includes(foodId) ? 1 : 2;
   return Array.from(seen.entries())
-    .map(([name, foodId]) => ({name, foodId, rank: rank(foodId)}))
+    .map(([name, foodId]) => ({name, foodId, rank: stockBucket(foodId)}))
     .sort((a, b) => a.rank - b.rank);
+}
+// 计划里写的是菜名，光秃秃一行字很难扫（用户："你能帮我加上小icon么，代表这个食物的"）。
+// 认出食材名就在前面补一个 emoji。复用小票那份关键词表，两边认的东西才一致。
+// 只认两个字以上的词——「鱼」「米」「牛」「面」这类单字会在「三文鱼」「玉米」
+// 「牛油果」里到处误伤。长词排前面，「白萝卜」不会被「萝卜」抢先。
+let planIconWords = null;
+function planIconVocabulary(){
+  if (planIconWords) return planIconWords;
+  planIconWords = purchaseItemAliases
+    .filter(alias => alias.id !== "bag")
+    .flatMap(alias => alias.keywords.map(word => ({word, icon: iconForFood(alias.id)})))
+    .filter(entry => entry.word.length >= 2)
+    .sort((a, b) => b.word.length - a.word.length);
+  return planIconWords;
+}
+// 幂等：已经带图标的词不会再补一个，所以每次失焦都能安全地再跑一遍。
+function decoratePlanText(text){
+  const words = planIconVocabulary();
+  let out = "";
+  let index = 0;
+  while (index < text.length){
+    const hit = words.find(entry => text.startsWith(entry.word, index));
+    if (!hit){
+      out += text[index];
+      index += 1;
+      continue;
+    }
+    if (!out.endsWith(hit.icon)) out += hit.icon;
+    out += hit.word;
+    index += hit.word.length;
+  }
+  return out;
 }
 // 隐藏元素的 scrollHeight 是 0——渲染发生在「计划」页还没显示的时候，
 // 高度就被钉死在最小值，写了两行只露出一行（用户："没显示完"）。
 // 所以切到这一页、以及展开这张卡时都要重新量一遍。
+// 框子整体 scale(.82) 之后，布局高度还是按缩放前算的，下面会空出一截。
+// 所以外壳的高度要自己按同样的比例钉一遍。
+const PLAN_TEXT_SCALE = 0.82;
 function growPlanText(area){
   if (!area) return;
   area.style.height = "auto";
-  if (area.scrollHeight) area.style.height = `${area.scrollHeight}px`;
+  if (!area.scrollHeight) return;
+  area.style.height = `${area.scrollHeight}px`;
+  const wrap = area.parentElement;
+  if (wrap && wrap.classList.contains("plan-text-wrap")){
+    wrap.style.height = `${Math.round(area.scrollHeight * PLAN_TEXT_SCALE)}px`;
+  }
 }
 function growAllPlanTexts(){
   document.querySelectorAll(".plan-text").forEach(growPlanText);
@@ -3462,7 +3509,7 @@ function renderMealPlan(){
       const value = dayValue(date);
       return `<div class="plan-day">
         <label for="plan-${value}">${WEEKDAY_NAMES[date.getDay()] === "日" ? "周日" : `周${WEEKDAY_NAMES[date.getDay()]}`} <small>${date.getMonth() + 1}/${date.getDate()}</small></label>
-        <textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="1" placeholder="想吃啥">${escapeAttribute(mealPlans[value] || "")}</textarea>
+        <div class="plan-text-wrap"><textarea id="plan-${value}" class="plan-text" data-plan-day="${value}" rows="1" placeholder="想吃啥">${escapeAttribute(decoratePlanText(mealPlans[value] || ""))}</textarea></div>
       </div>`;
     }).join("");
     const body = `<div class="plan-days">${days}</div>`;
@@ -3477,6 +3524,15 @@ function renderMealPlan(){
     grow();
     area.addEventListener("input", () => { setMealPlan(area.dataset.planDay, area.value); grow(); });
     area.addEventListener("focus", () => showPlanChips(area, chips));
+    // 补图标放在写完之后（blur），不能边打边补：中文输入法还没上屏就动 value，
+    // 光标和候选词会一起乱掉。
+    area.addEventListener("blur", () => {
+      const decorated = decoratePlanText(area.value);
+      if (decorated === area.value) return;
+      area.value = decorated;
+      setMealPlan(area.dataset.planDay, decorated);
+      grow();
+    });
   });
 }
 // 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
@@ -3499,7 +3555,9 @@ function showPlanChips(area, chips){
     return head + `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`;
   }).join("");
   row.innerHTML = methods + chipHtml;
-  area.insertAdjacentElement("afterend", row);
+  // 挂在外壳后面，不是 textarea 后面——textarea 现在裹在 .plan-text-wrap 里，
+  // 塞进去会被 overflow:hidden 和固定高度切没。
+  (area.closest(".plan-text-wrap") || area).insertAdjacentElement("afterend", row);
   row.querySelectorAll("[data-plan-add]").forEach(button => {
     // 用 mousedown/touchstart：click 之前 textarea 已经 blur 了，插入位置会丢。
     button.addEventListener("mousedown", event => {
@@ -3844,14 +3902,8 @@ async function renderShopping(){
   };
   // 只分「肉」和「蔬菜」两块，其余归「其他」——用户明确"只分这两类"，
   // 分太细反而每块只剩一两样，还不如不分。空的那块不出小标题。
-  const meatIds = purchaseGroupRules
-    .filter(rule => rule.name === "肉类" || rule.name === "水产")
-    .flatMap(rule => rule.ids);
-  const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
-  const bucketOf = purchase => meatIds.includes(purchase.foodId) ? "肉"
-    : vegIds.includes(purchase.foodId) ? "蔬菜" : "其他";
   const stockGroups = [["蔬菜", "🥦"], ["肉", "🥩"], ["其他", "🛒"]]
-    .map(([name, icon]) => ({name, icon, rows: activeItems.filter(purchase => bucketOf(purchase) === name)}))
+    .map(([name, icon], index) => ({name, icon, rows: activeItems.filter(purchase => stockBucket(purchase.foodId) === index)}))
     .filter(group => group.rows.length);
   document.getElementById("boughtFoods").innerHTML = stockGroups.length
     ? stockGroups.map(group => `<h3 class="stock-sub">${group.icon} ${group.name}<span>${group.rows.length}</span></h3>${group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`).join("")
@@ -4437,6 +4489,29 @@ function applyStockFold(){
   });
   applyStockFold();
 })();
+// 「采购历史」也要能折叠（用户："采购历史没法折叠，其他都可以好像"）。
+// 只折下面那串小票，上面「记一次采购」的表单始终留着——那是这一页最常用的入口。
+const PURCHASE_FOLD_KEY = "nutriflow_purchase_folded";
+function purchaseFolded(){ return localStorage.getItem(PURCHASE_FOLD_KEY) === "1"; }
+function applyPurchaseFold(){
+  const folded = purchaseFolded();
+  const btn = document.getElementById("purchaseFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开采购历史" : "收起采购历史";
+  }
+  const box = document.getElementById("purchaseHistory");
+  if (box) box.hidden = folded;
+}
+(function initPurchaseFold(){
+  const btn = document.getElementById("purchaseFold");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem(PURCHASE_FOLD_KEY, purchaseFolded() ? "0" : "1");
+    applyPurchaseFold();
+  });
+  applyPurchaseFold();
+})();
 // 「每周采购目标」默认收起（用户要求）：它是长期参考，不像其他卡片天天要看。
 // 注意默认值和别处相反——没存过就是"折叠"，所以判的是 !== "0"。
 const WEEKLY_FOLD_KEY = "nutriflow_weekly_folded";
@@ -4497,6 +4572,11 @@ function gotoSearchHit(view, anchor){
   setTimeout(() => {
     const target = document.querySelector(anchor);
     if (!target) return;
+    // 采购历史整块被折起来时命中项是 hidden 的，滚过去只会看到空白——先展开。
+    if (target.closest("#purchaseHistory") && purchaseFolded()){
+      localStorage.setItem(PURCHASE_FOLD_KEY, "0");
+      applyPurchaseFold();
+    }
     const box = target.closest("details");
     if (box && !box.open){
       box.open = true;
@@ -4820,7 +4900,9 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   let backgroundJobs = 0;
   function jobHint(text){
     const hintEl = document.querySelector(".buy-add-hint");
-    if (hintEl) hintEl.textContent = text;
+    if (!hintEl) return;
+    hintEl.textContent = text;
+    hintEl.hidden = !text;   // 平时不占地方，只有识别真有进度要说的时候才冒出来
   }
   async function startRecognize(){
     if (!pendingPhotos.length) return;

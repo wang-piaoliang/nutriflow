@@ -122,7 +122,7 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /summarizeReceipt/);
   assert.match(html, /国产谷饲黄牛牛腱肉/);
   assert.match(html, /indexedDB/);
-  assert.match(html, /仅保存在这台设备，不上传 GitHub/);
+  assert.match(html, /只存本机，不上传 GitHub/);
   assert.match(html, /data-open-photo/);
 
   // The 食材 category filter bar pins to the top while the list scrolls, so it
@@ -1424,8 +1424,64 @@ test("inserts plan chips at the caret and measures height once visible", async (
   // 隐藏元素的 scrollHeight 是 0——渲染时「计划」页还没显示，高度会被钉在最小值，
   // 写了两行只露出一行。切到这一页、展开这张卡时都要重新量。
   assert.match(html, /function growAllPlanTexts\(\)/);
-  assert.match(html, /if \(area.scrollHeight\) area.style.height/);
+  assert.match(html, /if \(!area.scrollHeight\) return;/);
   assert.match(html, /if \(!folded\) growAllPlanTexts\(\);/);
+});
+
+test("keeps the plan font the same size before and after focus", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  const css = html.split("<style>")[1].split("</style>")[0];
+
+  // 之前靠 :focus 把字号从 13px 顶到 16px 来躲开 iOS 的聚焦缩放，代价是字会
+  // "一点就变大"（用户："我一点开又变得很奇怪，字又放大了"）。现在字号恒定
+  // 16px，整个框 transform 缩小——iOS 不放大，视觉上也不跳。
+  assert.ok(!/\.plan-text:focus\{[^}]*font-size/.test(css), "计划框不该再靠 :focus 改字号");
+  assert.match(css, /\.plan-text\{[^}]*font-size:16px/);
+  assert.match(css, /\.plan-text\{[^}]*transform:scale\(\.82\)/);
+  // 缩放不改布局高度，得靠外壳按同样比例占位，否则框下面空一截。
+  assert.match(css, /\.plan-text-wrap\{[^}]*overflow:hidden/);
+  assert.match(html, /const PLAN_TEXT_SCALE = 0\.82;/);
+  assert.match(html, /wrap.style.height = `\$\{Math.round\(area.scrollHeight \* PLAN_TEXT_SCALE\)\}px`/);
+  // chip 那排要挂在外壳后面，塞进外壳会被 overflow:hidden 切掉。
+  assert.match(html, /\(area.closest\("\.plan-text-wrap"\) \|\| area\).insertAdjacentElement\("afterend", row\)/);
+  // 和下面的 chip 之间要留缝（用户："和下面也贴的太近"）。
+  assert.match(css, /\.plan-chips\{[^}]*margin-top:6px/);
+});
+
+test("labels plan entries with the matching food icon", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 用户："我打完每周计划，你能帮我加上小icon么，代表这个食物的"。
+  const decorated = evaluate('decoratePlanText("三文鱼 香菇 土豆 生菜")');
+  assert.equal(decorated, "🍣三文鱼 🍄香菇 🥔土豆 🥬生菜");
+  // 三文鱼原来和鳕鱼共用一个 🐟（用户："三文鱼对应的icon也不太对"）。
+  assert.equal(evaluate('iconForFood("salmon")'), "🍣");
+  // 幂等：每次失焦都会再跑一遍，不能越跑图标越多。
+  assert.equal(evaluate(`decoratePlanText(decoratePlanText("萝卜排骨汤 玉米烙"))`), evaluate('decoratePlanText("萝卜排骨汤 玉米烙")'));
+  // 长词优先，"白萝卜"不能被"萝卜"抢先切开。
+  assert.equal(evaluate('decoratePlanText("白萝卜")'), "🥬白萝卜");
+  // 单字词不参与匹配——"鱼""米""牛"会在三文鱼、玉米、牛油果里到处误伤。
+  assert.equal(evaluate('decoratePlanText("牛油果")'), "🥑牛油果");
+  assert.equal(evaluate('planIconVocabulary().every(entry => entry.word.length >= 2)'), true);
+});
+
+test("folds the purchase history but leaves the add form open", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户："采购历史没法折叠，其他都可以好像"。
+  assert.match(html, /id="purchaseFold"/);
+  assert.match(html, /const PURCHASE_FOLD_KEY = "nutriflow_purchase_folded";/);
+  assert.match(html, /const box = document.getElementById\("purchaseHistory"\);\n  if \(box\) box.hidden = folded;/);
+  // 记一次采购是最常用的入口，不再折叠（用户："直接展开采购的功能，不用折叠"）。
+  assert.ok(!/<details class="buy-add"/.test(html), "记一次采购不该再是折叠的");
+  assert.match(html, /<div class="buy-add" id="buyAddBox">/);
+  // 说明小字删掉，元素留着当识别进度条用。
+  assert.ok(!/可以一次多选，也可以连拍几张/.test(html), "说明小字该删掉");
+  assert.ok(!/小票照片仅保存在这台设备/.test(html), "说明小字该删掉");
+  assert.match(html, /<p class="buy-add-hint" hidden><\/p>/);
+  assert.match(html, /hintEl.hidden = !text;/);
+  // 折起来的时候搜索跳转要先展开，否则滚过去是一片空白。
+  assert.match(html, /target.closest\("#purchaseHistory"\) && purchaseFolded\(\)/);
 });
 
 test("strips the brand even when it trails in half-width brackets", async () => {
@@ -1456,7 +1512,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v122"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v123"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
