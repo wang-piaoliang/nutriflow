@@ -1269,7 +1269,7 @@ summary.week-block-head::after{
                 <button type="button" id="buyAddLine">＋ 再加一件</button>
               </div>
             </details>
-            <button type="button" id="buySave">保存这次采购</button>
+            <button type="button" id="buySave">保存</button>
           </div>
         </div>
         <div id="purchaseHistory"></div>
@@ -1343,7 +1343,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v124</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v125</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -5019,7 +5019,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       resetForm();
       await renderShopping();
       saveBtn.textContent = "这单刚记过了";
-      setTimeout(() => { saveBtn.textContent = "保存这次采购"; }, 1800);
+      setTimeout(() => { saveBtn.textContent = "保存"; }, 1800);
       return 0;
     }
     const {receiptId} = addPurchaseReceipt({date, store, items: rows});
@@ -5032,7 +5032,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       await renderShopping();
     }
     saveBtn.textContent = `已记 ${items.length} 件`;
-    setTimeout(() => { saveBtn.textContent = "保存这次采购"; }, 1800);
+    setTimeout(() => { saveBtn.textContent = "保存"; }, 1800);
     return items.length;
   }
   saveBtn.addEventListener("click", () => { void commitPurchase(); });
