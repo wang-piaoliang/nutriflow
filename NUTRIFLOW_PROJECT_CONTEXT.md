@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v111`
+- 当前离线缓存：`nutriflow-pwa-v112`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,9 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：用户一次提了 10 条，本轮做完 7 条（#2/#3/#5/#7/#8/#9/#10）。① **#5 采购统计金额发蓝**：`.period-row` 改成 `<button>` 后没写 `color`，继承了按钮默认色（iOS 上偏蓝）——补 `color:var(--text)`。**教训：把 div 改成 button 一定要同时写 color/font/text-align，否则会捡到系统默认外观。** ② **#3 蛋奶 + 豆类合并成「蛋奶豆」**（`purchaseGroupRules`）。③ **#2 米/油/调料进统计**：原来 `categoryTotals` 用 `NOT_INGREDIENT` 整个排除，钱花了却看不见。改成只挡 `bag` 和 `iceCream`（用户明确"冰淇淋不统计"），其余归不了大类的落进「其他」；顺带给冰淇淋补了 `iceCream` 别名（冰淇淋/雪糕/脆皮棒）。实测「其他」从 ¥26.39 变 ¥59.91。**注意 `NOT_INGREDIENT` 仍用于「现有食材」清单，两处口径本就不同，别合并。** ④ **#7** hero 标题「今天吃到这些」→「每天吃到这些」；`dailyTargets` 里蛋并进肉那栏（`鱼禽肉 + 1-2个蛋`）、奶那栏改成纯 `奶/酸奶 300-500ml`。⑤ **#8** 每顿目标「鱼/瘦肉」→「肉」。⑥ **#9** 计划里的食材 chip 名字太长：先查 `priceFoodNames`，再退回 `shortItem`，仍超 6 字则**取后 6 字**（品类词通常在后面，「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」）。⑦ **#10** 每周计划的框显小：**字号不能动**——低于 16px iOS 一聚焦就放大整页（v106 刚修过），只能收紧 `line-height`(1.5→1.3)、`padding`、行距和日期列宽。离线缓存与版本号升至 v112。
+  - **本轮未做**：#1 采购统计数量出错（如「山姆鸡蛋算了两次」）——需要用户设备上的实际数据才能定位，很可能是 v94 之前留下的重复采购记录（`dedupeManualReceipts` 只清整单完全一致的）；#4 统计饼图 + 子类饼图 + 右侧明细列表（较大改动）；#6 计划页显示问题（用户截图里 hero 磁贴换行导致高度参差）。
 
 - 2026-08-06：**采购统计的分类跟随选中的时间区间 + 在外就餐显示当天餐食照片**。① 之前 `categoryTotals()` 不管上面选了哪一期都统计全部，点开的明细和上面的金额对不上（用户："下面的展开不跟随上面选的时间区域变"）。把分桶逻辑抽成 `periodOf(date, mode)` 给两边共用（**口径必须一致，否则两处数字对不上**），`categoryTotals(mode, periodKey)` 支持只统计某一期；金额条改成可点选的 `<button data-period>`，选中高亮、再点取消回到全部，`#statsNote` 跟着换文案。**切周/月时必须清掉 `selectedPeriod`**——两种口径的 key 不通用，留着会指向不存在的一期；另外若选中的一期因数据变动消失也自动退回全部。CDP 实测：选 7/27–8/2 → 主食 ¥36.83 / 肉类 ¥33.52…，选 7/20–7/26 → 其他 ¥26.39 / 水产 ¥24.28…，取消后回到全部，切按月选择被清空。② **在外就餐借用当天的餐食照片**：餐食照片挂在饮食页那一天（owner `diet:日期`），在外就餐这边原来一张都看不到、只剩店名和金额（用户："不然我也不知道具体吃了啥"）。`renderDining` 现在把 `photosByOwner[dietPhotoOwner(entry.date)]` 接在自己挂的照片后面（按 id 去重）。**借来的标 `borrowed:true`，`photoSectionMarkup` 对它不输出 `data-delete-photo`**——照片是全局按 id 删的，在这里长按会把饮食页那张一起删掉，很意外；要删得回它自己的地方。测试增至 46 项。离线缓存与版本号升至 v111。
 

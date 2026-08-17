@@ -109,7 +109,10 @@ test("ships the personalized nutrition and purchase views", async () => {
   );
 
   assert.match(html, /鱼禽肉合计 600-1000g（其中水产 300-500g）/);
-  assert.match(html, /鱼禽肉蛋", amount:"120-200g/);
+  // 蛋并进肉那一栏，从奶那栏拿掉（用户："蛋放到肉里，从奶去掉"）。
+  assert.match(html, /鱼禽肉 \+ 1-2个蛋", amount:"120-200g/);
+  assert.match(html, /name:"奶\/酸奶", amount:"300-500ml"/);
+  assert.doesNotMatch(html, /鱼\/瘦肉/);
   assert.match(html, /每周 1 次（占水产 2 次中的 1 次）/);
   assert.match(html, /name:"牛肉"[\s\S]*name:"瘦猪肉"/);
   assert.match(html, /name:"鸡肉"/);
@@ -857,7 +860,7 @@ test("classifies supermarket product names, not just catalogue names", async () 
   assert.equal(id("金针菇 150g"), "enoki");
 
   // 蛋奶得自己成一组，否则酸奶/牛奶在小票的分类汇总里根本不出现。
-  assert.match(evaluate('summarizeReceipt([{foodId:"greekYogurt", amount:"1.5kg"}])'), /蛋奶 1\.5kg/);
+  assert.match(evaluate('summarizeReceipt([{foodId:"greekYogurt", amount:"1.5kg"}])'), /蛋奶豆 1\.5kg/);
 });
 
 test("re-classifies purchases that were stored before the alias table existed", async () => {
@@ -1337,7 +1340,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v111"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v112"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

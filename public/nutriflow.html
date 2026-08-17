@@ -400,11 +400,13 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .plan-week-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;cursor:pointer;list-style:none}
 .plan-week-head::-webkit-details-marker{display:none}
 .plan-week-head strong{font-size:14px;font-weight:600}
-.plan-days{display:grid;gap:8px}
-.plan-day{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:start}
-.plan-day label{font-size:13px;color:var(--muted);padding-top:9px;line-height:1.2}
+.plan-days{display:grid;gap:6px}
+.plan-day{display:grid;grid-template-columns:50px minmax(0,1fr);gap:6px;align-items:start}
+.plan-day label{font-size:12px;color:var(--muted);padding-top:6px;line-height:1.2}
 .plan-day label small{display:block;font-size:11px;opacity:.75}
-.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit;font-size:16px;line-height:1.5;resize:vertical}
+/* 字号不能低于 16px——低了 iOS 一聚焦就把整页放大（v106 刚修过）。
+   要显得小一点只能收紧行高和内边距，不能动字号。 */
+.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit;font-size:16px;line-height:1.3;resize:vertical}
 .plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:-2px}
 /* 食材 chip 只是辅助输入，字要比正文小一档，别喧宾夺主（用户要求调小）。 */
 .plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap}
@@ -439,7 +441,7 @@ summary.week-block-head::after{
 .week-block:not([open]) > summary.week-block-head{margin-bottom:0}
 /* 采购统计：分类一行一条，点标题展开这一类具体买了啥。 */
 /* 周期条可点选：选中的那一期高亮，下面的分类明细只看这一期。 */
-.period-row{width:100%;text-align:left;border:1px solid transparent;background:none;padding:6px 8px;border-radius:8px;cursor:pointer;display:grid;gap:6px}
+.period-row{width:100%;text-align:left;color:var(--text);border:1px solid transparent;background:none;padding:6px 8px;border-radius:8px;cursor:pointer;display:grid;gap:6px}
 .period-row.on{border-color:var(--green);background:var(--surface-2)}
 .cat-row{display:grid;gap:5px;padding:9px 0}
 .cat-row + .cat-row{border-top:1px solid var(--line)}
@@ -1105,7 +1107,7 @@ summary.week-block-head::after{
     <div class="stack desktop-grid">
       <article class="card hero desktop-span">
         <div class="section-title">
-          <h2>今天吃到这些</h2>
+          <h2>每天吃到这些</h2>
           <span class="pill" id="todayLabel">今天</span>
         </div>
         <div class="grid3" id="homeCore"></div>
@@ -1317,7 +1319,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v111</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v112</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1350,11 +1352,11 @@ const categories = [
 ];
 
 const dailyTargets = [
-  {icon:"🥩", name:"鱼禽肉蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
+  {icon:"🥩", name:"鱼禽肉 + 1-2个蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
   {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
   {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
   {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
-  {icon:"🥛", name:"奶/酸奶/蛋", amount:"300-500ml + 蛋 1 个", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。🥚 鸡蛋保留蛋黄。"}
+  {icon:"🥛", name:"奶/酸奶", amount:"300-500ml", note:"牛奶配料只有生牛乳；酸奶优先无糖高蛋白。"}
 ];
 
 // 图标统一用食物，和「每天目标」「食材」页的 emoji 语言保持一致；
@@ -1362,8 +1364,8 @@ const dailyTargets = [
 // 这几个也都避开了 dailyTargets 已经占用的 🥩🥦🍚🍎🥛。
 const mealTargets = [
   {icon:"🍞", name:"早餐", amount:"牛奶 300ml + 鸡蛋 1 个 + 主食", note:"全麦面包、燕麦或米饭都可以；增重靠规律吃够，不靠高油。"},
-  {icon:"🍱", name:"午餐", amount:"鱼/瘦肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
-  {icon:"🍲", name:"晚餐", amount:"鱼/瘦肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
+  {icon:"🍱", name:"午餐", amount:"肉 50-90g + 菜 150-250g + 主食 120-180g", note:"肉量按可食生重；优先安排鱼或含血红素铁的瘦肉。"},
+  {icon:"🍲", name:"晚餐", amount:"肉 40-70g + 菜 150-250g + 主食 120-180g", note:"和早餐鸡蛋合并看全天总量，不要求每顿平均。"},
   {icon:"🥜", name:"加餐", amount:"水果 100-150g 或坚果 15-20g", note:"适度增重时保留加餐，比硬塞正餐更容易坚持。"}
 ];
 
@@ -2291,6 +2293,7 @@ const purchaseItemAliases = [
   // 调料、油、饮用水这些是备货不是"这周要吃完的食材"，归到这里后不进「现有食材」清单
   // （用户："现有食材里面不需要出现 油、矿泉水、小米辣等调料"）。
   // 必须排在会误伤的规则前面：小米辣会被 pepper 的「辣椒」吃掉、矿泉水会被当普通商品。
+  {id:"iceCream", keywords:["冰淇淋","雪糕","冰激凌","脆皮棒"]},
   {id:"oil", keywords:["食用油","菜籽油","花生油","橄榄油","调和油","香油","玉米油","葵花籽油"]},
   {id:"seasoning", keywords:["小米辣","干辣椒","花椒","八角","桂皮","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
   {id:"water", keywords:["矿泉水","天然水","饮用水","纯净水","苏打水"]},
@@ -3098,8 +3101,7 @@ const purchaseGroupRules = [
   {name:"肉类", icon:"🥩", ids:["beef","leanPork","porkShoulder","porkTenderloin","lamb","liver","chicken","chickenThigh","chickenBreast","chickenTender","duck"]},
   {name:"水产", icon:"🍤", ids:["fattyFish","whiteFish","shellfish","mackerel","salmon","sardine","cod","shrimp","squid","scallop","tuna"]},
   {name:"蔬菜", icon:"🥦", ids:["leafy","broccoli","cauliflower","mushroom","enoki","tomato","carrot","radish","pepper","spinach","pumpkin","cabbage","greenBeans","bokChoy","eggplant","gourd"]},
-  {name:"蛋奶", icon:"🥛", ids:["egg","milk","greekYogurt","cheese"]},
-  {name:"豆类", icon:"🫘", ids:["tofu","soyMilk","edamame"]},
+  {name:"蛋奶豆", icon:"🥛", ids:["egg","milk","greekYogurt","cheese","tofu","soyMilk","edamame"]},
   {name:"主食", icon:"🍚", ids:["rice","potato","sweetPotato","oats","wholeWheatBread","noodle","corn","quinoa"]},
   {name:"水果坚果", icon:"🍎", ids:["avocado","apple","orange","kiwi","banana","berries","nuts","tropical","stoneFruit","grape","melon","pomegranate"]}
 ];
@@ -3340,7 +3342,10 @@ function planIngredients(){
   allPurchases().forEach(row => {
     if (!row.bought || row.pantry || NOT_INGREDIENT.includes(row.foodId)) return;
     if (consumed[row.id]) return;
-    const name = priceFoodNames[row.foodId] || shortItem(row.item);
+    // 名字太长没法扫（用户："不用写品牌，写实际是什么就行，比如 排骨、小里脊、后腿肉"）。
+    // 先用短名表，再退回剥掉品牌的原名，最后硬截断——chip 是给人快速点的，不是标签全称。
+    let name = priceFoodNames[row.foodId] || shortItem(row.item);
+    if (name.length > 6) name = name.slice(-6);   // 品类词通常在后面：「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
   return Array.from(seen.entries()).map(([name, foodId]) => ({name, foodId}));
@@ -3490,8 +3495,12 @@ function spendByPeriod(mode){
 function categoryTotals(mode, periodKey){
   const groups = purchaseGroupRules.map(rule => ({name: rule.name, icon: rule.icon, spend: 0, grams: 0, items: new Map()}));
   const other = {name: "其他", icon: "🛒", spend: 0, grams: 0, items: new Map()};
+  // 米、油、调料原来被 NOT_INGREDIENT 整个排除在统计外，钱花了却看不见
+  // （用户："包括米/油/调料都放这个统计，现在有些都没算进来，或者归错类了"）。
+  // 现在只把账单行和冰淇淋挡掉，其余归不了大类的一律落进「其他」。
+  const skip = ["bag", "iceCream"];
   allPurchases().forEach(row => {
-    if (NOT_INGREDIENT.includes(row.foodId)) return;
+    if (skip.includes(row.foodId)) return;
     if (periodKey){
       const period = periodOf(row.date, mode);
       if (!period || period.key !== periodKey) return;
