@@ -997,7 +997,12 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   assert.match(html, /data-dining-field="place"/);
   assert.match(html, /data-dining-field="date"/);
   // 「待补价」按用户要求去掉：没写金额本身就看得出来。
-  assert.match(html, /\$\{priceVal === "" \? "" : `<span class="price">¥\$\{priceVal\}<\/span>`\}/);
+  assert.match(html, /\$\{priceVal === "" \? "" : `<span class="dining-amount">¥\$\{priceVal\}<\/span>`\}/);
+  // 头分两行：大字「店名 ¥价格 ✏️」，小字「餐次 · 日期 · 照片」另起一行
+  // （用户："翻两行写，大字和小字分两行"）。
+  const diningCss = html.split("<style>")[1].split("</style>")[0];
+  assert.match(diningCss, /\.dining-head\{display:grid;grid-template-columns:minmax\(0,1fr\) auto auto/);
+  assert.match(diningCss, /\.dining-sub\{grid-column:1 \/ -1/);
   assert.ok(!/待补价/.test(html), "「待补价」该删掉");
 });
 
@@ -1665,7 +1670,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v131"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v132"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

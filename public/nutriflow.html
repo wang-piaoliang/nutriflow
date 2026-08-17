@@ -567,12 +567,14 @@ summary.week-block-head::after{
 .dining-add-row button{flex:0 0 auto;padding:9px 18px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
 .dining-entry{padding:10px 0;border-top:1px solid var(--line)}
 .dining-entry:first-child{border-top:none}
-/* 一条记录 = 一行：店名 + 右边「¥价格 · 日期 · 照片」+ 一支小铅笔。
-   价格原来独占一行，一条记录就要三行，列表拉得老长（用户："价格也不用独立成行"）。 */
-.dining-head{display:flex;align-items:baseline;gap:8px;min-width:0}
-.dining-head strong{font-size:15px;overflow-wrap:anywhere;min-width:0}
-.dining-meta{margin-left:auto;display:flex;align-items:baseline;gap:6px;white-space:nowrap;color:var(--muted);font-size:13px}
-.dining-meta .price{color:var(--text);font-size:15px;font-weight:600}
+/* 一条记录的头分两行：大字一行「店名 ¥价格 ✏️」，小字一行「餐次 · 日期 · 照片」。
+   全挤一行的话，店名一长就换行，价格和日期被挤得七零八落（用户："还是乱七八糟，
+   很丑，要不就翻两行写，大字和小字分两行"）。用 grid 而不是 flex：店名再长也只
+   占第一列，价格和铅笔的位置永远钉死在右边，不会被推走。 */
+.dining-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;column-gap:8px}
+.dining-head strong{font-size:15px;line-height:1.35;overflow-wrap:anywhere;min-width:0}
+.dining-amount{font-size:15px;font-weight:600;color:var(--text);white-space:nowrap}
+.dining-sub{grid-column:1 / -1;margin-top:2px;color:var(--muted);font-size:12px;line-height:1.4}
 /* 编辑按钮就一支线条铅笔，和顶栏的设置图标一个质感——emoji ✏️ 在 iOS 上是彩色
    立体的，跟这一页格格不入（用户："编辑的小icon太丑了，就用那种小笔"）。 */
 .dining-edit{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
@@ -1367,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v131</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v132</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2652,11 +2654,9 @@ async function renderDining(){
     return `<div class="dining-entry" data-dining-entry="${entry.id}">
       <div class="dining-head">
         <strong>${label}</strong>
-        <span class="dining-meta">
-          ${priceVal === "" ? "" : `<span class="price">¥${priceVal}</span>`}
-          <span>${priceVal === "" ? "" : "· "}${mealTag}${(entry.date || "").slice(5)} · ${photoAddLabel(owner, photos.length)}</span>
-        </span>
+        ${priceVal === "" ? "" : `<span class="dining-amount">¥${priceVal}</span>`}
         <button type="button" class="dining-edit${editing ? " on" : ""}" data-dining-edit="${entry.id}" title="${editing ? "改完了" : "编辑这一笔"}" aria-label="${editing ? "改完了" : "编辑这一笔"}">${editing ? CHECK_ICON : PENCIL_ICON}</button>
+        <span class="dining-sub">${mealTag}${(entry.date || "").slice(5)} · ${photoAddLabel(owner, photos.length)}</span>
       </div>
       ${editing ? `<div class="dining-edit-row">
         <input type="text" class="dining-field place" data-dining-field="place" data-dining-id="${entry.id}" value="${escapeAttribute(entry.place || "")}" placeholder="餐厅名" aria-label="餐厅名">
