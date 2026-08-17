@@ -1364,13 +1364,25 @@ test("draws the spending split as donuts and drops cross-receipt duplicates", as
   assert.equal(evaluate("dedupeManualLines()"), 0);
 });
 
+test("offers the three cooking methods while editing a plan day", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 只有这三种（用户明确要求），排在食材前面：一般先想怎么做再挑料，
+  // 而且它固定三个、位置稳定，好按。
+  assert.match(html, /\["炒", "空气炸锅", "蒸"\]/);
+  const chipFn = html.slice(html.indexOf("function showPlanChips"));
+  assert.ok(chipFn.indexOf("methods +") > 0);
+  // 现有食材为空时也得能选做法，不能因为没食材就整行不显示。
+  assert.doesNotMatch(chipFn.slice(0, 600), /if \(!chips.length\) return;/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v113"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v114"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

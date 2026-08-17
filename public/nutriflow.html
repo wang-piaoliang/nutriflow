@@ -416,6 +416,8 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 /* 食材 chip 只是辅助输入，字要比正文小一档，别喧宾夺主（用户要求调小）。 */
 .plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap}
 .plan-chip:active{opacity:.6}
+/* 做法和食材是两类东西，给做法一点区分度，免得混在一排里找不着。 */
+.plan-chip.method{background:var(--surface);border-color:var(--green);color:var(--green);font-weight:600}
 .week-block-head{
   display:flex;
   align-items:center;
@@ -1334,7 +1336,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v113</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v114</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3431,10 +3433,13 @@ function renderMealPlan(){
 // 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
 function showPlanChips(area, chips){
   document.querySelectorAll(".plan-chips").forEach(row => row.remove());
-  if (!chips.length) return;
   const row = document.createElement("div");
   row.className = "plan-chips";
-  row.innerHTML = chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
+  // 做法只有这三种（用户明确："只有三种，炒、空气炸锅、蒸"），排在食材前面——
+  // 一般是先想"怎么做"再挑料，而且它固定三个、位置稳定，好按。
+  const methods = ["炒", "空气炸锅", "蒸"]
+    .map(name => `<button type="button" class="plan-chip method" data-plan-add="${name}">${name}</button>`).join("");
+  row.innerHTML = methods + chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
   area.insertAdjacentElement("afterend", row);
   row.querySelectorAll("[data-plan-add]").forEach(button => {
     // 用 mousedown/touchstart：click 之前 textarea 已经 blur 了，插入位置会丢。

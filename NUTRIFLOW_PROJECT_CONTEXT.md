@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v113`
+- 当前离线缓存：`nutriflow-pwa-v114`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**每周计划编辑时可以选做法**（用户："只有三种，炒、空气炸锅、蒸"）。`showPlanChips` 里在食材 chip **前面**插三个做法 chip——一般先想"怎么做"再挑料，而且做法固定三个、位置稳定好按；样式上用绿框绿字（`.plan-chip.method`）和食材 chip 区分开。**顺带修了一个隐患**：原来 `if (!chips.length) return;` 会在「现有食材为空」时整行不显示，那样连做法也选不了，已去掉。点击仍走 `mousedown` + `preventDefault`（click 之前 textarea 已 blur，插入位置会丢）。CDP 实测：点做法 chip 正确追加成「番茄炒蛋 炒」。离线缓存与版本号升至 v114。
 
 - 2026-08-06：**采购统计改成饼图 + 跨单去重 + 顶栏图标换 SVG + 计划框字号**。① **#4 饼图**：新增 `donutSvg(slices, size)`——用 `stroke-dasharray` 一段段绕圈画环形图，**不引库也不用 canvas**（canvas 还得自己处理深色模式和高分屏，SVG 直接跟 CSS 走）；`rotate(-90)` 让第一段从 12 点开始。分类区改成「顶上一张总饼图 + 图例」＋「每一类一个 `.cat-block`：小饼图看这一类里各样东西的占比、右边是明细列表」，点标题折叠。**状态记的是 `closedSpendCategories`（收起了哪几类）而不是"展开了哪几类"**，这样新出现的分类默认展开（用户要求默认展开）。明细最多列 12 样，多的写「还有 N 样」。② **#1 跨单重复**：新增 `dedupeManualLines()`——整单指纹只能抓「一模一样的两单」，实际更常见的是同一单被拆成两次记（截图重叠、识别跑两遍），同一样东西在两张单里各出现一次，统计就翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。按「门店+当天+商品名+规格+金额」去重，**只跨单去重**——同一张单里真有两行一样的是小票本来就写了两行，不动。启动时在 `dedupeManualReceipts()` 之后跑。③ **顶栏 ⚙/🔍 换成内联 SVG 线条图标**（用户："设置icon很丑"）——emoji 会被 iOS 渲染成彩色立体，和线条感完全两种东西；SVG 用 `currentColor`，两个按钮质感统一。④ **计划框字号**（用户两次反馈）：**iOS 只在「聚焦那一刻」按 font-size 判断要不要放大整页**，所以平时 13px、`:focus` 才升到 16px——既看着小、聚焦也不放大。CSS 扫描测试相应放宽：允许 < 16px，但必须有配套的 `:focus` 升到 ≥16px 的规则。⑤ hero 文案按用户要求改成「鱼禽肉 + 1个蛋」。CDP 实测：总饼图 7 段、7 个分类块默认全展开、7 张子饼图、点标题折叠后子图 7→6、金额 `rgb(21,21,21)` 不再发蓝、计划框 13px、横向溢出 0。测试增至 47 项。离线缓存与版本号升至 v113。
 
