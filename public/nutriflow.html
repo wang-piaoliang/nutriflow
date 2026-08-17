@@ -1336,7 +1336,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v116</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v117</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1751,7 +1751,9 @@ async function recognizeReceipts(blobs, onProgress){
       if (!merged.store && part.store) merged.store = part.store;
       if (!merged.date && part.date){ merged.date = part.date; merged.time = part.time; }
       part.items.forEach(item => {
-        const key = `${item.name}|${item.amount}`;
+        // 相邻截图重叠时，同一行常被读成「…950ml」和不带规格两种写法，
+        // 按原文去重根本抓不住，于是同一单里就有了两条牛奶（用户反馈）。
+        const key = `${normalizeItemName(item.name)}|${parseAmount(item.amount)}`;
         if (seen.has(key)) return;
         seen.add(key);
         merged.items.push(item);
@@ -2293,7 +2295,8 @@ function dedupeManualLines(){
       ].join("|");
       const first = seen.get(key);
       if (!first){ seen.set(key, row); return; }
-      if (first.receiptId === row.receiptId) return;   // 同一张单里的两行，保留
+      // 同一张单里也可能重复——一单要滚好几屏截图，重叠部分被读了两遍。
+      // 真买两份现在是同一行 count:2（v99 起），不会写成两行一模一样的。
       doomed.push(row.id);
     });
   if (!doomed.length) return 0;

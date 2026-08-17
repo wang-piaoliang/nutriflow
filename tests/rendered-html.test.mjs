@@ -789,7 +789,9 @@ test("merges every receipt photo instead of only the first", async () => {
   assert.match(html, /const files = pendingPhotos;/);
   assert.match(html, /await recognizeReceipts\(files\)/);
   // 相邻截图会重叠，按「名称 + 规格」去重。
-  assert.match(html, /\$\{item\.name\}\|\$\{item\.amount\}/);
+  // 相邻截图重叠时同一行常被读成两种写法（带不带规格），按原文去重抓不住，
+  // 所以合并时也走归一化。
+  assert.match(html, /normalizeItemName\(item.name\)\}\|\$\{parseAmount\(item.amount\)/);
 
   // 外卖单上同时有总价/优惠/打包费，必须明确只取实付，否则会挑错数或相加。
   assert.match(html, /实付合计.*实付款|只填\*\*这一单最后实际付掉的钱\*\*/);
@@ -1367,9 +1369,13 @@ test("draws the spending split as donuts and drops cross-receipt duplicates", as
   evaluate(`manualPurchases.push(${line("A", "A-01")}, ${line("B", "B-01")})`);
   assert.equal(evaluate("dedupeManualLines()"), 1);
   assert.equal(evaluate("manualPurchases.length"), 1);
-  // 同一张单里真有两行一样的，那是小票本来就写了两行，不动。
+  // 同一张单里也会重复——一单要滚好几屏截图，重叠部分被读了两遍，而且两遍的
+  // 写法常常差一点（带不带规格），识别合并那层的原文去重抓不住。
+  // 真买两份现在是同一行 count:2（v99 起），不会写成两行一模一样的。
   evaluate(`manualPurchases.push(${line("A", "A-02")})`);
-  assert.equal(evaluate("dedupeManualLines()"), 0);
+  assert.equal(evaluate("dedupeManualLines()"), 1);
+  // 合并多张照片时也要按归一化后的名字去重，否则重复在入账前就已经产生了。
+  assert.match(html, /const key = `\$\{normalizeItemName\(item.name\)\}\|\$\{parseAmount\(item.amount\)\}`;/);
 });
 
 test("offers the three cooking methods while editing a plan day", async () => {
@@ -1390,7 +1396,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v116"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v117"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
