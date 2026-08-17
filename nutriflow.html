@@ -1343,7 +1343,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v126</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v127</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2379,7 +2379,9 @@ const purchaseItemAliases = [
   // 必须排在会误伤的规则前面：小米辣会被 pepper 的「辣椒」吃掉、矿泉水会被当普通商品。
   {id:"iceCream", keywords:["冰淇淋","雪糕","冰激凌","脆皮棒"]},
   {id:"oil", keywords:["食用油","菜籽油","花生油","橄榄油","调和油","香油","玉米油","葵花籽油"]},
-  {id:"seasoning", keywords:["小米辣","干辣椒","花椒","八角","桂皮","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
+  // 「小米椒」得单列一条：它不含「小米辣」也不含「辣椒」，前面两条都拦不住，
+  // 一路掉到 rice 的「小米」上，成了大米（用户："小米椒被归到大米类别了"）。
+  {id:"seasoning", keywords:["小米辣","小米椒","朝天椒","干辣椒","花椒","八角","桂皮","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
   {id:"water", keywords:["矿泉水","天然水","饮用水","纯净水","苏打水"]},
   {id:"avocado", keywords:["牛油果"]},
   // 「蛋糕卷」「沙拉酱 蛋黄口味」都含「蛋」但不是蛋（用户："蛋糕/沙拉酱都归到鸡蛋里面了"），
