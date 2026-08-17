@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v118`
+- 当前离线缓存：`nutriflow-pwa-v119`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**计划三处修**。① **文字没显示完**（用户截图：写了两行只露一行）。根因：**隐藏元素的 `scrollHeight` 是 0**——`renderMealPlan` 在启动时跑，那会儿「计划」页还是 `display:none`，`grow()` 量到 0、高度被 `min-height` 钉在一行。抽出 `growPlanText(area)`（`scrollHeight` 为 0 时不写死高度）和 `growAllPlanTexts()`，在**切到该页时**（nav 点击处理里）和**展开这张卡时**（`applyPlanFold`）各重新量一遍。实测两行内容框高 53px、不再截断。② **chip 插在光标处**（用户："我点的是某一个中间的字，但是点下面的菜会追加在最后"）。用 `area.selectionStart` 取插入点——`mousedown` 阶段 textarea 还没 blur，这个值仍是刚点的位置，**这正是当初选 mousedown 而不是 click 的原因**，现在这个选择又多了一层价值。前后按需补一个空格（行首不补、已有空格不叠），插完把光标停在新词后面，连着点几样位置才不乱。实测光标在开头/中间/末尾四种情况都插对。③ 做法顺序按用户要求改成 **空气炸锅 / 炒 / 蒸**。测试增至 50 项。离线缓存与版本号升至 v119。
 
 - 2026-08-06：**「现有食材」分区**（用户："按照 蔬菜，肉，稍微分区下，只分这两类"）。`renderShopping` 把 `activeItems` 分成「🥩 肉」（`purchaseGroupRules` 里的肉类 + 水产合并）、「🥦 蔬菜」、「🛒 其他」三块，小标题带件数（`.stock-sub`）。**只分这两类是用户明确要求**——按完整分类拆会变成每块只剩一两样，反而不如不分。空的那块不出小标题。实测：肉 7 件 / 蔬菜 13 件 / 其他 5 件。离线缓存与版本号升至 v118。
 

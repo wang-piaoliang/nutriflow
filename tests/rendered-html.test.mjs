@@ -1383,7 +1383,7 @@ test("offers the three cooking methods while editing a plan day", async () => {
 
   // 只有这三种（用户明确要求），排在食材前面：一般先想怎么做再挑料，
   // 而且它固定三个、位置稳定，好按。
-  assert.match(html, /\["炒", "空气炸锅", "蒸"\]/);
+  assert.match(html, /\["空气炸锅", "炒", "蒸"\]/);
   const chipFn = html.slice(html.indexOf("function showPlanChips"));
   assert.ok(chipFn.indexOf("methods +") > 0);
   // 现有食材为空时也得能选做法，不能因为没食材就整行不显示。
@@ -1405,13 +1405,33 @@ test("splits the stock list into meat and vegetables only", async () => {
   assert.match(html, /\.filter\(group => group.rows.length\)/);
 });
 
+test("inserts plan chips at the caret and measures height once visible", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 点 chip 要插在光标处，不是甩到末尾（用户："我点的是某一个中间的字，但是点
+  // 下面的菜会追加在最后"）。mousedown 里 textarea 还没 blur，selectionStart
+  // 仍是刚才点的位置——这正是当初选 mousedown 而不是 click 的原因。
+  assert.match(html, /area.selectionStart/);
+  assert.match(html, /const before = text.slice\(0, at\);/);
+  // 词之间补空格但不叠、行首不加。
+  assert.match(html, /const lead = before && !\/\[\\s\]\$\/.test\(before\) \? " " : "";/);
+  // 插完把光标停在新词后面，接着点下一样位置才对。
+  assert.match(html, /area.setSelectionRange\?\.\(caret, caret\)/);
+
+  // 隐藏元素的 scrollHeight 是 0——渲染时「计划」页还没显示，高度会被钉在最小值，
+  // 写了两行只露出一行。切到这一页、展开这张卡时都要重新量。
+  assert.match(html, /function growAllPlanTexts\(\)/);
+  assert.match(html, /if \(area.scrollHeight\) area.style.height/);
+  assert.match(html, /if \(!folded\) growAllPlanTexts\(\);/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v118"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v119"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

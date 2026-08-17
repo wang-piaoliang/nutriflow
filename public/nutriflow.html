@@ -1340,7 +1340,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v118</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v119</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3399,6 +3399,7 @@ function applyPlanFold(){
   }
   const body = document.getElementById("planBody");
   if (body) body.hidden = folded;
+  if (!folded) growAllPlanTexts();
 }
 // 现有食材：写计划时点一下就加进当天，省得手打。和「现有食材」清单同一个口径
 // （调料油水不算），已经勾掉吃完的也不再出现。
@@ -3414,6 +3415,17 @@ function planIngredients(){
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
   return Array.from(seen.entries()).map(([name, foodId]) => ({name, foodId}));
+}
+// 隐藏元素的 scrollHeight 是 0——渲染发生在「计划」页还没显示的时候，
+// 高度就被钉死在最小值，写了两行只露出一行（用户："没显示完"）。
+// 所以切到这一页、以及展开这张卡时都要重新量一遍。
+function growPlanText(area){
+  if (!area) return;
+  area.style.height = "auto";
+  if (area.scrollHeight) area.style.height = `${area.scrollHeight}px`;
+}
+function growAllPlanTexts(){
+  document.querySelectorAll(".plan-text").forEach(growPlanText);
 }
 function renderMealPlan(){
   const box = document.getElementById("mealPlanList");
@@ -3445,7 +3457,7 @@ function renderMealPlan(){
   // 输入即存。不重渲染——重渲染会把正在打字的框换掉、光标和键盘一起跳走。
   box.querySelectorAll("[data-plan-day]").forEach(area => {
     // 高度跟着内容走：固定行数会让空白的天和写满的天一样高，看着虚胖。
-    const grow = () => { area.style.height = "auto"; area.style.height = `${area.scrollHeight}px`; };
+    const grow = () => growPlanText(area);
     grow();
     area.addEventListener("input", () => { setMealPlan(area.dataset.planDay, area.value); grow(); });
     area.addEventListener("focus", () => showPlanChips(area, chips));
@@ -3460,7 +3472,7 @@ function showPlanChips(area, chips){
   // 一般是先想"怎么做"再挑料，而且它固定三个、位置稳定，好按。
   // 插的是完整的「（炒）」而不是光一个「炒」——用户自己补括号就总有一半没闭上
   // （截图里满屏的「（空气炸锅」）。
-  const methods = ["炒", "空气炸锅", "蒸"]
+  const methods = ["空气炸锅", "炒", "蒸"]
     .map(name => `<button type="button" class="plan-chip method" data-plan-add="（${name}）">${name}</button>`).join("");
   row.innerHTML = methods + chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
   area.insertAdjacentElement("afterend", row);
@@ -3469,8 +3481,22 @@ function showPlanChips(area, chips){
     button.addEventListener("mousedown", event => {
       event.preventDefault();
       const name = button.dataset.planAdd;
-      area.value = area.value.trim() ? `${area.value.replace(/\s+$/, "")} ${name}` : name;
+      // 插在光标处，不是甩到末尾（用户："我点的是某一个中间的字，但是点下面的菜会
+      // 追加在最后，而不是我定位的位置"）。mousedown 里 textarea 还没 blur，
+      // selectionStart 仍是刚才点的位置——这正是当初选 mousedown 而不是 click 的原因。
+      const text = area.value;
+      const at = typeof area.selectionStart === "number" ? area.selectionStart : text.length;
+      const before = text.slice(0, at);
+      const after = text.slice(at);
+      // 词之间补一个空格，但别在行首、也别把已有的空格叠成两个。
+      const lead = before && !/[\s]$/.test(before) ? " " : "";
+      const tail = after && !/^[\s]/.test(after) ? " " : "";
+      const insert = `${lead}${name}${tail}`;
+      area.value = before + insert + after;
+      // 光标停在刚插进去的词后面，接着点下一样东西时位置是对的。
+      const caret = (before + lead + name).length;
       setMealPlan(area.dataset.planDay, area.value);
+      requestAnimationFrame(() => area.setSelectionRange?.(caret, caret));
       area.style.height = "auto";
       area.style.height = `${area.scrollHeight}px`;
       area.focus();
@@ -4515,6 +4541,8 @@ document.querySelectorAll(".nav-btn").forEach(button => {
       if (results) results.innerHTML = "";
     }
     syncTopbarButtons();
+    // 这一页刚显示出来，之前量不到高度的输入框现在才能量准。
+    growAllPlanTexts();
     window.scrollTo({top:0, behavior:"smooth"});
   });
 });
