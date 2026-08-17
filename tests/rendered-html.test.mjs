@@ -27,6 +27,8 @@ async function runAppScript() {
     focus() {},
     querySelector: () => createElement(),
     querySelectorAll: () => [],
+    // 折叠按钮要往上找它所在的标题行（点整行都能折叠），桩里缺 closest 脚本会直接抛。
+    closest: () => null,
   });
 
   const store = new Map();
@@ -1552,6 +1554,43 @@ test("folds the purchase history but leaves the add form open", async () => {
   assert.match(html, /hintEl.hidden = !text;/);
   // 折起来的时候搜索跳转要先展开，否则滚过去是一片空白。
   assert.match(html, /target.closest\("#purchaseHistory"\) && purchaseFolded\(\)/);
+
+  // 整条标题行都能点开（用户："点区域任何一个地方都可以展开"）。监听必须挂在标题
+  // 行上、不能同时挂按钮——按钮的点击会冒泡上来，挂两处会连点两次互相抵消。
+  assert.match(html, /const head = btn.closest\("\.section-title"\) \|\| btn;/);
+  assert.match(html, /head.addEventListener\("click"/);
+  assert.ok(!/btn.addEventListener\("click", \(\) => \{\n    localStorage.setItem\(PURCHASE_FOLD_KEY/.test(html), "别在按钮上再挂一次");
+  const css = html.split("<style>")[1].split("</style>")[0];
+  assert.match(css, /\.section-title\.tappable\{[^}]*cursor:pointer/);
+});
+
+test("breaks the spend down by store and titles the overall donut", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户："采购统计也加一个在不同渠道的统计，fudi、盒马、山姆"。
+  const stores = evaluate('storeTotals("month", "").map(entry => entry.name)');
+  assert.ok(stores.length > 0);
+  // 店名要收敛：同一家店有「盒马鲜生（大钟寺店）」「大钟寺店」好几种写法，不收敛
+  // 一家店会摊成三家。
+  assert.ok(stores.every(name => !/[（(]/.test(name)), `店名没收敛：${stores.join(" ")}`);
+  assert.ok(stores.includes("盒马"), `应该有盒马：${stores.join(" ")}`);
+  // 「趟」按「店 + 当天」算，一次买十样只算去了一趟，不能等于商品行数。
+  const one = evaluate('storeTotals("month", "").find(entry => entry.name === "盒马")');
+  assert.ok(one.trips > 0 && one.trips <= one.count);
+  // 口径和分类统计一致：账单行和冰淇淋都不算，否则两处总额对不上。
+  const byStore = evaluate('storeTotals("month", "").reduce((sum, entry) => sum + entry.spend, 0)');
+  const byCat = evaluate('categoryTotals("month", "").reduce((sum, group) => sum + group.spend, 0)');
+  assert.equal(Math.round(byStore * 100), Math.round(byCat * 100));
+  // 跟着上面选的时间区间走。
+  assert.match(html, /storeTotals\(spendMode, selectedPeriod\)/);
+  // 折叠状态和分类共用一个 Set，key 用 __stores 免得和店名/类名撞。
+  assert.match(html, /data-cat="__stores"/);
+
+  // 第一张饼图要有标题（用户："第一张饼图上面加一个标题，TOTAL，之类的"）。
+  assert.match(html, /<div class="cat-head static">/);
+  assert.match(html, /📊 合计\$\{scopeLabel \? ` · \$\{scopeLabel\}` : ""\}/);
+  assert.match(html, /box.innerHTML = overview \+ storeBlock \+ sections;/);
 });
 
 test("strips the brand even when it trails in half-width brackets", async () => {
@@ -1582,7 +1621,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v127"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v128"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

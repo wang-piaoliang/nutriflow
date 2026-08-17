@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v127`
+- 当前离线缓存：`nutriflow-pwa-v128`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**采购统计加「按渠道」、总饼图加标题、采购历史整行可点**。离线缓存与版本号升至 v128。
+  - **按渠道统计**（用户："采购统计也加一个在不同渠道的统计，fudi、盒马、山姆"）。新增 `storeTotals(mode, periodKey)`，放在总饼图和分类块之间，同样是「饼图 + 图例」。店名走 `shortStore` 收敛——不收敛的话「盒马鲜生（大钟寺店）」「大钟寺店」「盒马鲜生」会摊成三家。**「趟」按「店 + 当天」算**，一次采购买十样也只是去了一趟，不能等于商品行数。口径和 `categoryTotals` 一致（账单行和冰淇淋不算），已加断言锁住两者总额相等。折叠状态和分类共用 `closedSpendCategories`，key 用 `__stores` 免得和店名/类名撞。实测：盒马 ¥248.83 · 79% · 5 趟，fudi ¥65.03 · 21% · 1 趟。
+  - **第一张饼图加标题**（用户："第一张饼图上面加一个标题，TOTAL，之类的"）。下面每块都有自己的标题行，就这张光秃秃一个饼。加了「📊 合计 · <所选周期>」+ 总金额，用 `.cat-head.static`（排版跟折叠头一样，但不是按钮、没有手型）。
+  - **采购历史整条标题行都能点开**（用户："点区域任何一个地方都可以展开"）。监听挂在 `.section-title` 上而**不是**同时挂按钮——按钮的点击会冒泡上来，两处都挂会连点两次互相抵消。
+  - **测试桩补 `closest`**：这次改动让脚本在 vm 里直接抛，43 条测试一起红——正好说明这个跑真脚本的桩比纯正则断言值钱。
 
 - 2026-08-17：**小米椒被归成大米**（用户："小米椒被归到大米类别了"）。`purchaseItemAliases` 里 `seasoning` 只写了「小米辣」、`pepper` 只写了「辣椒」，「小米椒」两条都不匹配，一路掉到最后 `rice` 的「小米」上。给 `seasoning` 补「小米椒」「朝天椒」（它排在 `rice` 前面，先命中）。真的米（五常大米/泰国香米/小米）不受影响。存量里已经归错的行靠启动时 `healManualFoodIds()` 的重推导自动修正，用户不用手工改。离线缓存与版本号升至 v127。
 
