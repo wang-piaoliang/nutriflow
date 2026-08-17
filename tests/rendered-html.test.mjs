@@ -110,7 +110,7 @@ test("ships the personalized nutrition and purchase views", async () => {
 
   assert.match(html, /鱼禽肉合计 600-1000g（其中水产 300-500g）/);
   // 蛋并进肉那一栏，从奶那栏拿掉（用户："蛋放到肉里，从奶去掉"）。
-  assert.match(html, /鱼禽肉 \+ 1-2个蛋", amount:"120-200g/);
+  assert.match(html, /鱼禽肉 \+ 1个蛋", amount:"120-200g/);
   assert.match(html, /name:"奶\/酸奶", amount:"300-500ml"/);
   assert.doesNotMatch(html, /鱼\/瘦肉/);
   assert.match(html, /每周 1 次（占水产 2 次中的 1 次）/);
@@ -1211,8 +1211,12 @@ test("never lets iOS zoom the page when a field gets focus", async () => {
   const offenders = [];
   for (const match of css.matchAll(/([^{}\n]*)\{([^}]*font-size:(\d+)px[^}]*)\}/g)){
     const [, selector, , size] = match;
-    if (Number(size) < 16 && /input|textarea|\.plan-text|receipt-field|dining-field/i.test(selector)){
-      offenders.push(`${selector.trim()} @ ${size}px`);
+    const sel = selector.trim();
+    // 平时小、:focus 升到 16px 是允许的——iOS 只在聚焦那一刻判断字号。
+    const hasFocusBump = new RegExp(`\\${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:focus\\{[^}]*font-size:1[6-9]px`).test(css)
+      || css.includes(`${sel}:focus{font-size:16px}`);
+    if (Number(size) < 16 && /input|textarea|\.plan-text|receipt-field|dining-field/i.test(sel) && !hasFocusBump){
+      offenders.push(`${sel} @ ${size}px`);
     }
   }
   assert.deepEqual(offenders, []);
@@ -1334,13 +1338,39 @@ test("shows the meal photos on the matching eating-out record", async () => {
   assert.match(html, /\{\.\.\.photo, borrowed: true\}/);
 });
 
+test("draws the spending split as donuts and drops cross-receipt duplicates", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 环形图用 stroke-dasharray 一段段绕圈，不引库、不上 canvas。
+  const svg = evaluate('donutSvg([{label:"a",value:3},{label:"b",value:1}], 100)');
+  assert.equal(svg.match(/<circle/g).length, 2);
+  assert.match(svg, /stroke-dasharray=/);
+  // 空数据不该画出一张空图。
+  assert.equal(evaluate("donutSvg([], 100)"), "");
+  // 默认全展开：记的是「收起了哪几类」，新分类才会是展开的。
+  assert.match(html, /const closedSpendCategories = new Set\(\);/);
+  assert.match(html, /closedSpendCategories.has\(group.name\)/);
+
+  // 整单指纹只抓「一模一样的两单」；同一样东西被拆进两张单里就漏了，
+  // 统计会翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。
+  evaluate("manualPurchases.length = 0");
+  const line = (rid, id) => `{receiptId:"${rid}",id:"${id}",date:"2026-08-10 10:00",foodId:"egg",item:"精选鲜鸡蛋",amount:"1.59kg",totalPrice:18.9,store:"山姆",bought:true,manual:true}`;
+  evaluate(`manualPurchases.push(${line("A", "A-01")}, ${line("B", "B-01")})`);
+  assert.equal(evaluate("dedupeManualLines()"), 1);
+  assert.equal(evaluate("manualPurchases.length"), 1);
+  // 同一张单里真有两行一样的，那是小票本来就写了两行，不动。
+  evaluate(`manualPurchases.push(${line("A", "A-02")})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v112"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v113"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

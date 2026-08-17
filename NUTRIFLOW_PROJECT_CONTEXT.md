@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v112`
+- 当前离线缓存：`nutriflow-pwa-v113`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**采购统计改成饼图 + 跨单去重 + 顶栏图标换 SVG + 计划框字号**。① **#4 饼图**：新增 `donutSvg(slices, size)`——用 `stroke-dasharray` 一段段绕圈画环形图，**不引库也不用 canvas**（canvas 还得自己处理深色模式和高分屏，SVG 直接跟 CSS 走）；`rotate(-90)` 让第一段从 12 点开始。分类区改成「顶上一张总饼图 + 图例」＋「每一类一个 `.cat-block`：小饼图看这一类里各样东西的占比、右边是明细列表」，点标题折叠。**状态记的是 `closedSpendCategories`（收起了哪几类）而不是"展开了哪几类"**，这样新出现的分类默认展开（用户要求默认展开）。明细最多列 12 样，多的写「还有 N 样」。② **#1 跨单重复**：新增 `dedupeManualLines()`——整单指纹只能抓「一模一样的两单」，实际更常见的是同一单被拆成两次记（截图重叠、识别跑两遍），同一样东西在两张单里各出现一次，统计就翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。按「门店+当天+商品名+规格+金额」去重，**只跨单去重**——同一张单里真有两行一样的是小票本来就写了两行，不动。启动时在 `dedupeManualReceipts()` 之后跑。③ **顶栏 ⚙/🔍 换成内联 SVG 线条图标**（用户："设置icon很丑"）——emoji 会被 iOS 渲染成彩色立体，和线条感完全两种东西；SVG 用 `currentColor`，两个按钮质感统一。④ **计划框字号**（用户两次反馈）：**iOS 只在「聚焦那一刻」按 font-size 判断要不要放大整页**，所以平时 13px、`:focus` 才升到 16px——既看着小、聚焦也不放大。CSS 扫描测试相应放宽：允许 < 16px，但必须有配套的 `:focus` 升到 ≥16px 的规则。⑤ hero 文案按用户要求改成「鱼禽肉 + 1个蛋」。CDP 实测：总饼图 7 段、7 个分类块默认全展开、7 张子饼图、点标题折叠后子图 7→6、金额 `rgb(21,21,21)` 不再发蓝、计划框 13px、横向溢出 0。测试增至 47 项。离线缓存与版本号升至 v113。
 
 - 2026-08-06：用户一次提了 10 条，本轮做完 7 条（#2/#3/#5/#7/#8/#9/#10）。① **#5 采购统计金额发蓝**：`.period-row` 改成 `<button>` 后没写 `color`，继承了按钮默认色（iOS 上偏蓝）——补 `color:var(--text)`。**教训：把 div 改成 button 一定要同时写 color/font/text-align，否则会捡到系统默认外观。** ② **#3 蛋奶 + 豆类合并成「蛋奶豆」**（`purchaseGroupRules`）。③ **#2 米/油/调料进统计**：原来 `categoryTotals` 用 `NOT_INGREDIENT` 整个排除，钱花了却看不见。改成只挡 `bag` 和 `iceCream`（用户明确"冰淇淋不统计"），其余归不了大类的落进「其他」；顺带给冰淇淋补了 `iceCream` 别名（冰淇淋/雪糕/脆皮棒）。实测「其他」从 ¥26.39 变 ¥59.91。**注意 `NOT_INGREDIENT` 仍用于「现有食材」清单，两处口径本就不同，别合并。** ④ **#7** hero 标题「今天吃到这些」→「每天吃到这些」；`dailyTargets` 里蛋并进肉那栏（`鱼禽肉 + 1-2个蛋`）、奶那栏改成纯 `奶/酸奶 300-500ml`。⑤ **#8** 每顿目标「鱼/瘦肉」→「肉」。⑥ **#9** 计划里的食材 chip 名字太长：先查 `priceFoodNames`，再退回 `shortItem`，仍超 6 字则**取后 6 字**（品类词通常在后面，「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」）。⑦ **#10** 每周计划的框显小：**字号不能动**——低于 16px iOS 一聚焦就放大整页（v106 刚修过），只能收紧 `line-height`(1.5→1.3)、`padding`、行距和日期列宽。离线缓存与版本号升至 v112。
   - **本轮未做**：#1 采购统计数量出错（如「山姆鸡蛋算了两次」）——需要用户设备上的实际数据才能定位，很可能是 v94 之前留下的重复采购记录（`dedupeManualReceipts` 只清整单完全一致的）；#4 统计饼图 + 子类饼图 + 右侧明细列表（较大改动）；#6 计划页显示问题（用户截图里 hero 磁贴换行导致高度参差）。

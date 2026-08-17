@@ -119,6 +119,7 @@ input{font:inherit}
 h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
 .brand span,.muted{color:var(--muted)}
 .brand span{font-size:13px}
+.icon-btn svg{display:block}
 .icon-btn{
   width:42px;
   height:42px;
@@ -406,7 +407,11 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .plan-day label small{display:block;font-size:11px;opacity:.75}
 /* 字号不能低于 16px——低了 iOS 一聚焦就把整页放大（v106 刚修过）。
    要显得小一点只能收紧行高和内边距，不能动字号。 */
-.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit;font-size:16px;line-height:1.3;resize:vertical}
+/* iOS 只在「聚焦那一刻」按 font-size 决定要不要放大整页。所以平时用小字号，
+   :focus 时才升到 16px——既看着小，聚焦也不会把页面顶大（用户两次反馈：
+   先是"点编辑整个页面会放大"，后是"框里的字太大了"）。 */
+.plan-text{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit;font-size:13px;line-height:1.45;resize:vertical}
+.plan-text:focus{font-size:16px}
 .plan-chips{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;margin-top:-2px}
 /* 食材 chip 只是辅助输入，字要比正文小一档，别喧宾夺主（用户要求调小）。 */
 .plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap}
@@ -443,6 +448,16 @@ summary.week-block-head::after{
 /* 周期条可点选：选中的那一期高亮，下面的分类明细只看这一期。 */
 .period-row{width:100%;text-align:left;color:var(--text);border:1px solid transparent;background:none;padding:6px 8px;border-radius:8px;cursor:pointer;display:grid;gap:6px}
 .period-row.on{border-color:var(--green);background:var(--surface-2)}
+/* 饼图 + 图例：小屏窄的时候图例换到下面一行。 */
+.chart-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 0 2px;min-width:0}
+.donut{flex:0 0 auto}
+.legend{display:grid;gap:4px;flex:1 1 150px;min-width:0}
+.legend-item{display:flex;align-items:baseline;gap:6px;font-size:12px;line-height:1.4;color:var(--text);min-width:0}
+.legend-item i{flex:0 0 auto;width:9px;height:9px;border-radius:2px}
+.legend-item b{margin-left:auto;white-space:nowrap;color:var(--muted);font-weight:500}
+.legend-item.more{color:var(--muted)}
+.cat-block{padding:10px 0}
+.cat-block + .cat-block{border-top:1px solid var(--line)}
 .cat-row{display:grid;gap:5px;padding:9px 0}
 .cat-row + .cat-row{border-top:1px solid var(--line)}
 .cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;border:0;background:none;color:var(--text);font-size:14px;padding:0;text-align:left;cursor:pointer;min-width:0}
@@ -1095,8 +1110,8 @@ summary.week-block-head::after{
       <h1>NutriFlow</h1>
       <span>每日摄入 · 采购历史 · 食材库</span>
     </div>
-    <button class="icon-btn" type="button" id="searchBtn" title="搜索" aria-label="搜索">🔍</button>
-    <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置">⚙</button>
+    <button class="icon-btn" type="button" id="searchBtn" title="搜索" aria-label="搜索"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.6-3.6"></path></svg></button>
+    <button class="icon-btn" type="button" id="settingsBtn" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.35.42.63.77.77H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
   </div>
   <div class="search-panel" id="searchPanel" hidden>
     <input type="search" id="searchInput" placeholder="搜点什么" aria-label="搜索">
@@ -1319,7 +1334,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v112</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v113</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1352,7 +1367,7 @@ const categories = [
 ];
 
 const dailyTargets = [
-  {icon:"🥩", name:"鱼禽肉 + 1-2个蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
+  {icon:"🥩", name:"鱼禽肉 + 1个蛋", amount:"120-200g", note:"可食生重；鱼、牛猪瘦肉、鸡肉和鸡蛋轮换，不靠单一肉类堆量。"},
   {icon:"🥦", name:"蔬菜", amount:"350-500g", note:"深绿叶菜 + 十字花科 + 其他颜色蔬菜。"},
   {icon:"🍚", name:"主食熟重", amount:"250-300g", note:"米饭、杂粮饭、红薯、土豆；增重方向不压主食。"},
   {icon:"🍎", name:"水果", amount:"300g", note:"全天吃够即可，苹果、橙子、蓝莓、猕猴桃轮换。"},
@@ -2244,6 +2259,36 @@ function manualReceiptSignatures(){
 }
 // 识别或保存跑了两遍就会多出一模一样的一单，「现有食材」里于是同一样东西出现两次
 // （用户："识别重复了，导致上面都重复了"）。启动时把重复的整单删掉，只留最早那一单。
+// 整单指纹只能抓「一模一样的两单」。实际更常见的是：同一单被拆成两次记（比如
+// 截图有重叠、或者识别跑了两遍但商品数略有出入），于是同一样东西在两张单里各出现
+// 一次，统计就翻倍（用户："统计买了两次山姆的鸡蛋，实际只买过一次"）。
+// 这里按「门店 + 当天 + 商品名 + 规格 + 金额」去重，**只跨单去重**——
+// 同一张单里真有两行一样的，那是小票本来就写了两行，不动它。
+function dedupeManualLines(){
+  const seen = new Map();
+  const doomed = [];
+  manualPurchases
+    .slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)))
+    .forEach(row => {
+      const key = [
+        String(row.store || "").trim(),
+        String(row.date || "").slice(0, 10),
+        String(row.item || "").trim(),
+        String(row.amount || "").trim(),
+        Number(row.totalPrice || 0),
+      ].join("|");
+      const first = seen.get(key);
+      if (!first){ seen.set(key, row); return; }
+      if (first.receiptId === row.receiptId) return;   // 同一张单里的两行，保留
+      doomed.push(row.id);
+    });
+  if (!doomed.length) return 0;
+  markDeleted(doomed);
+  manualPurchases = manualPurchases.filter(row => !doomed.includes(row.id));
+  saveManualPurchases();
+  return doomed.length;
+}
 function dedupeManualReceipts(){
   const seen = new Set();
   const doomed = [];
@@ -3459,7 +3504,7 @@ function shortItem(item){
 // ---- 采购统计（用户："出一个每个月、每周的采购金额统计；再出一份购买过的食物的
 // 总量/类别/比例等可以互动式的统计"）----
 let spendMode = "week";      // week | month
-let openSpendCategory = "";  // 展开哪一类的明细
+const closedSpendCategories = new Set();  // 收起了哪几类（默认全展开）
 let selectedPeriod = "";     // 只看哪一期（空 = 全部）
 // 按周（周一起）或按月把采购金额汇总起来。返回新到旧。
 // 一条采购属于哪一期。抽出来给分类统计复用，免得两边分桶口径对不上。
@@ -3539,6 +3584,24 @@ function applyStatsFold(){
   const body = document.getElementById("statsBody");
   if (body) body.hidden = folded;
 }
+const CHART_COLORS = ["#1f7a4d","#4a9d6e","#a76512","#276cbb","#b23a48","#7a5ea8","#c99700","#5f6e63"];
+// 环形图：用 stroke-dasharray 一段一段绕圈，不引任何库，也不用 canvas
+// （canvas 在深色模式和高分屏下还得自己处理，SVG 直接跟着 CSS 走）。
+function donutSvg(slices, size){
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  if (!total) return "";
+  const radius = 40, circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const arcs = slices.map((slice, index) => {
+    const length = slice.value / total * circumference;
+    const dash = `${length} ${circumference - length}`;
+    // -25% 是为了让第一段从 12 点开始，而不是 3 点。
+    const arc = `<circle class="donut-arc" data-slice="${index}" cx="50" cy="50" r="${radius}" fill="none" stroke="${CHART_COLORS[index % CHART_COLORS.length]}" stroke-width="18" stroke-dasharray="${dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 50 50)"><title>${slice.label} ${slice.text || ""}</title></circle>`;
+    offset += length;
+    return arc;
+  }).join("");
+  return `<svg class="donut" viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="占比图">${arcs}</svg>`;
+}
 function renderStats(){
   const periods = spendByPeriod(spendMode);
   const total = periods.reduce((sum, bucket) => sum + bucket.total, 0);
@@ -3577,26 +3640,44 @@ function renderStats(){
   const scopeLabel = selectedPeriod ? (periods.find(bucket => bucket.key === selectedPeriod) || {}).label : "";
   const noteEl = document.getElementById("statsNote");
   if (noteEl) noteEl.textContent = scopeLabel
-    ? `下面只看 ${scopeLabel} 买了些什么，点一类展开明细。再点上面那一条可以取消、看全部。`
-    : "下面按大类看买过些什么，点一类展开具体买了啥；点上面某一期只看那一期。调料、油、饮用水不计。";
+    ? `下面只看 ${scopeLabel} 买了些什么。点标题可以折叠某一类。再点上面那一条取消、看全部。`
+    : "下面按大类看买过些什么，点标题可折叠某一类；点上面某一期只看那一期。冰淇淋和账单行不计。";
+
   const spendAll = groups.reduce((sum, group) => sum + group.spend, 0) || 1;
   const box = document.getElementById("categoryChart");
   if (!box) return;
-  box.innerHTML = groups.length ? groups.map(group => {
+  if (!groups.length){ box.innerHTML = `<div class="note">还没有可统计的采购。</div>`; return; }
+
+  // 顶上一张总饼图 + 图例，一眼看清各大类的占比。
+  const overview = `<div class="chart-row">
+    ${donutSvg(groups.map(group => ({label: group.name, value: group.spend, text: `¥${group.spend.toFixed(2).replace(/\.00$/, "")}`})), 132)}
+    <div class="legend">${groups.map((group, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${group.icon} ${group.name}<b>${Math.round(group.spend / spendAll * 100)}%</b></span>`).join("")}</div>
+  </div>`;
+
+  // 每一类：小饼图看这一类里各样东西的占比，右边是具体买了什么。默认展开。
+  const sections = groups.map(group => {
+    const folded = closedSpendCategories.has(group.name);
+    const items = group.items.slice(0, 12);
     const share = Math.round(group.spend / spendAll * 100);
-    const open = openSpendCategory === group.name;
-    return `<div class="cat-row">
-      <button class="cat-head" type="button" data-cat="${group.name}" aria-expanded="${open}">
-        <span>${group.icon} ${group.name}</span>
+    return `<section class="cat-block">
+      <button class="cat-head" type="button" data-cat="${group.name}" aria-expanded="${!folded}">
+        <span>${folded ? "▸" : "▾"} ${group.icon} ${group.name}</span>
         <b>¥${group.spend.toFixed(2).replace(/\.00$/, "")} · ${share}%${group.grams ? ` · ${formatWeight(group.grams)}` : ""}</b>
       </button>
-      <div class="track"><div class="fill" style="width:${Math.max(3, share)}%"></div></div>
-      ${open ? `<div class="cat-items">${group.items.map(item => `<span class="cat-item">${item.name}<small> · ¥${item.spend.toFixed(2).replace(/\.00$/, "")}${item.times > 1 ? ` · ${item.times} 次` : ""}</small></span>`).join("")}</div>` : ""}
-    </div>`;
-  }).join("") : `<div class="note">还没有可统计的采购。</div>`;
+      ${folded ? "" : `<div class="chart-row">
+        ${donutSvg(items.map(item => ({label: item.name, value: item.spend, text: `¥${item.spend.toFixed(2).replace(/\.00$/, "")}`})), 104)}
+        <div class="legend">${items.map((item, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${item.name}<b>¥${item.spend.toFixed(2).replace(/\.00$/, "")}${item.times > 1 ? ` · ${item.times} 次` : ""}</b></span>`).join("")}${group.items.length > items.length ? `<span class="legend-item more">还有 ${group.items.length - items.length} 样</span>` : ""}</div>
+      </div>`}
+    </section>`;
+  }).join("");
+
+  box.innerHTML = overview + sections;
   box.querySelectorAll("[data-cat]").forEach(button => {
     button.addEventListener("click", () => {
-      openSpendCategory = openSpendCategory === button.dataset.cat ? "" : button.dataset.cat;
+      const name = button.dataset.cat;
+      // 记的是"收起了哪几类"，这样新出现的分类默认是展开的（用户要求默认展开）。
+      if (closedSpendCategories.has(name)) closedSpendCategories.delete(name);
+      else closedSpendCategories.add(name);
       renderStats();
     });
   });
@@ -4857,6 +4938,7 @@ document.addEventListener("visibilitychange", () => {
 setTimeout(() => void drainRecognitionQueue(), 800);
 healManualFoodIds();
 dedupeManualReceipts();
+dedupeManualLines();
 render();
 </script>
 </body>
