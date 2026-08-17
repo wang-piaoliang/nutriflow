@@ -561,25 +561,27 @@ summary.week-block-head::after{
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
 .sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
-.dining-add{display:grid;gap:8px;margin:12px 0}
-.dining-add input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
-.dining-add-row{display:flex;flex-wrap:wrap;gap:8px}
+.buy-add-manual > input[type=text]{width:100%;box-sizing:border-box;margin-top:8px}
+.dining-add-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .dining-add-row input{flex:1 1 120px;min-width:0}
 .dining-add-row button{flex:0 0 auto;padding:9px 18px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600;white-space:nowrap}
 .dining-entry{padding:12px 0;border-top:1px solid var(--line)}
 .dining-entry:first-child{border-top:none}
-.dining-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
-.dining-head strong{font-size:15px}
-.dining-row{display:flex;align-items:center;gap:10px;margin-top:8px}
-/* 在外就餐：平时只读，点 ✏️ 才变成可填。 */
-.dining-price-read{font-size:16px;color:var(--text)}
-.dining-price-read.missing{color:var(--muted);font-size:14px}
-.dining-edit{border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:6px 10px;line-height:1;font-size:14px}
-.dining-edit.on{background:var(--green);border-color:var(--green);color:#fff}
-.dining-field{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:5px 8px;font-size:16px;min-width:0}
-.dining-field.place{flex:1 1 auto;width:100%;font-weight:600}
-.dining-price-field{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:14px}
-.dining-price{width:112px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:16px}
+/* 一条记录 = 一行：店名 + 右边「¥价格 · 日期 · 照片」+ 一支小铅笔。
+   价格原来独占一行，一条记录就要三行，列表拉得老长（用户："价格也不用独立成行"）。 */
+.dining-head{display:flex;align-items:baseline;gap:8px;min-width:0}
+.dining-head strong{font-size:15px;overflow-wrap:anywhere;min-width:0}
+.dining-meta{margin-left:auto;display:flex;align-items:baseline;gap:6px;white-space:nowrap;color:var(--muted);font-size:13px}
+.dining-meta .price{color:var(--text);font-size:15px;font-weight:600}
+.dining-meta .price.missing{color:var(--muted);font-size:13px;font-weight:400}
+/* 编辑按钮就一支线条铅笔，和顶栏的设置图标一个质感——emoji ✏️ 在 iOS 上是彩色
+   立体的，跟这一页格格不入（用户："编辑的小icon太丑了，就用那种小笔"）。 */
+.dining-edit{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
+.dining-edit:active{opacity:.55}
+.dining-edit.on{background:var(--green);color:#fff}
+.dining-edit-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.dining-field{flex:1 1 120px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:6px 9px;font-size:16px;min-width:0}
+.dining-field.place{flex:1 1 100%;font-weight:600}
 .dining-del{margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--muted);font-size:13px;cursor:pointer}
 .dining-note{display:block;margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5}
 /* 这顿吃了什么。比备注显眼一点，用正文色。 */
@@ -648,6 +650,8 @@ summary.week-block-head::after{
 .stock-sub{display:flex;align-items:baseline;gap:6px;margin:14px 0 6px;width:100%;border:0;background:none;padding:0;text-align:left;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:var(--muted)}
 .stock-sub:first-child{margin-top:0}
 .stock-sub span{color:var(--muted);font-weight:500;opacity:.75}
+/* 箭头只是个提示，做小做淡，别抢标题（用户："折叠icon尽量小"）。 */
+.fold-caret{font-style:normal;font-size:9px;line-height:1;opacity:.55;margin-right:1px}
 .buy-item{background:var(--surface-2);border-radius:8px}
 .buy-item > .buy-row{background:transparent;border-radius:0}
 .buy-item.done{opacity:.56}
@@ -1163,7 +1167,7 @@ summary.week-block-head::after{
       <article class="card desktop-span">
         <div class="section-title">
           <h2>每周计划</h2>
-          <span class="subtle"><button class="price-fold" type="button" id="planFold" title="收起每周计划" aria-label="收起每周计划">▾</button>点一天就能写</span>
+          <span class="subtle"><button class="price-fold" type="button" id="planFold" title="收起每周计划" aria-label="收起每周计划">▾</button></span>
         </div>
         <div id="planBody">
           
@@ -1299,14 +1303,22 @@ summary.week-block-head::after{
           <h2>在外就餐</h2>
           <span class="subtle" id="diningMeta">0 笔</span>
         </div>
-        <div class="note">记录在外面吃饭的花费。没拍照也没关系，价格可以后补——点每条的价格框直接改、或点小相机加照片。只存本机，不上传 GitHub。</div>
-        <div class="dining-add">
-          <input type="text" id="diningPlace" placeholder="餐厅 / 吃了啥" autocomplete="off">
-          <div class="dining-add-row">
-            <input type="date" id="diningDate" aria-label="日期">
-            <input type="number" id="diningPrice" inputmode="decimal" placeholder="价格（元，可留空后补）" autocomplete="off">
-            <label class="photo-add-mini" id="diningPendingPhoto" title="选照片，点添加时一起存" aria-label="选照片，点添加时一起存">📷<input class="photo-input" type="file" accept="image/*" multiple id="diningPhotoInput"></label>
-            <button type="button" id="diningAdd">添加</button>
+        <!-- 和采购、饮食一个规矩：拍张照就够了，店名和吃了啥都从照片里读，
+             手填收进折叠里（用户："不要上来就让填，一样上传照片"）。 -->
+        <div class="buy-add">
+          <div class="buy-add-body">
+            <label class="diet-form-photo" id="diningPendingPhoto" title="拍张照，自动读出吃了啥" aria-label="拍张照，自动读出吃了啥">📷 拍张照就行<input class="photo-input" type="file" accept="image/*" multiple id="diningPhotoInput"></label>
+            <div class="pending-thumbs" id="diningPendingThumbs" hidden></div>
+            <p class="buy-add-hint" id="diningHint" hidden></p>
+            <details class="buy-add-manual">
+              <summary>或者手动填</summary>
+              <input type="text" id="diningPlace" placeholder="餐厅 / 吃了啥" autocomplete="off">
+              <div class="dining-add-row">
+                <input type="date" id="diningDate" aria-label="日期">
+                <input type="number" id="diningPrice" inputmode="decimal" placeholder="价格" autocomplete="off">
+                <button type="button" id="diningAdd">添加</button>
+              </div>
+            </details>
           </div>
         </div>
         <div id="diningList"></div>
@@ -1349,7 +1361,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v128</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v129</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1404,7 +1416,7 @@ const foods = [
   {id:"beef", category:"animalProtein", name:"牛肉", variants:"里脊 / 臀肉 / 腿肉 / 少肥西冷", weeklyTarget:"150-250g", weeklyTimes:"每周约 1 次（与猪、羊共享红肉次数）", score:4.8, nutrients:"血红素铁、B12、锌、优质蛋白", feature:"对缺铁恢复最有针对性，所以排在猪肉前；考虑结直肠癌家族史，控制总量并避开加工肉。"},
   {id:"leanPork", category:"animalProtein", name:"瘦猪肉", variants:"猪小里脊 / 通脊 / 少肥梅花肉", weeklyTarget:"150-250g", weeklyTimes:"每周约 1 次（与牛、羊共享红肉次数）", score:4.6, nutrients:"维 B1、蛋白质、铁、锌", feature:"小里脊和通脊都是猪肉。优先里脊、通脊；梅花肉选少肥部分，兼顾口感和胆囊结石饮食。"},
   {id:"shellfish", category:"animalProtein", name:"虾贝类", variants:"虾仁 / 扇贝 / 贝柱", weeklyTarget:"0-200g", weeklyTimes:"每周 0-1 次（与白肉鱼轮换）", score:4.4, nutrients:"蛋白质、B12、硒、锌", feature:"适合替换一顿水产增加多样性，但不能完全替代富脂鱼的 Omega-3。"},
-  {id:"chicken", category:"animalProtein", name:"鸡肉", variants:"去皮鸡腿 / 鸡小胸 / 鸡胸", weeklyTarget:"100-250g", weeklyTimes:"每周 2-3 次", score:4.2, nutrients:"蛋白质、烟酸、B 族维生素", feature:"三者差异不值得拆开评分：鸡腿口感和铁锌略好，鸡小胸与鸡胸更瘦，按口味轮换即可。"},
+  {id:"chicken", category:"animalProtein", name:"鸡肉", variants:"去皮鸡腿 / 鸡小胸 / 鸡胸", weeklyTarget:"100-250g", weeklyTimes:"每周 2-3 次", score:4.2, nutrients:"蛋白质、烟酸、B 族维生素", feature:"鸡腿口感和铁锌略好，鸡小胸与鸡胸更瘦，按口味轮换即可。"},
   {id:"whiteFish", category:"animalProtein", name:"白肉鱼", variants:"鳕鱼 / 巴沙鱼 / 鲈鱼", weeklyTarget:"0-200g", weeklyTimes:"每周 0-1 次（与虾贝轮换）", score:4.1, nutrients:"蛋白质、硒", feature:"清淡易吃，主要贡献蛋白质；和富脂鱼轮换，不把它当作 Omega-3 的主要来源。"},
   {id:"liver", category:"animalProtein", name:"动物肝脏", variants:"猪肝 / 鸡肝", weeklyTarget:"每次 25-50g", weeklyTimes:"每月 2-3 次", score:4.0, nutrients:"血红素铁、维 A、B12、叶酸", feature:"营养密度高但不是越多越好。你正在补铁，少量轮换即可，不用每周固定购买。"},
   {id:"lamb", category:"animalProtein", name:"羊肉", variants:"瘦羊腿 / 羊里脊", weeklyTarget:"0-150g", weeklyTimes:"偶尔替换牛肉或猪肉", score:3.9, nutrients:"铁、锌、B12、蛋白质", feature:"可替换一顿牛猪肉；仍计入红肉总量，不额外叠加。"},
@@ -1450,8 +1462,8 @@ const foods = [
   {id:"nuts", category:"fruitNut", name:"坚果", variants:"核桃 / 巴旦木 / 腰果 / 花生", weeklyTarget:"70-140g", weeklyTimes:"5-7 次", score:4.5, nutrients:"不饱和脂肪、镁、维 E、蛋白质", feature:"每天少量有助于补充能量；优先原味，避免一次吃太多。"},
   {id:"apple", category:"fruitNut", name:"苹果 / 梨", weeklyTarget:"700-1200g", weeklyTimes:"3-7 次", score:4.4, nutrients:"膳食纤维、钾、多酚", feature:"耐放、便宜、容易长期坚持，是很好的常备水果，不应因维 C 不突出就被低估。"},
   {id:"banana", category:"fruitNut", name:"香蕉", weeklyTarget:"400-900g", weeklyTimes:"2-5 次", score:4.4, nutrients:"碳水、钾、维 B6、膳食纤维", feature:"方便加餐，也有助于适度增加能量摄入；完整水果不等同于含糖饮料。"},
-  {id:"tropical", category:"fruitNut", name:"热带水果", variants:"芒果 / 木瓜 / 菠萝", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.4, nutrients:"维 C、类胡萝卜素、膳食纤维", feature:"适合丰富颜色和风味，按应季与耐受情况轮换。"},
-  {id:"stoneFruit", category:"fruitNut", name:"桃李杏类", variants:"桃 / 油桃 / 李子 / 杏", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.3, nutrients:"维 C、钾、多酚、膳食纤维", feature:"应季时新鲜、好吃，营养价值不需要和苹果或浆果分高下。"},
+  {id:"tropical", category:"fruitNut", name:"热带水果", variants:"芒果 / 百香果 / 木瓜 / 菠萝 / 火龙果", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.4, nutrients:"维 C、类胡萝卜素、膳食纤维", feature:"适合丰富颜色和风味，按应季与耐受情况轮换。"},
+  {id:"stoneFruit", category:"fruitNut", name:"桃李杏类", variants:"桃子 / 油桃 / 李子 / 杏 / 樱桃", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.3, nutrients:"维 C、钾、多酚、膳食纤维", feature:"应季时新鲜、好吃，营养价值不需要和苹果或浆果分高下。"},
   {id:"grape", category:"fruitNut", name:"葡萄 / 提子", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.2, nutrients:"多酚、钾、碳水", feature:"可以正常吃，按一份水果控制总量即可，不必因甜味完全回避。"},
   {id:"melon", category:"fruitNut", name:"瓜果类", variants:"西瓜 / 甜瓜 / 哈密瓜", weeklyTarget:"400-1000g", weeklyTimes:"1-3 次", score:4.2, nutrients:"水分、钾、维 C、类胡萝卜素", feature:"适合夏季补充水果种类；水分多不代表可以替代饮水。"},
   {id:"pomegranate", category:"fruitNut", name:"其他应季水果", variants:"石榴 / 柿子 / 鲜枣 / 火龙果", weeklyTarget:"300-700g", weeklyTimes:"1-3 次", score:4.2, nutrients:"维 C、钾、多酚或膳食纤维", feature:"不同品种各有特点，选择新鲜、完整、应季且自己愿意长期吃的即可。"}
@@ -2540,6 +2552,16 @@ function mealPriceMark(meal){
 }
 // 这笔在外就餐吃了什么。不在 dining 记录里另存一份，直接从 dietEntries 里按
 // diningId 找回来，免得识别结果和「每天吃了什么」两处对不上、删了一边另一边还在。
+// 这笔在外就餐是哪一顿。dining 记录本身不存餐次，但识别出来的菜写进了 dietEntries
+// 并带着 diningId，反查一下就知道是午餐还是晚餐。
+function diningMealOf(entry){
+  if (!entry?.id) return "";
+  const hit = dietEntries.find(record => record.diningId === entry.id && record.meal);
+  return hit ? hit.meal : "";
+}
+// 一支线条铅笔，和顶栏的设置图标同一套（emoji ✏️ 在 iOS 上是彩色立体的，太跳）。
+const PENCIL_ICON = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5z"></path></svg>`;
+const CHECK_ICON = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
 function diningItems(entry){
   if (!entry?.id) return [];
   const items = dietEntries
@@ -2564,7 +2586,17 @@ async function renderDining(){
     // 只剩个店名和金额（用户："在外就餐的图片要从饮食那边拉过来，不然我也不知道
     // 具体吃了啥"）。这里只是把同一批照片借过来显示，不复制、不改归属——
     // 删照片仍然只在它原本挂的地方删。
-    const borrowed = photosByOwner[dietPhotoOwner(String(entry.date || "").slice(0, 10))] || [];
+    // 但整天一起借就借多了：中午在外面吃、晚上在家做，晚饭那几张也被拉过来
+    // （用户："把不是在外就餐的那张图也拉过来了，要区分下是午餐的图还是晚餐的图"）。
+    // 照片存的时候现在会记下是哪一顿，按餐次挑。老照片没有这个标记——那一天要是
+    // 一张带标记的都没有，就维持原样全部借过来，免得历史记录突然空掉。
+    const dayPhotos = photosByOwner[dietPhotoOwner(String(entry.date || "").slice(0, 10))] || [];
+    const diningMeal = diningMealOf(entry);
+    const dayHasMealTags = dayPhotos.some(photo => photo.meal);
+    const borrowed = dayPhotos.filter(photo => {
+      if (!diningMeal || !dayHasMealTags) return true;
+      return photo.meal === diningMeal;
+    });
     const own = photosByOwner[owner] || [];
     const seenPhotos = new Set(own.map(photo => photo.id));
     const photos = own.concat(
@@ -2573,19 +2605,22 @@ async function renderDining(){
     const priceVal = (entry.price == null || isNaN(entry.price)) ? "" : entry.price;
     const label = entry.place || "在外就餐";
     const editing = entry.id === editingDining;
+    const mealTag = diningMeal ? `${diningMeal} · ` : "";
     return `<div class="dining-entry" data-dining-entry="${entry.id}">
-      <div class="dining-head">${editing
-        ? `<input type="text" class="dining-field place" data-dining-field="place" data-dining-id="${entry.id}" value="${escapeAttribute(entry.place || "")}" placeholder="餐厅名" aria-label="餐厅名">`
-        : `<strong>${label}</strong>`}<span class="subtle">${editing
-        ? `<input type="date" class="dining-field date" data-dining-field="date" data-dining-id="${entry.id}" value="${escapeAttribute((entry.date || "").slice(0,10))}" aria-label="日期">`
-        : (entry.date || "")} · ${photoAddLabel(owner, photos.length)}</span></div>
-      <div class="dining-row">
-        ${editing
-          ? `<label class="dining-price-field">¥<input type="number" inputmode="decimal" class="dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="补价格"></label>`
-          : `<span class="dining-price-read${priceVal === "" ? " missing" : ""}">${priceVal === "" ? "价格待补" : `¥${priceVal}`}</span>`}
-        <button type="button" class="dining-edit${editing ? " on" : ""}" data-dining-edit="${entry.id}" title="${editing ? "改完了" : "编辑这一笔"}" aria-label="${editing ? "改完了" : "编辑这一笔"}">${editing ? "✓" : "✏️"}</button>
-        ${editing ? `<button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>` : ""}
+      <div class="dining-head">
+        <strong>${label}</strong>
+        <span class="dining-meta">
+          <span class="price${priceVal === "" ? " missing" : ""}">${priceVal === "" ? "待补价" : `¥${priceVal}`}</span>
+          <span>· ${mealTag}${(entry.date || "").slice(5)} · ${photoAddLabel(owner, photos.length)}</span>
+        </span>
+        <button type="button" class="dining-edit${editing ? " on" : ""}" data-dining-edit="${entry.id}" title="${editing ? "改完了" : "编辑这一笔"}" aria-label="${editing ? "改完了" : "编辑这一笔"}">${editing ? CHECK_ICON : PENCIL_ICON}</button>
       </div>
+      ${editing ? `<div class="dining-edit-row">
+        <input type="text" class="dining-field place" data-dining-field="place" data-dining-id="${entry.id}" value="${escapeAttribute(entry.place || "")}" placeholder="餐厅名" aria-label="餐厅名">
+        <input type="date" class="dining-field date" data-dining-field="date" data-dining-id="${entry.id}" value="${escapeAttribute((entry.date || "").slice(0,10))}" aria-label="日期">
+        <input type="number" inputmode="decimal" class="dining-field dining-price" data-dining="${entry.id}" value="${priceVal}" placeholder="价格" aria-label="价格">
+        <button type="button" class="dining-del" data-dining-del="${entry.id}">删除</button>
+      </div>` : ""}
       ${(() => {
         const eaten = diningItems(entry);
         return eaten.length ? `<small class="dining-items">${eaten.join(" · ")}</small>` : "";
@@ -2593,7 +2628,7 @@ async function renderDining(){
       ${entry.note ? `<small class="dining-note">${entry.note}</small>` : ""}
       ${photoSectionMarkup("dining", owner, photos, label)}
     </div>`;
-  }).join("") || `<div class="note">还没有在外就餐记录。用上面的输入框加一笔，价格可以留空后补。</div>`;
+  }).join("") || `<div class="note">还没有在外就餐记录。拍张照就行，价格可以留空后补。</div>`;
   bindPhotoControls(list, () => void renderDining());
   list.querySelectorAll("[data-dining-edit]").forEach(button => {
     button.addEventListener("click", () => {
@@ -2625,38 +2660,81 @@ function bindDiningForm(){
   const priceEl = document.getElementById("diningPrice");
   const photoEl = document.getElementById("diningPhotoInput");
   const photoLabel = document.getElementById("diningPendingPhoto");
+  const thumbsEl = document.getElementById("diningPendingThumbs");
+  const hintEl = document.getElementById("diningHint");
   if (!addBtn || !placeEl || !dateEl || !priceEl) return;
-  // 添加的同时就能选照片：这条记录还不存在、没有 id，所以先把文件攥在手里，
-  // 等点了「添加」拿到 id 再写进 IndexedDB。
-  let pendingPhotos = [];
-  const showPending = () => {
-    if (!photoLabel) return;
-    photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
-    if (photoEl) photoLabel.appendChild(photoEl);
+  const hint = text => {
+    if (!hintEl) return;
+    hintEl.textContent = text;
+    hintEl.hidden = !text;
   };
-  photoEl?.addEventListener("change", () => {
-    pendingPhotos = Array.from(photoEl.files || []);
+  // 拍照是主路径（用户："不要上来就让填，一样上传照片"）：选完照片直接建一笔、
+  // 存图、后台识别，店名和吃了啥都从照片里读；填错了下面点铅笔改。
+  // 用相机时一次只回来一张，所以是累加而不是覆盖——和采购那边一个规矩。
+  let pendingPhotos = [];
+  let pendingUrls = [];
+  let recognizeTimer = 0;
+  const showPending = () => {
+    if (photoLabel){
+      photoLabel.textContent = pendingPhotos.length ? `📷 已选 ${pendingPhotos.length} 张` : "📷 拍张照就行";
+      if (photoEl) photoLabel.appendChild(photoEl);
+    }
+    if (!thumbsEl) return;
+    pendingUrls.forEach(url => URL.revokeObjectURL(url));
+    pendingUrls = pendingPhotos.map(file => URL.createObjectURL(file));
+    thumbsEl.innerHTML = pendingPhotos.map((file, index) =>
+      `<div class="pending-tile"><img src="${pendingUrls[index]}" alt="待识别的餐食 ${index + 1}"><button type="button" class="pending-del" data-pending-del="${index}" title="去掉这张" aria-label="去掉这张">✕</button></div>`
+    ).join("");
+    thumbsEl.hidden = !pendingPhotos.length;
+    thumbsEl.querySelectorAll("[data-pending-del]").forEach(button => {
+      button.addEventListener("click", () => {
+        pendingPhotos.splice(Number(button.dataset.pendingDel), 1);
+        showPending();
+      });
+    });
+  };
+  async function startDiningPhotos(){
+    if (!pendingPhotos.length) return;
+    // 先把这批照片端走并清空，人立刻就能拍下一笔。
+    const files = pendingPhotos;
+    pendingPhotos = [];
+    if (photoEl) photoEl.value = "";
     showPending();
+    recognizedTime = "";
+    const entry = addDining({date: dateEl.value || new Date().toISOString().slice(0, 10), place: "", price: null});
+    const owner = diningOwner(entry.id);
+    const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
+    await renderDining();
+    if (!aiConfig().key){
+      hint("照片已存下，但还没配 API key，认不出吃了啥——去「营养」页最下面配一个，或者点下面那条的铅笔手填。");
+      return;
+    }
+    hint("后台识别中…可以接着记下一笔。");
+    void autoRecognize(owner, saved).then(added => {
+      render();
+      void renderDining();
+      hint(added ? "已记下。店名或价格认错了，点那条的铅笔直接改。" : "没认出来，点那条的铅笔手填，或者点开大图重试。");
+      setTimeout(() => hint(""), 6000);
+    }).catch(error => {
+      console.error(error);
+      hint("识别失败了，照片已经存着，点开大图可以重试。");
+    });
+  }
+  photoEl?.addEventListener("change", () => {
+    pendingPhotos = pendingPhotos.concat(Array.from(photoEl.files || []));
+    showPending();
+    // 连拍时 change 会一张一张地来，等一下再开跑，好让它们算同一笔。
+    clearTimeout(recognizeTimer);
+    recognizeTimer = setTimeout(() => void startDiningPhotos(), 1600);
   });
   addBtn.addEventListener("click", async () => {
     const place = (placeEl.value || "").trim();
     const date = dateEl.value || new Date().toISOString().slice(0, 10);
     const price = priceEl.value.trim() === "" ? null : Number(priceEl.value);
-    if (!place && price == null && !pendingPhotos.length){ placeEl.focus(); return; }
-    const entry = addDining({date, place, price});
-    const files = pendingPhotos;
-    pendingPhotos = [];
-    recognizedTime = "";
-    if (photoEl) photoEl.value = "";
-    showPending();
+    if (!place && price == null){ placeEl.focus(); return; }
+    addDining({date, place, price});
     placeEl.value = ""; priceEl.value = "";
     await renderDining();
-    if (entry && files.length){
-      const owner = diningOwner(entry.id);
-      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
-      await renderDining();
-      void autoRecognize(owner, saved).then(added => { if (added){ render(); void renderDining(); } });
-    }
   });
 }
 // 同一天、同一餐可能既有同步包写的、又有手动补的，合并成一条显示，
@@ -2967,11 +3045,13 @@ async function normalizedOrOriginal(blob){
     return blob;
   }
 }
-async function savePrivatePhoto(ownerId, file){
+// meal 是可选的：饮食页传「午餐」「晚餐」，好让「在外就餐」只借属于那一顿的照片
+// （用户："要区分下是午餐的图还是晚餐的图，现在一拉拉一天的图"）。
+async function savePrivatePhoto(ownerId, file, meal){
   const database = await openPhotoDatabase();
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const blob = await normalizedOrOriginal(file);
-  const record = {id, receiptId:ownerId, blob, normalized:true, createdAt:new Date().toISOString()};
+  const record = {id, receiptId:ownerId, blob, normalized:true, createdAt:new Date().toISOString(), ...(meal ? {meal} : {})};
   await new Promise((resolve, reject) => {
     const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).add(record);
     request.onsuccess = () => resolve();
@@ -4007,7 +4087,7 @@ async function renderShopping(){
   stockBox.innerHTML = stockGroups.length
     ? stockGroups.map(group => {
       const folded = closedStockGroups.has(group.name);
-      return `<button class="stock-sub" type="button" data-stock-group="${group.name}" aria-expanded="${!folded}">${folded ? "▸" : "▾"} ${group.icon} ${group.name}<span>${group.rows.length}</span></button>${folded ? "" : group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`;
+      return `<button class="stock-sub" type="button" data-stock-group="${group.name}" aria-expanded="${!folded}"><i class="fold-caret">${folded ? "▸" : "▾"}</i>${group.icon} ${group.name}<span>${group.rows.length}</span></button>${folded ? "" : group.rows.map(purchase => renderBoughtItem(purchase, false)).join("")}`;
     }).join("")
     : `<div class="note">当前没有正在吃的食品。</div>`;
   stockBox.querySelectorAll("[data-stock-group]").forEach(button => {
@@ -4348,7 +4428,9 @@ function bindDietForm(container){
     setLabel(aiConfig().key ? "识别中…" : "已存下照片");
     try{
       const owner = dietPhotoOwner(date);
-      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
+      // 存的时候就把餐次记在照片上——事后没有任何办法反推一张图是午饭还是晚饭。
+      const shotMeal = pickedMeal(container);
+      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file, shotMeal)));
       // 照片存好就先刷一遍、把入口放开——识别慢，不能让人干等着
       // （用户："照片识别太慢了，所以就后台识别吧，页面先可以继续用"）。
       render();
@@ -4361,7 +4443,7 @@ function bindDietForm(container){
       // 刻意不 await：识别在后台跑完再刷新。中途被系统掐断也不怕，
       // 照片已进 IndexedDB、任务已入队，回到前台会自动补跑。
       // 照片里看不出是第几餐，以人选的为准，别让模型的猜测把晚餐并进午餐。
-      void autoRecognize(owner, saved, {meal: pickedMeal(container)}).then(added => {
+      void autoRecognize(owner, saved, {meal: shotMeal}).then(added => {
         render();
         setLabel(added ? "✅ 已记录" : "没认出来，点开大图重试");
         setTimeout(() => setLabel("📷 发张照片就行"), 4000);
@@ -4457,7 +4539,8 @@ function renderFoods(){
       <span class="icon">${iconForFood(food.id)}</span>
       <div>
         <strong>${food.name}</strong>
-        <small>${food.variants ? `${food.variants}<br>` : ""}${food.nutrients}<br>${food.feature}<br>建议频率：${food.weeklyTimes}</small>
+        <!-- 「建议频率」那行按用户要求删掉：weeklyTimes 仍留在数据里，「每周采购目标」还在用。 -->
+        <small>${food.variants ? `${food.variants}<br>` : ""}${food.nutrients}<br>${food.feature}</small>
       </div>
       <div class="amount">${food.score.toFixed(1)}<small>参考分</small></div>
     </div>
@@ -4591,14 +4674,21 @@ function applyStockFold(){
     if (el) el.hidden = folded;
   });
 }
-(function initStockFold(){
-  const btn = document.getElementById("stockFold");
+// 折叠头一律整行可点：那个小箭头太难戳（用户："每个展开都是点区域内任何位置都能展开"）。
+// 监听只挂在标题行上、不挂按钮——按钮的点击会冒泡上来，两处都挂会连点两次互相抵消。
+function bindFoldHead(buttonId, key, isFolded, apply){
+  const btn = document.getElementById(buttonId);
   if (!btn) return;
-  btn.addEventListener("click", () => {
-    localStorage.setItem(STOCK_FOLD_KEY, stockFolded() ? "0" : "1");
-    applyStockFold();
+  const head = btn.closest(".section-title") || btn;
+  head.classList.add("tappable");
+  head.addEventListener("click", () => {
+    localStorage.setItem(key, isFolded() ? "0" : "1");
+    apply();
   });
-  applyStockFold();
+  apply();
+}
+(function initStockFold(){
+  bindFoldHead("stockFold", STOCK_FOLD_KEY, stockFolded, applyStockFold);
 })();
 // 「采购历史」也要能折叠（用户："采购历史没法折叠，其他都可以好像"）。
 // 只折下面那串小票，上面「记一次采购」的表单始终留着——那是这一页最常用的入口。
@@ -4615,17 +4705,7 @@ function applyPurchaseFold(){
   if (box) box.hidden = folded;
 }
 (function initPurchaseFold(){
-  const btn = document.getElementById("purchaseFold");
-  if (!btn) return;
-  // 整条标题行都能点，不用去戳那个小箭头（用户："点区域任何一个地方都可以展开"）。
-  // 监听挂在标题行上、不挂按钮：按钮的点击会冒泡上来，挂两处反而会连点两次抵消掉。
-  const head = btn.closest(".section-title") || btn;
-  head.classList.add("tappable");
-  head.addEventListener("click", () => {
-    localStorage.setItem(PURCHASE_FOLD_KEY, purchaseFolded() ? "0" : "1");
-    applyPurchaseFold();
-  });
-  applyPurchaseFold();
+  bindFoldHead("purchaseFold", PURCHASE_FOLD_KEY, purchaseFolded, applyPurchaseFold);
 })();
 // 「每周采购目标」默认收起（用户要求）：它是长期参考，不像其他卡片天天要看。
 // 注意默认值和别处相反——没存过就是"折叠"，所以判的是 !== "0"。
@@ -4642,40 +4722,16 @@ function applyWeeklyFold(){
   if (box) box.hidden = folded;
 }
 (function initPlanFold(){
-  const btn = document.getElementById("planFold");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    localStorage.setItem(PLAN_FOLD_KEY, planFolded() ? "0" : "1");
-    applyPlanFold();
-  });
-  applyPlanFold();
+  bindFoldHead("planFold", PLAN_FOLD_KEY, planFolded, applyPlanFold);
 })();
 (function initWeeklyFold(){
-  const btn = document.getElementById("weeklyFold");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    localStorage.setItem(WEEKLY_FOLD_KEY, weeklyFolded() ? "0" : "1");
-    applyWeeklyFold();
-  });
-  applyWeeklyFold();
+  bindFoldHead("weeklyFold", WEEKLY_FOLD_KEY, weeklyFolded, applyWeeklyFold);
 })();
 (function initStatsFold(){
-  const btn = document.getElementById("statsFold");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    localStorage.setItem(STATS_FOLD_KEY, statsFolded() ? "0" : "1");
-    applyStatsFold();
-  });
-  applyStatsFold();
+  bindFoldHead("statsFold", STATS_FOLD_KEY, statsFolded, applyStatsFold);
 })();
 (function initPriceFold(){
-  const btn = document.getElementById("priceFold");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    localStorage.setItem(PRICE_FOLD_KEY, priceFolded() ? "0" : "1");
-    applyPriceFold();
-  });
-  applyPriceFold();
+  bindFoldHead("priceFold", PRICE_FOLD_KEY, priceFolded, applyPriceFold);
 })();
 // 跳到某条记录：先切到它所在的 tab，收起搜索面板，再把目标滚到视野里并短暂高亮。
 // 目标可能藏在折叠的 <details> 里（采购小票），得先展开，否则滚过去是空的。
