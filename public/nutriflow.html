@@ -1342,7 +1342,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v121</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v122</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3850,7 +3850,7 @@ async function renderShopping(){
   const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
   const bucketOf = purchase => meatIds.includes(purchase.foodId) ? "肉"
     : vegIds.includes(purchase.foodId) ? "蔬菜" : "其他";
-  const stockGroups = [["肉", "🥩"], ["蔬菜", "🥦"], ["其他", "🛒"]]
+  const stockGroups = [["蔬菜", "🥦"], ["肉", "🥩"], ["其他", "🛒"]]
     .map(([name, icon]) => ({name, icon, rows: activeItems.filter(purchase => bucketOf(purchase) === name)}))
     .filter(group => group.rows.length);
   document.getElementById("boughtFoods").innerHTML = stockGroups.length
