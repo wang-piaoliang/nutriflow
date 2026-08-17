@@ -1435,6 +1435,12 @@ test("strips the brand even when it trails in half-width brackets", async () => 
   assert.equal(evaluate('shortItem("盒马日日鲜 油菜 (上海青)")'), "油菜");
 
   // 计划里的 chip 一个都不该带括号或品牌尾巴。
+  // 牛奶酸奶是每天固定喝的，不用在计划里选（用户要求）。
+  assert.ok(!evaluate("planIngredients().some(chip => /牛奶|酸奶/.test(chip.name))"));
+  // 先菜后肉再其他——rank 必须是不降的，否则分区标签会重复出现。
+  const ranks = evaluate("planIngredients().map(chip => chip.rank)");
+  assert.deepEqual(ranks, ranks.slice().sort((a, b) => a - b));
+
   const names = evaluate("planIngredients().map(chip => chip.name)");
   assert.ok(names.length > 0);
   assert.ok(names.every(name => !/[（()）]/.test(name)), `chip 带括号：${names.join(" ")}`);
@@ -1447,7 +1453,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v120"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v121"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

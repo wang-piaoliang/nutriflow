@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v120`
+- 当前离线缓存：`nutriflow-pwa-v121`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-06：**计划里的食材 chip 分区、去掉奶类**（用户："牛奶、酸奶不用显示；分区显示，先显示菜，再显示肉"）。`planIngredients()` 里滤掉 `milk/greekYogurt/cheese/soyMilk`（每天固定喝的，不需要在计划里挑），并给每条打上 `rank`：蔬菜 0、肉类+水产 1、其余 2，按 rank 排序。`showPlanChips` 在 rank 变化处插一个 `.plan-chip-group` 标签（`flex:0 0 100%` 占满一行，把后面的 chip 挤到下一行，天然形成分段）。**排序必须保证 rank 不降**，否则同一个分区标签会重复出现——已加断言。实测：菜 11 样 → 肉 5 样 → 其他 5 样，无牛奶酸奶。离线缓存与版本号升至 v121。
 
 - 2026-08-06：**计划里的 chip 显示成「盒马日日鲜)」**（用户："有一个只显示了盒马日日鲜，具体的菜是啥不知道，好像是排骨？"）。两个 bug 叠在一起：① `shortItem()` 只剥**全角**括号 `（）`，而「冰鲜 猪汤骨 **(盒马日日鲜)**」的品牌写在**末尾的半角括号**里，没被剥掉；② v112 为了缩短名字加的 `name.slice(-6)` 从**尾部**截取，正好把留下来的品牌截出来。修法：`shortItem` 同时剥半角和全角括号并压平空格；截断改成**先按空格取最后一段**，只有那一段长度合适（2–6 字）才用它，否则再退回截尾——否则「冰鲜 猪汤骨」这种带空格的会被从中间切开。实测 chip 全部干净：牛油果 · 金针菇 · 土豆 · 尖椒 · 豆腐 · 丝瓜 · 玉米 · 南瓜 · 鸡小胸 · 西红柿 · 生菜 · 油菜 · 牛肉 · 鸡翅根 · 梅花肉 · 毛豆米 · 松花菜 · 胡萝卜 · 白萝卜 · 虾滑 · 香菇。新增断言：所有 chip 不含括号、不含「盒马」。离线缓存与版本号升至 v120。
 
