@@ -221,6 +221,9 @@ h1{margin:0;font-size:28px;letter-spacing:0;font-weight:780}
   /* 不画分隔线：吸顶时靠不透明背景盖住滚过的内容就够了，
      静止时那条线显得突兀（用户反馈），故去掉。 */
 }
+/* 整条标题行可点折叠的卡片：光点那个小箭头太难戳（用户要求点哪儿都行）。 */
+.section-title.tappable{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.section-title.tappable:active{opacity:.7}
 /* 食材页这张卡片标题下面紧跟着同样吸顶的分类筛选栏，标题就不再吸顶，免得两条叠在一起。 */
 .section-title.has-sticky-tabs{position:static;box-shadow:none}
 h2{margin:0;font-size:18px;letter-spacing:0;color:var(--text)}
@@ -467,6 +470,9 @@ summary.week-block-head::after{
 .cat-row + .cat-row{border-top:1px solid var(--line)}
 .cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;border:0;background:none;color:var(--text);font-size:14px;padding:0;text-align:left;cursor:pointer;min-width:0}
 .cat-head b{white-space:nowrap;font-size:13px;font-weight:600;color:var(--muted)}
+/* 总计那行不是按钮，只是个标题——排版跟 .cat-head 一样，但不要手型和点击反馈。 */
+.cat-head.static{cursor:default}
+.cat-head.static b{color:var(--text)}
 .cat-items{display:grid;gap:3px;padding:4px 0 2px}
 .cat-item{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
 .cat-item small{color:var(--muted);font-size:12px}
@@ -1343,7 +1349,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v127</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v128</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3747,6 +3753,32 @@ function categoryTotals(mode, periodKey){
     .map(group => ({...group, items: Array.from(group.items.values()).sort((a, b) => b.spend - a.spend)}))
     .sort((a, b) => b.spend - a.spend);
 }
+// 按渠道看花销（用户："采购统计也加一个在不同渠道的统计，fudi、盒马、山姆"）。
+// 店名走 shortStore 收敛——同一家店会被识别成「盒马鲜生（大钟寺店）」「大钟寺店」
+// 「盒马鲜生」好几种写法，不收敛的话一家店会摊成三家。
+// 口径和分类统计保持一致：账单行和冰淇淋不算，否则两处总额对不上。
+// 「几次」按「店 + 当天」算一趟，而不是按商品行数——一次采购买十样也只是去了一趟。
+function storeTotals(mode, periodKey){
+  const skip = ["bag", "iceCream"];
+  const stores = new Map();
+  allPurchases().forEach(row => {
+    if (skip.includes(row.foodId)) return;
+    if (periodKey){
+      const period = periodOf(row.date, mode);
+      if (!period || period.key !== periodKey) return;
+    }
+    const name = shortStore(row.store) || "其他";
+    const entry = stores.get(name) || {name, spend: 0, count: 0, trips: new Set()};
+    entry.spend += Number(row.totalPrice || 0);
+    entry.count += 1;
+    entry.trips.add(String(row.date || "").slice(0, 10));
+    stores.set(name, entry);
+  });
+  return Array.from(stores.values())
+    .map(entry => ({name: entry.name, spend: entry.spend, count: entry.count, trips: entry.trips.size}))
+    .filter(entry => entry.spend > 0)
+    .sort((a, b) => b.spend - a.spend);
+}
 function priceCategoryOf(foodId){
   const rule = purchaseGroupRules.find(item => item.ids.includes(foodId));
   return rule ? rule.name : "";
@@ -3822,16 +3854,39 @@ function renderStats(){
     ? `下面只看 ${scopeLabel} 买了些什么。点标题可以折叠某一类。再点上面那一条取消、看全部。`
     : "下面按大类看买过些什么，点标题可折叠某一类；点上面某一期只看那一期。冰淇淋和账单行不计。";
 
-  const spendAll = groups.reduce((sum, group) => sum + group.spend, 0) || 1;
+  const spendTotal = groups.reduce((sum, group) => sum + group.spend, 0);
+  const spendAll = spendTotal || 1;
   const box = document.getElementById("categoryChart");
   if (!box) return;
   if (!groups.length){ box.innerHTML = `<div class="note">还没有可统计的采购。</div>`; return; }
 
-  // 顶上一张总饼图 + 图例，一眼看清各大类的占比。
-  const overview = `<div class="chart-row">
+  // 顶上一张总饼图 + 图例，一眼看清各大类的占比。饼图前面挂个标题写清楚这是总计、
+  // 统的是哪一段（用户："第一张饼图上面加一个标题，TOTAL，之类的"）——下面几块都有
+  // 自己的标题行，就这张光秃秃一个饼，不写不知道它跟下面是什么关系。
+  const overview = `<div class="cat-head static">
+    <span>📊 合计${scopeLabel ? ` · ${scopeLabel}` : ""}</span>
+    <b>¥${spendTotal.toFixed(2).replace(/\.00$/, "")}</b>
+  </div>
+  <div class="chart-row">
     ${donutSvg(groups.map(group => ({label: group.name, value: group.spend, text: `¥${group.spend.toFixed(2).replace(/\.00$/, "")}`})), 132)}
     <div class="legend">${groups.map((group, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${group.icon} ${group.name}<b>${Math.round(group.spend / spendAll * 100)}%</b></span>`).join("")}</div>
   </div>`;
+
+  // 按渠道：钱都花在哪几家店。跟着上面选的时间区间走，和分类统计一个口径。
+  // 折叠状态和分类共用 closedSpendCategories，key 用 __stores，不会和店名/类名撞。
+  const stores = storeTotals(spendMode, selectedPeriod);
+  const storeAll = stores.reduce((sum, entry) => sum + entry.spend, 0) || 1;
+  const storesFolded = closedSpendCategories.has("__stores");
+  const storeBlock = stores.length ? `<section class="cat-block">
+    <button class="cat-head" type="button" data-cat="__stores" aria-expanded="${!storesFolded}">
+      <span>${storesFolded ? "▸" : "▾"} 🏬 按渠道</span>
+      <b>${stores.length} 家 · ${stores.reduce((sum, entry) => sum + entry.trips, 0)} 趟</b>
+    </button>
+    ${storesFolded ? "" : `<div class="chart-row">
+      ${donutSvg(stores.map(entry => ({label: entry.name, value: entry.spend, text: `¥${entry.spend.toFixed(2).replace(/\.00$/, "")}`})), 104)}
+      <div class="legend">${stores.map((entry, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${entry.name}<b>¥${entry.spend.toFixed(2).replace(/\.00$/, "")} · ${Math.round(entry.spend / storeAll * 100)}% · ${entry.trips} 趟</b></span>`).join("")}</div>
+    </div>`}
+  </section>` : "";
 
   // 每一类：小饼图看这一类里各样东西的占比，右边是具体买了什么。默认展开。
   const sections = groups.map(group => {
@@ -3852,7 +3907,7 @@ function renderStats(){
     </section>`;
   }).join("");
 
-  box.innerHTML = overview + sections;
+  box.innerHTML = overview + storeBlock + sections;
   box.querySelectorAll("[data-cat]").forEach(button => {
     button.addEventListener("click", () => {
       const name = button.dataset.cat;
@@ -4562,7 +4617,11 @@ function applyPurchaseFold(){
 (function initPurchaseFold(){
   const btn = document.getElementById("purchaseFold");
   if (!btn) return;
-  btn.addEventListener("click", () => {
+  // 整条标题行都能点，不用去戳那个小箭头（用户："点区域任何一个地方都可以展开"）。
+  // 监听挂在标题行上、不挂按钮：按钮的点击会冒泡上来，挂两处反而会连点两次抵消掉。
+  const head = btn.closest(".section-title") || btn;
+  head.classList.add("tappable");
+  head.addEventListener("click", () => {
     localStorage.setItem(PURCHASE_FOLD_KEY, purchaseFolded() ? "0" : "1");
     applyPurchaseFold();
   });
