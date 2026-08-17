@@ -417,6 +417,8 @@ button.metric{border:0;font:inherit;text-align:left;cursor:pointer;width:100%}
 .plan-chip{border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap}
 .plan-chip:active{opacity:.6}
 /* 做法和食材是两类东西，给做法一点区分度，免得混在一排里找不着。 */
+/* 分区标签：占满一行，把后面的 chip 挤到下一行去，形成视觉分段。 */
+.plan-chip-group{flex:0 0 100%;font-size:11px;color:var(--muted);margin:4px 0 0}
 .plan-chip.method{background:var(--surface);border-color:var(--green);color:var(--green);font-weight:600}
 .week-block-head{
   display:flex;
@@ -1340,7 +1342,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v120</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v121</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3408,6 +3410,8 @@ function planIngredients(){
   allPurchases().forEach(row => {
     if (!row.bought || row.pantry || NOT_INGREDIENT.includes(row.foodId)) return;
     if (consumed[row.id]) return;
+    // 牛奶酸奶不用摆出来（用户要求）——它们是每天固定喝的，不需要在计划里选。
+    if (["milk", "greekYogurt", "cheese", "soyMilk"].includes(row.foodId)) return;
     // 名字太长没法扫（用户："不用写品牌，写实际是什么就行，比如 排骨、小里脊、后腿肉"）。
     // 先用短名表，再退回剥掉品牌的原名，最后硬截断——chip 是给人快速点的，不是标签全称。
     let name = priceFoodNames[row.foodId] || shortItem(row.item);
@@ -3418,7 +3422,15 @@ function planIngredients(){
     else if (name.length > 6) name = name.slice(-6);
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
-  return Array.from(seen.entries()).map(([name, foodId]) => ({name, foodId}));
+  // 先菜后肉（用户要求这个顺序）：配菜想得比主料多，摆前面手指少滑一段。
+  const vegIds = (purchaseGroupRules.find(rule => rule.name === "蔬菜") || {ids: []}).ids;
+  const meatIds = purchaseGroupRules
+    .filter(rule => rule.name === "肉类" || rule.name === "水产")
+    .flatMap(rule => rule.ids);
+  const rank = foodId => vegIds.includes(foodId) ? 0 : meatIds.includes(foodId) ? 1 : 2;
+  return Array.from(seen.entries())
+    .map(([name, foodId]) => ({name, foodId, rank: rank(foodId)}))
+    .sort((a, b) => a.rank - b.rank);
 }
 // 隐藏元素的 scrollHeight 是 0——渲染发生在「计划」页还没显示的时候，
 // 高度就被钉死在最小值，写了两行只露出一行（用户："没显示完"）。
@@ -3478,7 +3490,15 @@ function showPlanChips(area, chips){
   // （截图里满屏的「（空气炸锅」）。
   const methods = ["空气炸锅", "炒", "蒸"]
     .map(name => `<button type="button" class="plan-chip method" data-plan-add="（${name}）">${name}</button>`).join("");
-  row.innerHTML = methods + chips.map(chip => `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`).join("");
+  // 分区显示：菜、肉、其他各一段，段前插一个细标签，比一大片 chip 好找。
+  const labels = ["🥦 菜", "🥩 肉", "🛒 其他"];
+  let lastRank = -1;
+  const chipHtml = chips.map(chip => {
+    const head = chip.rank !== lastRank ? `<span class="plan-chip-group">${labels[chip.rank]}</span>` : "";
+    lastRank = chip.rank;
+    return head + `<button type="button" class="plan-chip" data-plan-add="${escapeAttribute(chip.name)}">${iconForFood(chip.foodId)} ${chip.name}</button>`;
+  }).join("");
+  row.innerHTML = methods + chipHtml;
   area.insertAdjacentElement("afterend", row);
   row.querySelectorAll("[data-plan-add]").forEach(button => {
     // 用 mousedown/touchstart：click 之前 textarea 已经 blur 了，插入位置会丢。
