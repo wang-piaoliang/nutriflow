@@ -1583,6 +1583,21 @@ test("folds the purchase history but leaves the add form open", async () => {
   assert.match(css, /\.section-title\.tappable\{[^}]*cursor:pointer/);
 });
 
+test("folds the eating-out card too", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 别的卡片都能收，就它不行，点上去没反应（用户："在外就餐点不动折叠展开"）。
+  assert.match(html, /id="diningFold"/);
+  assert.match(html, /const DINING_FOLD_KEY = "nutriflow_dining_folded";/);
+  assert.match(html, /bindFoldHead\("diningFold", DINING_FOLD_KEY, diningFolded, applyDiningFold\)/);
+  // 只折下面那串记录，「拍张照就行」留着——那是这张卡最常用的入口。
+  assert.match(html, /const box = document.getElementById\("diningList"\);\n  if \(box\) box.hidden = folded;/);
+  // 重渲染后要回填折叠状态，否则收起来又自己冒出来。
+  assert.match(html, /applyDiningFold\(\);   \/\/ 重渲染/);
+  // const 必须声明在 renderDining 之前，否则首屏先跑到 renderDining 会撞 TDZ。
+  assert.ok(html.indexOf('const DINING_FOLD_KEY') < html.indexOf("async function renderDining()"));
+});
+
 test("averages the unit price per category", async () => {
   const { evaluate, elements } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1670,7 +1685,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v132"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v133"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

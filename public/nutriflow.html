@@ -1309,7 +1309,7 @@ summary.week-block-head::after{
       <article class="card desktop-span">
         <div class="section-title">
           <h2>在外就餐</h2>
-          <span class="subtle" id="diningMeta">0 笔</span>
+          <span class="subtle"><button class="price-fold" type="button" id="diningFold" title="收起在外就餐" aria-label="收起在外就餐">▾</button><span id="diningMeta">0 笔</span></span>
         </div>
         <!-- 和采购、饮食一个规矩：拍张照就够了，店名和吃了啥都从照片里读，
              手填收进折叠里（用户："不要上来就让填，一样上传照片"）。 -->
@@ -1369,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v132</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v133</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2617,6 +2617,21 @@ function diningItems(entry){
     .flatMap(record => record.items || []);
   return sortMealItems(items).map(itemLabel);
 }
+// 「在外就餐」也要能折叠：别的卡片都能收，就它不行，点上去没反应
+// （用户："在外就餐点不动折叠展开"）。和采购历史一样只折下面那串记录，
+// 上面「拍张照就行」留着——那是这张卡最常用的入口。
+const DINING_FOLD_KEY = "nutriflow_dining_folded";
+function diningFolded(){ return localStorage.getItem(DINING_FOLD_KEY) === "1"; }
+function applyDiningFold(){
+  const folded = diningFolded();
+  const btn = document.getElementById("diningFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开在外就餐" : "收起在外就餐";
+  }
+  const box = document.getElementById("diningList");
+  if (box) box.hidden = folded;
+}
 async function renderDining(){
   const list = document.getElementById("diningList");
   if (!list) return;
@@ -2672,6 +2687,7 @@ async function renderDining(){
       ${photoSectionMarkup("dining", owner, photos, label)}
     </div>`;
   }).join("") || `<div class="note">还没有在外就餐记录。拍张照就行，价格可以留空后补。</div>`;
+  applyDiningFold();   // 重渲染不会动 hidden，但折叠状态要跟着刷，否则收起后又自己冒出来
   bindPhotoControls(list, () => void renderDining());
   list.querySelectorAll("[data-dining-edit]").forEach(button => {
     button.addEventListener("click", () => {
@@ -4801,6 +4817,9 @@ function applyPurchaseFold(){
   const box = document.getElementById("purchaseHistory");
   if (box) box.hidden = folded;
 }
+(function initDiningFold(){
+  bindFoldHead("diningFold", DINING_FOLD_KEY, diningFolded, applyDiningFold);
+})();
 (function initPurchaseFold(){
   bindFoldHead("purchaseFold", PURCHASE_FOLD_KEY, purchaseFolded, applyPurchaseFold);
 })();
