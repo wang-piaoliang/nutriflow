@@ -124,7 +124,8 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /summarizeReceipt/);
   assert.match(html, /国产谷饲黄牛牛腱肉/);
   assert.match(html, /indexedDB/);
-  assert.match(html, /只存本机，不上传 GitHub/);
+  // 隐私说明在饮食页写一次就够了；在外就餐那张卡按用户要求把小字都删了。
+  assert.match(html, /照片存本地不传 GitHub/);
   assert.match(html, /data-open-photo/);
 
   // The 食材 category filter bar pins to the top while the list scrolls, so it
@@ -928,7 +929,11 @@ test("lets the person pick which meal a photo belongs to", async () => {
   // 识别时以人选的餐次为准，模型的判断只在没得选时用。
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
   assert.match(html, /const meal = forcedMeal \|\| result\.meal;/);
-  assert.match(html, /autoRecognize\(owner, saved, \{meal: pickedMeal\(container\)\}\)/);
+  assert.match(html, /const shotMeal = pickedMeal\(container\);/);
+  assert.match(html, /autoRecognize\(owner, saved, \{meal: shotMeal\}\)/);
+  // 餐次还要写进照片记录本身，事后没有任何办法反推一张图是午饭还是晚饭。
+  assert.match(html, /savePrivatePhoto\(owner, file, shotMeal\)/);
+  assert.match(html, /\.\.\.\(meal \? \{meal\} : \{\}\)/);
 });
 
 test("classifies tricky product names and normalises store names", async () => {
@@ -991,7 +996,7 @@ test("searches globally on the landing page and per-page elsewhere", async () =>
   assert.match(html, /data-dining-edit="/);
   assert.match(html, /data-dining-field="place"/);
   assert.match(html, /data-dining-field="date"/);
-  assert.match(html, /class="dining-price-read/);
+  assert.match(html, /class="price\$\{priceVal === "" \? " missing" : ""\}"/);
 });
 
 test("keeps the quantity when a receipt line has more than one unit", async () => {
@@ -1355,7 +1360,12 @@ test("shows the meal photos on the matching eating-out record", async () => {
 
   // 餐食照片挂在饮食页那一天（owner 是 diet:日期），在外就餐这边原来一张也看不到
   // （用户："在外就餐的图片要从饮食那边拉过来，不然我也不知道具体吃了啥"）。
-  assert.match(html, /const borrowed = photosByOwner\[dietPhotoOwner\(String\(entry.date \|\| ""\).slice\(0, 10\)\)\] \|\| \[\];/);
+  assert.match(html, /const dayPhotos = photosByOwner\[dietPhotoOwner\(String\(entry.date \|\| ""\).slice\(0, 10\)\)\] \|\| \[\];/);
+  // 但不能整天一起借：中午在外面吃、晚上在家做，晚饭那几张也会被拉过来
+  // （用户："把不是在外就餐的那张图也拉过来了"）。按餐次挑。
+  assert.match(html, /return photo.meal === diningMeal;/);
+  // 老照片没有餐次标记——那一天一张带标记的都没有时维持原样，免得历史记录突然空掉。
+  assert.match(html, /if \(!diningMeal \|\| !dayHasMealTags\) return true;/);
   // 自己挂的排前面，借来的去重后接上。
   assert.match(html, /borrowed.filter\(photo => !seenPhotos.has\(photo.id\)\)/);
   // 借来的只是显示，不能带删除属性——它归属别处，在这里删会把原处那张一起删掉。
@@ -1430,7 +1440,7 @@ test("splits the stock list into meat and vegetables only", async () => {
   // 新冒出来的分块默认展开。
   assert.match(html, /const STOCK_GROUP_KEY = "nutriflow_stock_groups_closed";/);
   assert.match(stock, /aria-expanded="true"/);
-  assert.match(stock, /▾ 🥦 蔬菜/);
+  assert.match(stock, /<i class="fold-caret">▾<\/i>🥦 蔬菜/);
   assert.match(html, /localStorage.setItem\(STOCK_GROUP_KEY, JSON.stringify\(\[...closedStockGroups\]\)\)/);
   // 小标题变成了 <button>，iOS 会给它一套自己的蓝字和居中，必须显式压掉。
   const css = html.split("<style>")[1].split("</style>")[0];
@@ -1621,7 +1631,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v128"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v129"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
