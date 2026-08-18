@@ -1672,6 +1672,13 @@ test("strips the brand even when it trails in half-width brackets", async () => 
   // 先菜后肉再其他——rank 必须是不降的，否则分区标签会重复出现。
   const ranks = evaluate("planIngredients().map(chip => chip.rank)");
   assert.deepEqual(ranks, ranks.slice().sort((a, b) => a - b));
+  // 只留「菜」和「肉」两段，「其他」整段不要（用户："其他这个部分就不要了"）。
+  assert.ok(ranks.every(rank => rank < 2), `计划 chip 里混进了「其他」：${ranks.join(",")}`);
+  const planNames = evaluate("planIngredients().map(chip => chip.name)");
+  assert.ok(!planNames.includes("牛油果"), "牛油果不该出现在计划的 chip 里");
+  // 「现有食材」那边还是三段，那是清库存，看得全才有用。
+  const stockRanks = evaluate('purchases.filter(row => row.bought).map(row => stockBucket(row.foodId))');
+  assert.ok(stockRanks.includes(2), "现有食材那边还应该有「其他」这一档");
 
   const names = evaluate("planIngredients().map(chip => chip.name)");
   assert.ok(names.length > 0);
@@ -1685,7 +1692,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v133"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v134"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

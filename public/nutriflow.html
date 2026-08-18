@@ -1369,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v133</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v134</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3674,8 +3674,12 @@ function planIngredients(){
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
   // 先菜后肉（用户要求这个顺序）：配菜想得比主料多，摆前面手指少滑一段。
+  // 「其他」那一段整段不要了（用户："牛油果不显示在每周计划的编辑里，其他这个部分
+  // 就不要了"）——写计划想的是配什么菜、用哪块肉，牛油果、米、坚果这些不在这个脑回路里。
+  // 「现有食材」那张卡还是三段，那边是清库存，看得全才有用。
   return Array.from(seen.entries())
     .map(([name, foodId]) => ({name, foodId, rank: stockBucket(foodId)}))
+    .filter(chip => chip.rank < 2)
     .sort((a, b) => a.rank - b.rank);
 }
 // v123 试过自动给菜名补 emoji，用户看完说"有点乱"，撤了。但那一版已经把带图标的
@@ -3770,8 +3774,8 @@ function showPlanChips(area, chips){
   // （截图里满屏的「（空气炸锅」）。
   const methods = ["空气炸锅", "炒", "蒸"]
     .map(name => `<button type="button" class="plan-chip method" data-plan-add="（${name}）">${name}</button>`).join("");
-  // 分区显示：菜、肉、其他各一段，段前插一个细标签，比一大片 chip 好找。
-  const labels = ["🥦 菜", "🥩 肉", "🛒 其他"];
+  // 分区显示：菜、肉各一段，段前插一个细标签，比一大片 chip 好找。
+  const labels = ["🥦 菜", "🥩 肉"];
   let lastRank = -1;
   const chipHtml = chips.map(chip => {
     const head = chip.rank !== lastRank ? `<span class="plan-chip-group">${labels[chip.rank]}</span>` : "";
