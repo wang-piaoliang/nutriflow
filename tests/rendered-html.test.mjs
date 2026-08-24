@@ -1463,6 +1463,14 @@ test("inserts plan chips at the caret and measures height once visible", async (
   // 点 chip 要插在光标处，不是甩到末尾（用户："我点的是某一个中间的字，但是点
   // 下面的菜会追加在最后"）。mousedown 里 textarea 还没 blur，selectionStart
   // 仍是刚才点的位置——这正是当初选 mousedown 而不是 click 的原因。
+  // 食材在 focus 那一刻才算，不在 renderMealPlan 里先算好存着：勾掉「吃完」、
+  // 识别一单新采购走的都是 renderShopping，不会重跑 renderMealPlan，存着的那份
+  // 就一直是老的（用户："本周计划编辑框里的食材，好像没随着现有食材更新"）。
+  assert.match(html, /function showPlanChips\(area\)\{\n  const chips = planIngredients\(\);/);
+  assert.match(html, /area.addEventListener\("focus", \(\) => showPlanChips\(area\)\);/);
+  // 反过来在库存变化时调 renderMealPlan 是不行的——会把正在打字的框整个换掉。
+  assert.ok(!/void renderShopping\(\);\n      renderMealPlan\(\)/.test(html));
+
   assert.match(html, /area.selectionStart/);
   assert.match(html, /const before = text.slice\(0, at\);/);
   // 词之间补空格但不叠、行首不加。
@@ -1692,7 +1700,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v134"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v135"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
