@@ -1369,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v134</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v135</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3738,7 +3738,6 @@ function renderMealPlan(){
     start.setDate(monday.getDate() - offset * 7);
     return {start, current: offset === 0, filled: weekPlanCount(start)};
   }).filter(week => week.current || week.filled);
-  const chips = planIngredients();
   box.innerHTML = weeks.map(week => {
     const days = Array.from({length: 7}, (unused, index) => {
       const date = new Date(week.start);
@@ -3760,11 +3759,16 @@ function renderMealPlan(){
     const grow = () => growPlanText(area);
     grow();
     area.addEventListener("input", () => { setMealPlan(area.dataset.planDay, area.value); grow(); });
-    area.addEventListener("focus", () => showPlanChips(area, chips));
+    // 点进去的那一刻才算食材，不在 renderMealPlan 里先算好存着：勾掉「吃完」、
+    // 识别出一单新采购走的都是 renderShopping，不会重跑 renderMealPlan，
+    // 存着的那份就一直是老的（用户："本周计划编辑框里的食材，好像没随着现有食材更新"）。
+    // 也不能反过来在库存变化时去调 renderMealPlan——那会把正在打字的框整个换掉。
+    area.addEventListener("focus", () => showPlanChips(area));
   });
 }
 // 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
-function showPlanChips(area, chips){
+function showPlanChips(area){
+  const chips = planIngredients();
   document.querySelectorAll(".plan-chips").forEach(row => row.remove());
   const row = document.createElement("div");
   row.className = "plan-chips";
