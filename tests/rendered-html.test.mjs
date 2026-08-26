@@ -58,6 +58,8 @@ async function runAppScript() {
     // 识别队列有个 30 秒的兜底心跳；桩里没有 setInterval 脚本会直接抛。
     // 用一个不真的排期的假实现，免得测试进程被它吊着不退出。
     setInterval: () => 0, clearInterval: () => {},
+    // 日期 chip 那一行展开后会再兜一帧滚动；桩里没有 rAF 脚本会直接抛。
+    requestAnimationFrame: () => 0,
     localStorage: {
       getItem: (key) => (store.has(key) ? store.get(key) : null),
       setItem: (key, value) => store.set(key, value),
@@ -1198,6 +1200,20 @@ test("picks the day from a strip of recent days, with the calendar behind a tap"
   assert.match(html, /\.diet-form-days\{[^}]*min-width:0/);
 });
 
+test("scrolls the day strip to today when the form actually opens", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 渲染的时候整个表单还 hidden，scrollWidth 是 0，那时候滚等于没滚——展开后看到的
+  // 是最左边那几天，今天和昨天都在屏幕外（用户："今天应该显示出来，往前滑才出现
+  // 前面的日期"）。和「计划」页 textarea 的 scrollHeight 是同一类坑。
+  assert.match(html, /function scrollDayStripToToday\(scope\)/);
+  assert.match(html, /if \(!form.hidden\) scrollDayStripToToday\(form\);/);
+  // 展开那一帧宽度还没稳定，下一帧再兜一次。
+  assert.match(html, /requestAnimationFrame\(\(\) => \{ strip.scrollLeft = strip.scrollWidth; \}\);/);
+  // 顺序仍然是从旧到新、今天在最右（用户早先要求过"按时间顺序"），别顺手改成倒序。
+  assert.match(html, /const offset = 6 - index;/);
+});
+
 test("folds the weekly shopping goal and merges the two target cards", async () => {
   const { elements } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1730,7 +1746,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v136"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v137"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

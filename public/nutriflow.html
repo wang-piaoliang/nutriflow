@@ -1369,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v136</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v137</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -4542,6 +4542,18 @@ function recentDayChips(today, selected){
     return `<button type="button" class="day-chip${value === selected ? " active" : ""}" data-day-pick="${value}">${dayChipLabel(date, offset)}</button>`;
   }).join("");
 }
+// 日期那一行是横向滚的、今天在最右端，所以打开时必须先滚到最右，否则默认选中的
+// 「今天」在屏幕外。**渲染的时候滚是没用的**：那会儿整个表单还 hidden，
+// scrollWidth 是 0，滚了等于没滚，展开后看到的是最左边那几天，今天和昨天都在
+// 屏幕外（用户："今天应该显示出来，往前滑才出现前面的日期"）。
+// 和「计划」页那个 textarea 的 scrollHeight 是同一类坑：量隐藏元素只会量到 0。
+function scrollDayStripToToday(scope){
+  const strip = (scope || document).querySelector("#dietFormDays");
+  if (!strip) return;
+  strip.scrollLeft = strip.scrollWidth;
+  // 展开的那一帧宽度还没稳定，下一帧再兜一次。
+  requestAnimationFrame(() => { strip.scrollLeft = strip.scrollWidth; });
+}
 function dietDayFormMarkup(){
   const today = new Date();
   const value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
@@ -4611,10 +4623,7 @@ function bindDietForm(container){
       syncDayChips();
     });
   });
-  // 今天在最右端，而这一行是横向滚动的——打开时得先滚到最右，否则默认选中的
-  // 「今天」在屏幕外，看着像什么都没选。
-  const dayStrip = container.querySelector("#dietFormDays");
-  if (dayStrip) dayStrip.scrollLeft = dayStrip.scrollWidth;
+  scrollDayStripToToday(container);
 
   const moreDays = container.querySelector("#dietFormMoreDays");
   moreDays?.addEventListener("click", () => {
@@ -4771,7 +4780,8 @@ document.getElementById("dietAddDay").addEventListener("click", () => {
   const form = document.getElementById("dietDayForm");
   if (!form) return;
   form.hidden = !form.hidden;
-  if (!form.hidden) form.querySelector("#dietFormItems").focus();
+  // 真正展开的这一刻才量得到宽度，把「今天」滚进视野。
+  if (!form.hidden) scrollDayStripToToday(form);
 });
 // 「全部折叠 / 全部展开」。同样在列表外面，只绑一次。
 // 有可折叠的往期周时才显示——只有当周记录的时候，这个按钮没有意义。

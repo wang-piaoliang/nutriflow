@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v136`
+- 当前离线缓存：`nutriflow-pwa-v137`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**补记那一行日期打开时看不到「今天」**（用户："今天应该显示出来，往前滑才出现前面的日期，现在今天、昨天，这些最近的日期都无法直接看到"）。这一行从旧到新排、今天在最右端，代码里本来就有"打开时滚到最右"，但那句话跑在 `bindDietDayForm()` 里——**那时候整个表单还 `hidden`，`scrollWidth` 是 0，滚了等于没滚**，展开后停在最左边，今天和昨天都在屏幕外。和「计划」页 textarea 的 `scrollHeight` 是同一类坑：量隐藏元素只会量到 0。抽出 `scrollDayStripToToday()`，改在 ＋ 真正展开的那一刻调用，并用 `requestAnimationFrame` 再兜一帧（展开那一帧宽度还没稳）。顺序仍是从旧到新（用户早先明确要过"按时间顺序"），已加断言别被顺手改成倒序。**顺带去掉了展开时自动 focus 手填输入框**——现在是拍照优先，一展开就弹键盘会把照片按钮顶出屏幕。实测：展开后可见 `8/23 周日 · 前天 · 昨天 · 今天`，选中的「今天」在视野内。离线缓存与版本号升至 v137。
 
 - 2026-08-17：**照片识别做成真正的异步：传了就一定会被认出来**（用户："我每次上传照片，然后离开网页，回来照片就不上传识别了…只要我上传了，最终都是能被识别的"）。三个独立的坑叠在一起：
   - **① 采购小票是「识别成功了才落盘」**。`startRecognize()` 把 `File` 攥在内存里发请求，成功之后才 `addPurchaseReceipt` + 存照片。中途切走一次，File 对象随页面一起没了，**照片和这一单全都不留痕**，回来当然什么都不会发生。改成**先落盘再识别**：先建一条 `store:"识别中"` 的占位采购、照片存进 IndexedDB、任务入队，然后才发请求；识别完用 `replacePurchaseReceipt()` **原地改写**那一单，而不是新建。新增 `applyReceiptResult()` 给"当场识别"和"回头补跑"共用，指纹撞车时删掉占位那单而不是留两份。
