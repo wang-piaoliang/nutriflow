@@ -55,6 +55,9 @@ async function runAppScript() {
     crypto: { randomUUID: () => `id-${store.size}-${Math.random().toString(36).slice(2)}` },
     // The sync module debounces pushes; the vm realm has no timers of its own.
     setTimeout, clearTimeout,
+    // 识别队列有个 30 秒的兜底心跳；桩里没有 setInterval 脚本会直接抛。
+    // 用一个不真的排期的假实现，免得测试进程被它吊着不退出。
+    setInterval: () => 0, clearInterval: () => {},
     localStorage: {
       getItem: (key) => (store.has(key) ? store.get(key) : null),
       setItem: (key, value) => store.set(key, value),
@@ -806,8 +809,15 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
   // 识别完直接写进采购历史，不再回填表单、也不等人点保存。
-  assert.match(html, /const \{receiptId\} = addPurchaseReceipt\(\{date, store, items: rows\}\);/);
-  assert.match(html, /已记下 \$\{items.length\} 件/);
+  // 而且是**先落盘再识别**：占位的一单和照片先进库，识别完原地改写
+  // （用户："只要我上传了，最终都是能被识别的"）。
+  assert.match(html, /store: "识别中",/);
+  const startRecognize = html.slice(html.indexOf("async function startRecognize()"));
+  assert.ok(startRecognize.indexOf('store: "识别中",') < startRecognize.indexOf("await recognizeReceipts(files)"),
+    "占位的一单必须建在发请求之前");
+  assert.match(html, /enqueueReceiptJob\(receiptId\);/);
+  assert.match(html, /已记下 \$\{count\} 件/);
+  assert.match(html, /function replacePurchaseReceipt\(receiptId, \{date, store, items\}\)/);
 
   evaluate('addPurchaseReceipt({date:"2026-08-06 15:03", store:"盒马鲜生", items:[{name:"丘比 沙拉酱", amount:"150g", price:13.11}]})');
   await context.renderShopping();
@@ -1075,7 +1085,27 @@ test("resumes recognition that iOS cut off when the app went to the background",
   // 先入队再发请求，识别成功才出队——顺序反了就等于没排队。
   assert.ok(html.indexOf("enqueueRecognition(photo.id, owner, forcedMeal)") < html.indexOf("dequeueRecognition(photo.id)"));
   assert.match(html, /drainRecognitionQueue/);
-  assert.match(html, /if \(drainingQueue \|\| !aiConfig\(\).key\) return 0;/);
+  // 小票是"一单一任务"：整单的几张图要一起看，不能一张一张认。
+  evaluate('enqueueReceiptJob("r1")');
+  evaluate('enqueueReceiptJob("r1")');
+  assert.equal(evaluate('aiQueue().filter(j => j.kind === "receipt").length'), 1);
+  evaluate('dequeueReceiptJob("r1")');
+  assert.equal(evaluate('aiQueue().filter(j => j.kind === "receipt").length'), 0);
+
+  // 先入队再发请求，识别成功才出队——顺序反了就等于没排队。
+  assert.match(html, /drainRecognitionQueue/);
+  // 「正在跑」不能只是个布尔值：真被系统掐断时那次循环再也走不到 finally，
+  // 标记永远是 true，之后每次补跑都被自己挡在门外（用户："回来照片就不上传识别了"）。
+  assert.match(html, /if \(drainingQueue && Date.now\(\) - drainStartedAt < DRAIN_STALE_MS\) return 0;/);
+  // 模型请求必须有超时，否则挂后台时那个 fetch 可能永远悬着，标记也就永远复不了位。
+  assert.match(html, /async function fetchWithTimeout\(url, options, ms\)/);
+  assert.match(html, /controller.abort\(\)/);
+  assert.ok(!/await fetch\("https:\/\/dashscope/.test(html), "百炼那次请求也要走带超时的 fetch");
+  // 补跑的触发点要多铺几个：visibilitychange 偶尔不来，断网回来也得有人再踢一脚。
+  ["pageshow", "focus", "online"].forEach(event => {
+    assert.match(html, new RegExp(`window.addEventListener\\("${event}", kickRecognition\\)`));
+  });
+  assert.match(html, /if \(document.visibilityState === "visible" && pendingRecognitionCount\(\)\) kickRecognition\(\);/);
 
   // 调料、油、饮用水是备货，不该出现在「现有食材」里。
   assert.match(evaluate("JSON.stringify(NOT_INGREDIENT)"), /seasoning/);
@@ -1700,7 +1730,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v135"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v136"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

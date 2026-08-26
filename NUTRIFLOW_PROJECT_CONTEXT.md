@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v135`
+- 当前离线缓存：`nutriflow-pwa-v136`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,13 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**照片识别做成真正的异步：传了就一定会被认出来**（用户："我每次上传照片，然后离开网页，回来照片就不上传识别了…只要我上传了，最终都是能被识别的"）。三个独立的坑叠在一起：
+  - **① 采购小票是「识别成功了才落盘」**。`startRecognize()` 把 `File` 攥在内存里发请求，成功之后才 `addPurchaseReceipt` + 存照片。中途切走一次，File 对象随页面一起没了，**照片和这一单全都不留痕**，回来当然什么都不会发生。改成**先落盘再识别**：先建一条 `store:"识别中"` 的占位采购、照片存进 IndexedDB、任务入队，然后才发请求；识别完用 `replacePurchaseReceipt()` **原地改写**那一单，而不是新建。新增 `applyReceiptResult()` 给"当场识别"和"回头补跑"共用，指纹撞车时删掉占位那单而不是留两份。
+  - **② `drainingQueue` 会永久卡死**。它只是个布尔值：iOS 把页面挂后台时，进行中的 fetch 经常**既不 resolve 也不 reject**，识别循环卡在 await 上，那次调用再也走不到 `finally`，标记就永远是 `true`。回到前台每次补跑第一行就被自己挡掉——正是用户描述的"回来就不识别了"。两道修法：给模型请求加 `fetchWithTimeout`（AbortController，90s），保证请求一定会 settle；再记一个 `drainStartedAt`，超过 150s 的"正在跑"直接认定已死、顶掉重开。
+  - **③ 触发点太少**。原来只有 `visibilitychange` 和启动时一次。补上 `pageshow`（bfcache 恢复）、`focus`、`online`（断网时排的队一联网就跑），外加一个 30 秒的兜底心跳——只在页面可见且队列非空时才真跑，队列空时就是一次 localStorage 读取。
+  - 队列新增一种任务类型 `{kind:"receipt", receiptId}`：小票要把一单的几张图**一起**看，不能像餐食照片那样一张一条；`resumeReceiptJob()` 按 receiptId 把照片从库里捞出来重认。
+  - 端到端实测（CDP，把 `recognizeReceipts` 换成"第一次永不 settle、第二次返回结果"的桩）：上传后队列里有任务、占位单已入库 → **重新加载页面**（模拟离开再回来）→ 队列仍在 → 补跑成功、占位单被原地改写成两条真实商品、队列清空、没有重复行。离线缓存与版本号升至 v136。
 
 - 2026-08-17：**计划里的食材 chip 不跟着现有食材更新**（用户："本周计划编辑框里的食材，好像没随着现有食材更新而更新"）。`renderMealPlan()` 开头 `const chips = planIngredients()` 算一次，然后所有 focus 回调都闭包着这一份。而勾「吃完」、识别出一单新采购走的都是 `renderShopping()`，**不会重跑 `renderMealPlan`**，于是那份 chip 从首屏起就再没变过。改成 `showPlanChips(area)` 在 focus 那一刻现算——点进去才算，天然是最新的。**反过来在库存变化时去调 `renderMealPlan` 是不行的**：那会把正在打字的框整个换掉、光标和键盘一起跳走。实测：勾掉两条牛肉后再点进计划框，chip 从 20 样变 19 样、牛肉消失。离线缓存与版本号升至 v135。
 
