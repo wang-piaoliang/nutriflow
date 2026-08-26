@@ -1369,7 +1369,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v135</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v136</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1834,8 +1834,22 @@ function parseRecognition(text){
     price: Number.isFinite(price) && price > 0 && price < 100000 ? price : null,
   };
 }
+// 模型请求必须有超时。iOS 把页面挂到后台时，进行中的 fetch 经常**既不 resolve 也不
+// reject**——promise 永远悬着。识别循环卡在那个 await 上，`drainingQueue` 这个"正在跑"
+// 的标记就再也没机会复位，回到前台后每次补跑都被它挡掉，看起来就是"照片再也不识别了"
+// （用户："我上传照片，然后离开网页，回来照片就不上传识别了"）。
+const AI_TIMEOUT_MS = 90000;
+async function fetchWithTimeout(url, options, ms){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms || AI_TIMEOUT_MS);
+  try{
+    return await fetch(url, {...options, signal: controller.signal});
+  }finally{
+    clearTimeout(timer);
+  }
+}
 async function callQwen(key, base64, mime, prompt){
-  const response = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
+  const response = await fetchWithTimeout("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
     method: "POST",
     headers: {"Content-Type": "application/json", "Authorization": `Bearer ${key}`},
     body: JSON.stringify({
@@ -1869,7 +1883,7 @@ async function callGemini(key, base64, mime, prompt){
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
     let response;
     try{
-      response = await fetch(url, {
+      response = await fetchWithTimeout(url, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -1950,17 +1964,40 @@ function enqueueRecognition(photoId, owner, meal){
 function dequeueRecognition(photoId){
   saveAiQueue(aiQueue().filter(job => job.photoId !== photoId));
 }
+// 小票走的是另一套识别（要把一单的几张图一起看），所以单独一种任务：一单一条。
+function enqueueReceiptJob(receiptId){
+  const list = aiQueue();
+  if (list.some(job => job.kind === "receipt" && job.receiptId === receiptId)) return;
+  list.push({kind: "receipt", receiptId});
+  saveAiQueue(list);
+}
+function dequeueReceiptJob(receiptId){
+  saveAiQueue(aiQueue().filter(job => !(job.kind === "receipt" && job.receiptId === receiptId)));
+}
 let drainingQueue = false;
 // 回到前台就把没跑完的接着跑。加锁避免 visibilitychange 连发两次时并发跑同一张。
+// 上一次补跑是什么时候开的。`drainingQueue` 单独一个布尔值不够用：真被系统掐断时
+// 那次循环再也不会走到 finally，标记就永远是 true，之后每次补跑都被自己挡在门外。
+// 记下开始时间，超过这个岁数就认定它已经死了，直接顶掉重开。
+let drainStartedAt = 0;
+const DRAIN_STALE_MS = 150000;
+function pendingRecognitionCount(){ return aiQueue().length; }
 async function drainRecognitionQueue(){
-  if (drainingQueue || !aiConfig().key) return 0;
+  if (!aiConfig().key) return 0;
+  if (drainingQueue && Date.now() - drainStartedAt < DRAIN_STALE_MS) return 0;
   const jobs = aiQueue();
   if (!jobs.length) return 0;
   drainingQueue = true;
+  drainStartedAt = Date.now();
   let done = 0;
   try{
     const photos = await listPrivatePhotos();
     for (const job of jobs){
+      // 小票是"一单一任务"：它要把整单的几张图一起看，不能一张一张认。
+      if (job.kind === "receipt"){
+        done += await resumeReceiptJob(job, photos) ? 1 : 0;
+        continue;
+      }
       const photo = photos.find(entry => entry.id === job.photoId);
       // 照片没了（被删了）就把这条也清掉，免得队列永远排着一个跑不动的。
       if (!photo?.blob){ dequeueRecognition(job.photoId); continue; }
@@ -2549,6 +2586,68 @@ function addPurchaseReceipt({date, store, items}){
   manualPurchases.push(...rows);
   saveManualPurchases();
   return {receiptId, rows};
+}
+// 识别之前先把这一单落盘（占位 + 照片），识别完再原地改写。这样离开页面也不怕：
+// 照片和这一单已经在库里，队列里也排着任务，回来接着跑就是
+// （用户："只要我上传了，最终都是能被识别的"）。
+function replacePurchaseReceipt(receiptId, {date, store, items}){
+  const rows = items.map((item, index) => ({
+    receiptId,
+    id: `${receiptId}-${String(index + 1).padStart(2, "0")}`,
+    date,
+    foodId: foodIdForItem(item.name),
+    item: shortBrand(item.name),
+    amount: item.amount || "",
+    packageSpec: "",
+    totalPrice: item.price == null ? 0 : Number(item.price),
+    unitPrice: unitPriceText(item.amount, item.price),
+    store,
+    bought: !item.placeholder,
+    manual: true,
+    ...(item.placeholder ? {placeholder: true} : {}),
+  }));
+  manualPurchases = manualPurchases.filter(row => row.receiptId !== receiptId).concat(rows);
+  saveManualPurchases();
+  return rows;
+}
+// 把一单识别成结果写回去。识别成功（不管是当场还是回头补跑）都走这里。
+async function applyReceiptResult(receiptId, receipt){
+  const items = receipt.items.filter(item => item.name);
+  const day = receipt.date || new Date().toISOString().slice(0, 10);
+  const date = receipt.time ? `${day} ${receipt.time}` : day;
+  const store = receipt.store || "未记录地点";
+  const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
+  // 和手动保存同一道防线：这一单的内容和别的单撞了指纹就别留两份。
+  const signature = receiptSignature(store, date, rows);
+  const clash = manualReceiptSignatures().some(entry => entry.signature === signature && entry.receiptId !== receiptId);
+  if (clash){
+    manualPurchases = manualPurchases.filter(row => row.receiptId !== receiptId);
+    saveManualPurchases();
+    return {merged: true, count: items.length, store};
+  }
+  replacePurchaseReceipt(receiptId, {date, store, items: rows});
+  return {merged: false, count: items.length, store};
+}
+// 回到前台后补跑一单小票：照片都在库里，按 receiptId 捞出来重认一遍。
+async function resumeReceiptJob(job, photos){
+  const files = photos.filter(photo => photo.receiptId === job.receiptId && photo.blob).map(photo => photo.blob);
+  // 照片被删光了，或者这一单已经被手动改好了，就把任务清掉，别让它永远排着。
+  if (!files.length || !manualPurchases.some(row => row.receiptId === job.receiptId)){
+    dequeueReceiptJob(job.receiptId);
+    return false;
+  }
+  try{
+    const receipt = await recognizeReceipts(files);
+    await applyReceiptResult(job.receiptId, receipt);
+    dequeueReceiptJob(job.receiptId);
+    await renderShopping();
+    renderFoods();
+    return true;
+  }catch(error){
+    // 认不出来就留在队列里，下次回到前台再试。占位那一单已经存着，照片不会丢。
+    console.error("补跑小票识别失败", error);
+    return false;
+  }
 }
 // 自动保存之后就必须能改：识别认错了不能只剩「删掉重来」这一条路
 // （用户："上传照片后自动保存，如果有问题我会修改的，可修改就行"）。
@@ -5201,50 +5300,45 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }
   async function startRecognize(){
     if (!pendingPhotos.length) return;
-    if (!aiConfig().key){
-      jobHint("照片已选上，但还没配 API key，识别不了——去「目标」页最下面配一个，或者直接手填。只填照片也能保存。");
-      return;
-    }
     // 先把这批照片端走并清空表单，人立刻就能拍下一单。
     const files = pendingPhotos;
     pendingPhotos = [];
     showPending();
+    // **先落盘再识别**：占位的一单 + 照片先进库，队列里排上任务，然后才发请求。
+    // 原来是识别成功了才存，中途切走一次照片就彻底没了，回来什么都不剩
+    // （用户："我上传照片，然后离开网页，回来照片就不上传识别了…只要我上传了，
+    // 最终都是能被识别的"）。
+    const {receiptId} = addPurchaseReceipt({
+      date: new Date().toISOString().slice(0, 10),
+      store: "识别中",
+      items: [{name: "待补充", amount: "", price: null, placeholder: true}],
+    });
+    try{
+      await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
+    }catch(error){
+      console.error(error);
+    }
+    enqueueReceiptJob(receiptId);
+    await renderShopping();
+    if (!aiConfig().key){
+      jobHint("照片已经存成一条待补充的采购了，但还没配 API key 认不出来——去「营养」页最下面配一个，或者点那一单的 ✏️ 手填。");
+      return;
+    }
     backgroundJobs += 1;
     jobHint(`正在后台识别${backgroundJobs > 1 ? `（还有 ${backgroundJobs} 单在跑）` : ""}…可以接着记下一单。`);
     try{
       const receipt = await recognizeReceipts(files);
-      const items = receipt.items.filter(item => item.name);
-      const day = receipt.date || new Date().toISOString().slice(0, 10);
-      const date = receipt.time ? `${day} ${receipt.time}` : day;
-      const store = receipt.store || "未记录地点";
-      const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
-      // 和手动保存同一道防线：指纹一样就不再记一单。
-      const signature = receiptSignature(store, date, rows);
-      if (manualReceiptSignatures().some(entry => entry.signature === signature)){
-        jobHint("这单刚记过了，没有重复记。");
-        return;
-      }
-      const {receiptId} = addPurchaseReceipt({date, store, items: rows});
-      await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
+      const {merged, count, store} = await applyReceiptResult(receiptId, receipt);
+      dequeueReceiptJob(receiptId);
       await renderShopping();
       renderFoods();
-      jobHint(`已记下 ${items.length} 件（${store}）。金额认错是常事——在下面的采购历史里点开这次采购，点 ✏️ 直接改。`);
+      jobHint(merged
+        ? "这单刚记过了，没有重复记。"
+        : `已记下 ${count} 件（${store}）。金额认错是常事——在下面的采购历史里点开这次采购，点 ✏️ 直接改。`);
     }catch(error){
       console.error(error);
-      // 识别失败也别让照片白传：先存成一条占位采购，照片挂上去，回头能手动补。
-      try{
-        const {receiptId} = addPurchaseReceipt({
-          date: new Date().toISOString().slice(0, 10),
-          store: "未记录地点",
-          items: [{name: "待补充", amount: "", price: null, placeholder: true}],
-        });
-        await Promise.all(files.map(file => savePrivatePhoto(receiptId, file)));
-        await renderShopping();
-        jobHint(`识别失败：${error.message} 照片已存成一条待补充的采购，点 ✏️ 手填即可。`);
-      }catch(saveError){
-        console.error(saveError);
-        jobHint(`识别失败：${error.message} 也可以直接手填。`);
-      }
+      // 认不出来不删任务：占位那一单和照片都在，回到前台会自动接着试。
+      jobHint(`识别失败：${error.message} 照片已存成一条待补充的采购，回头会自动重试，也可以点 ✏️ 手填。`);
     }finally{
       backgroundJobs -= 1;
     }
@@ -5407,10 +5501,22 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 bindDiningForm();
 // 先把早先落成 custom: 的行重新归类，再渲染——否则第一屏还是旧图标和旧汇总。
 // 上次被系统掐断的识别，回到前台就接着跑完。
+// 补跑的触发点要多铺几个：只挂 visibilitychange 是不够的——从后台回来时它偶尔
+// 不触发（iOS 从"最近使用"直接切回、或者页面是从 bfcache 恢复的），断网时回来
+// 也会白跑一次然后就再没人管了（用户："只要我上传了，最终都是能被识别的"）。
+const kickRecognition = () => void drainRecognitionQueue();
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") void drainRecognitionQueue();
+  if (document.visibilityState === "visible") kickRecognition();
 });
-setTimeout(() => void drainRecognitionQueue(), 800);
+window.addEventListener("pageshow", kickRecognition);     // bfcache 恢复
+window.addEventListener("focus", kickRecognition);
+window.addEventListener("online", kickRecognition);       // 断网时排下的队，一联网就跑
+setTimeout(kickRecognition, 800);
+// 兜底心跳：上面那些事件万一一个都没来，队列里还排着东西就每 30 秒自己试一次。
+// 队列空的时候这就是一次 localStorage 读取，没有代价。
+setInterval(() => {
+  if (document.visibilityState === "visible" && pendingRecognitionCount()) kickRecognition();
+}, 30000);
 healManualFoodIds();
 dedupeManualReceipts();
 dedupeManualLines();
