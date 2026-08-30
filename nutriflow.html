@@ -1371,7 +1371,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v138</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v139</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2012,6 +2012,21 @@ function enqueueReceiptJob(receiptId){
 function dequeueReceiptJob(receiptId){
   saveAiQueue(aiQueue().filter(job => !(job.kind === "receipt" && job.receiptId === receiptId)));
 }
+// 失败了就往后推一段再试。**429 尤其不能马上重试**——它的意思就是"额度用完了或者
+// 太频繁"，30 秒后再撞一次只是白烧配额，还可能把限流窗口一直续上
+// （用户截图：HTTP 429，免费额度可能用完）。
+function jobDueAt(job){ return job && job.nextTryAt ? job.nextTryAt : 0; }
+function jobIsDue(job){ return Date.now() >= jobDueAt(job); }
+function delayJob(match, error){
+  const message = String((error && error.message) || error || "");
+  const rateLimited = /429|限流|额度/.test(message);
+  saveAiQueue(aiQueue().map(job => {
+    if (!match(job)) return job;
+    const tries = (job.tries || 0) + 1;
+    const base = rateLimited ? 300000 : 60000;   // 限流从 5 分钟起步，其他失败 1 分钟
+    return {...job, tries, nextTryAt: Date.now() + Math.min(base * (2 ** (tries - 1)), 1800000)};
+  }));
+}
 let drainingQueue = false;
 // 回到前台就把没跑完的接着跑。加锁避免 visibilitychange 连发两次时并发跑同一张。
 // 上一次补跑是什么时候开的。`drainingQueue` 单独一个布尔值不够用：真被系统掐断时
@@ -2023,7 +2038,9 @@ function pendingRecognitionCount(){ return aiQueue().length; }
 async function drainRecognitionQueue(){
   if (!aiConfig().key) return 0;
   if (drainingQueue && Date.now() - drainStartedAt < DRAIN_STALE_MS) return 0;
-  const jobs = aiQueue();
+  // 只看"到点了"的任务。全都在退避窗口里就直接收工，别去开 IndexedDB 白跑一趟——
+  // 那个 30 秒的心跳会一直调这里。
+  const jobs = aiQueue().filter(jobIsDue);
   if (!jobs.length) return 0;
   drainingQueue = true;
   drainStartedAt = Date.now();
@@ -2036,11 +2053,16 @@ async function drainRecognitionQueue(){
         done += await resumeReceiptJob(job, photos) ? 1 : 0;
         continue;
       }
+      const before = recognizedIds().length;
       const photo = photos.find(entry => entry.id === job.photoId);
       // 照片没了（被删了）就把这条也清掉，免得队列永远排着一个跑不动的。
       if (!photo?.blob){ dequeueRecognition(job.photoId); continue; }
       if (recognizedIds().includes(job.photoId)){ dequeueRecognition(job.photoId); continue; }
       done += await autoRecognize(job.owner, [photo], job.meal ? {meal: job.meal} : undefined);
+      // 还在队列里 = 这次没认成。往后推一段再试，别每 30 秒撞一次。
+      if (recognizedIds().length === before && aiQueue().some(item => item.photoId === job.photoId)){
+        delayJob(item => item.photoId === job.photoId, lastRecognizeError);
+      }
     }
   }catch(error){
     console.error("补跑识别失败", error);
@@ -2048,8 +2070,25 @@ async function drainRecognitionQueue(){
     drainingQueue = false;
   }
   if (done){ render(); void renderDining(); }
+  showQueueHint();
   return done;
 }
+// 队列里还压着东西时说一声，并给一个能手动催一下的入口——限流那会儿退避是按分钟算的，
+// 什么都不说的话用户只会以为照片又丢了。
+function showQueueHint(){
+  const box = document.querySelector(".buy-add-hint");
+  if (!box) return;
+  const jobs = aiQueue();
+  if (!jobs.length) return;
+  const due = jobs.filter(jobIsDue).length;
+  const waitMs = Math.min(...jobs.map(jobDueAt).filter(Boolean).concat(Infinity)) - Date.now();
+  const wait = due || !Number.isFinite(waitMs) || waitMs <= 0
+    ? "马上会再试"
+    : `约 ${Math.max(1, Math.round(waitMs / 60000))} 分钟后自动重试`;
+  box.textContent = `还有 ${jobs.length} 项等着识别（${wait}）。照片都存着，不会丢。`;
+  box.hidden = false;
+}
+let lastRecognizeError = null;
 async function autoRecognize(owner, saved, options){
   const forcedMeal = options && MEAL_ORDER.includes(options.meal) ? options.meal : "";
   const context = ownerContext(owner);
@@ -2102,6 +2141,9 @@ async function autoRecognize(owner, saved, options){
       added += 1;
     }catch(error){
       console.error("自动识别失败", error);
+      // 记一下最后这次的错。退避时长要看是不是 429，而这里的错误不往上抛
+      // （抛了就会中断整批照片），只能这么带出去。
+      lastRecognizeError = error;
     }
   }
   return added;
@@ -2684,6 +2726,7 @@ async function resumeReceiptJob(job, photos){
   }catch(error){
     // 认不出来就留在队列里，下次回到前台再试。占位那一单已经存着，照片不会丢。
     console.error("补跑小票识别失败", error);
+    delayJob(item => item.kind === "receipt" && item.receiptId === job.receiptId, error);
     return false;
   }
 }
@@ -5331,7 +5374,9 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   let pendingUrls = [];
   function showPending(){
     if (photoLabel){
-      photoLabel.textContent = pendingPhotos.length ? `📷 ${pendingPhotos.length}` : "📷";
+      // 空的时候要退回完整文案。原来退回一个光秃秃的「📷」，传完一单之后那个大框里
+      // 就只剩一个相机图标，看不出是干嘛的（用户截图里就是这样）。
+      photoLabel.textContent = pendingPhotos.length ? `📷 已选 ${pendingPhotos.length} 张` : "📷 拍张小票就行";
       if (photoEl) photoLabel.appendChild(photoEl);
     }
     const box = document.getElementById("buyPendingThumbs");
@@ -5613,7 +5658,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", kickRecognition);     // bfcache 恢复
 window.addEventListener("focus", kickRecognition);
 window.addEventListener("online", kickRecognition);       // 断网时排下的队，一联网就跑
-setTimeout(kickRecognition, 800);
+setTimeout(() => { kickRecognition(); showQueueHint(); }, 800);
 // 兜底心跳：上面那些事件万一一个都没来，队列里还排着东西就每 30 秒自己试一次。
 // 队列空的时候这就是一次 localStorage 读取，没有代价。
 setInterval(() => {
