@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v138`
+- 当前离线缓存：`nutriflow-pwa-v139`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**识别失败改成指数退避（起因是 Gemini 429）**。用户截图里的报错是 `HTTP 429 · 免费额度可能用完或请求太频繁`——不是模型名过期。这时候 v136 那个 30 秒心跳会照撞不误，**只是白烧配额，还可能把限流窗口一直续上**。新增 `delayJob(match, error)`：失败就给这条任务记 `tries` 和 `nextTryAt`，**429 从 5 分钟起步、其他失败 1 分钟起步**，每次翻倍、封顶 30 分钟；`drainRecognitionQueue` 只取 `jobIsDue` 的任务，全都在窗口里就直接收工，连 IndexedDB 都不开（心跳每 30 秒来一次，不能每次都白跑）。`autoRecognize` 里的错误不往上抛（抛了会中断整批照片），所以用 `lastRecognizeError` 把最后一次的错带出来，好判断是不是限流。新增 `showQueueHint()`：队列非空时写一行「还有 N 项等着识别（约 X 分钟后自动重试）。照片都存着，不会丢。」——退避是按分钟算的，什么都不说用户只会以为照片又丢了。顺带修掉截图里那个**光秃秃的 📷**：采购表单传完一单后标签退回成了单个 emoji，现在退回完整的「📷 拍张小票就行」。离线缓存与版本号升至 v139。
 
 - 2026-08-17：**采购的每个字段都能改 + Gemini 模型名过期后能自愈**。离线缓存与版本号升至 v138。
   - **「金额改不了」其实是没有反馈**（用户："采购里的所有东西都要能改，现在金额改不了"）。行内金额一直是存得下去的（CDP 实测改成 9.99 后 `totalPrice` 和单价文案都对），但改完**页面一动不动**——那个 change 处理器刻意不调 `renderShopping()`（重渲染会替换掉正在打字的输入框），于是卡片头上的合计和「N 次 · N 件 · ¥X」都停在旧数字上，看着就像没生效。新增 `refreshReceiptTotals(card)`：只就地改那两个文本节点，输入框原地不动。口径必须和 `renderShopping` 里那句完全一致，否则两处数字会打架。

@@ -681,6 +681,40 @@ test("marks manual foods inline and hides their delete control until editing", a
   );
 });
 
+test("backs off instead of hammering a rate-limited model", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户截图：Gemini HTTP 429，免费额度用完。那个 30 秒的心跳如果照撞不误，
+  // 只是白烧配额，还可能把限流窗口一直续上。
+  evaluate('saveAiQueue([{kind:"receipt", receiptId:"r429"}])');
+  evaluate('delayJob(job => job.receiptId === "r429", new Error("Gemini 限流了（HTTP 429）"))');
+  const job = evaluate('aiQueue()[0]');
+  assert.equal(job.tries, 1);
+  // 限流从 5 分钟起步，普通失败 1 分钟。
+  // 时间要在 vm 里比：桩把 Date 钉在了 2026-07-23，和测试进程的真实时钟对不上。
+  const wait = evaluate("aiQueue()[0].nextTryAt - Date.now()");
+  assert.ok(wait > 4 * 60000, `429 至少要等几分钟：${wait}`);
+  assert.equal(evaluate("jobIsDue(aiQueue()[0])"), false);
+  // 一次比一次久，但有上限。
+  evaluate('delayJob(job => job.receiptId === "r429", new Error("429"))');
+  evaluate('delayJob(job => job.receiptId === "r429", new Error("429"))');
+  assert.equal(evaluate("aiQueue()[0].tries"), 3);
+  assert.ok(evaluate("aiQueue()[0].nextTryAt - Date.now()") <= 30 * 60000, "退避要封顶，不能越推越远");
+
+  // 普通失败退得没那么狠。
+  evaluate('saveAiQueue([{kind:"receipt", receiptId:"rx"}])');
+  evaluate('delayJob(job => job.receiptId === "rx", new Error("Failed to fetch"))');
+  assert.ok(evaluate("aiQueue()[0].nextTryAt - Date.now()") < 2 * 60000);
+
+  // 全都在退避窗口里就别去开 IndexedDB 白跑一趟——心跳每 30 秒就来一次。
+  assert.match(html, /const jobs = aiQueue\(\).filter\(jobIsDue\);/);
+  // 队列里压着东西要说一声，否则限流那几分钟里用户只会以为照片又丢了。
+  assert.match(html, /function showQueueHint\(\)/);
+  assert.match(html, /还有 \$\{jobs.length\} 项等着识别/);
+  evaluate("saveAiQueue([])");
+});
+
 test("recovers when the pinned Gemini model names go stale", async () => {
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
@@ -1803,7 +1837,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v138"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v139"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
