@@ -681,6 +681,63 @@ test("marks manual foods inline and hides their delete control until editing", a
   );
 });
 
+test("recovers when the pinned Gemini model names go stale", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 写死的模型名迟早过期，过期之后整个识别就哑了，用户只看到一句报错
+  // （用户："现在上传不了图了，说 gemini 报错"）。候选全试完还不行就问一次
+  // ListModels，把账号当下能用的 flash 接在队尾再试一次。
+  assert.match(html, /async function discoverGeminiModel\(key\)/);
+  assert.match(html, /const found = await discoverGeminiModel\(key\);/);
+  // 必须用下标遍历：for...of 会在开头把数组定死，追加进去的候选轮不到。
+  assert.match(html, /for \(let index = 0; index < queue.length; index \+= 1\)\{/);
+  assert.ok(!/for \(const model of models\)/.test(html), "for...of 遍历不到后追加的候选");
+  // 400 也当作"这个模型不行"继续换下一个，不是只有 404。
+  assert.match(html, /if \(response.status !== 404 && response.status !== 400\) break;/);
+  // 只挑做得了看图说话的通用 flash。
+  assert.match(html, /!\/embedding\|tts\|live\|image\|audio\|thinking\/i.test\(name\)/);
+  // 超时和"连不上"是两回事，分开说。
+  assert.match(html, /error\?\.name === "AbortError"/);
+});
+
+test("makes every field of a purchase editable and shows the new total at once", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户："采购里的所有东西都要能改，现在金额改不了"。金额其实早就存下来了，
+  // 只是改完页面一动不动、没有任何反馈，看着就像没生效。
+  assert.match(html, /refreshReceiptTotals\(input.closest\("\[data-receipt\]"\)\);/);
+  assert.match(html, /function refreshReceiptTotals\(card\)/);
+  // 仍然刻意不整块重渲染——那会替换掉正在打字的输入框。
+  const lineHandler = html.slice(html.indexOf('querySelectorAll("[data-line]")'), html.indexOf('querySelectorAll("[data-receipt-field]")'));
+  assert.ok(!/await renderShopping\(\)/.test(lineHandler), "改一行不该整块重渲染");
+
+  evaluate('addPurchaseReceipt({date:"2026-08-17 19:30", store:"盒马鲜生", items:[{name:"西红柿", amount:"500g", price:5.2}]})');
+  const key = evaluate("manualPurchases[manualPurchases.length - 1].receiptId");
+  const rowId = evaluate("manualPurchases[manualPurchases.length - 1].id");
+
+  // 每一行的名字、规格、金额都能改，改完单价文案跟着重算。
+  evaluate(`updateManualLine(${JSON.stringify(rowId)}, "price", "9.99")`);
+  assert.equal(evaluate(`manualPurchases.find(r => r.id === ${JSON.stringify(rowId)}).totalPrice`), 9.99);
+  assert.match(evaluate(`manualPurchases.find(r => r.id === ${JSON.stringify(rowId)}).unitPrice`), /元\/kg/);
+
+  // 整单的店名和日期也能改——它们每行各存一份，得一起改。
+  evaluate(`updateManualReceipt(${JSON.stringify(key)}, "store", "fudi 超市")`);
+  evaluate(`updateManualReceipt(${JSON.stringify(key)}, "date", "2026-08-16")`);
+  const row = evaluate(`manualPurchases.find(r => r.id === ${JSON.stringify(rowId)})`);
+  assert.equal(row.store, "fudi 超市");
+  // 只换日期那一半，时分要留着——采购历史按它排序。
+  assert.equal(row.date, "2026-08-16 19:30");
+
+  await context.renderShopping();
+  evaluate(`editingReceipt = ${JSON.stringify(key)}`);
+  await context.renderShopping();
+  const editing = elements.get("purchaseHistory").innerHTML;
+  assert.match(editing, /data-receipt-field="store"/);
+  assert.match(editing, /data-receipt-field="date"/);
+  assert.match(editing, /data-field="price"/);
+});
+
 test("folds receipt-level fields across every line item", async () => {
   const { context, elements, evaluate } = await runAppScript();
 
@@ -1746,7 +1803,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v137"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v138"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
