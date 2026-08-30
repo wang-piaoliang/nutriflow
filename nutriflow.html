@@ -848,6 +848,8 @@ summary.week-block-head::after{
 .receipt-edit-toggle.on{background:var(--green);border-color:var(--green);color:#fff}
 /* 自己录的小票每行可就地改：名称一行，规格/金额/删除一行。字号和只读行保持一致。 */
 .receipt-line.editable{align-items:start}
+.receipt-edit-head{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px}
+.receipt-edit-head input{flex:1 1 130px;min-width:0}
 .receipt-edit{display:grid;gap:6px;min-width:0}
 .receipt-edit-row{display:flex;gap:6px;min-width:0}
 .receipt-field{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:6px 8px;font-size:16px;min-width:0}
@@ -1369,7 +1371,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v137</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v138</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1879,7 +1881,14 @@ async function callGemini(key, base64, mime, prompt){
     ? [remembered, ...GEMINI_MODELS.filter(m => m !== remembered)]
     : GEMINI_MODELS.slice();
   let lastError = null;
-  for (const model of models){
+  // 候选全试完还不行，就去 ListModels 问一遍这个账号当下真正能用的是哪个 flash，
+  // 再试它一次。ListModels 会把已退役的也列出来、不能光看它，但拿来当"最后一根
+  // 稻草"是对的：写死的名字迟早过期，过期之后整个识别就哑了，用户只看到一句报错。
+  // 注意用下标遍历：for...of 会在开头把数组定死，后面往 queue 里追加的候选就轮不到了。
+  const queue = models.slice();
+  let discovered = false;
+  for (let index = 0; index < queue.length; index += 1){
+    const model = queue[index];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
     let response;
     try{
@@ -1897,7 +1906,10 @@ async function callGemini(key, base64, mime, prompt){
     }catch(error){
       // fetch 直接抛＝根本没连上。Gemini 的域名在国内直连不通（实测 20s 超时），
       // 手机不挂梯子就是这个下场，说清楚比报一句 Failed to fetch 有用。
-      throw new Error("连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
+      // 超时（AbortError）单独说：那是请求发出去了但一直没回来，和"连不上"不是一回事。
+      throw new Error(error?.name === "AbortError"
+        ? "Gemini 90 秒没回应，已经放弃这次。照片和任务都留着，回到前台会自动重试；老这样就在设置里换成通义千问。"
+        : "连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
     }
     if (response.ok){
       localStorage.setItem(GEMINI_MODEL_KEY, model);
@@ -1906,9 +1918,35 @@ async function callGemini(key, base64, mime, prompt){
     }
     lastError = await describeApiError(response, "Gemini");
     // 只有「这个模型没了」才值得换下一个，401/429 换了也一样。
-    if (response.status !== 404) break;
+    if (response.status !== 404 && response.status !== 400) break;
+    // 写死的候选都试完还不行，问一次账号里现在有什么，接在队尾再试。只问一次。
+    if (index === queue.length - 1 && !discovered){
+      discovered = true;
+      const found = await discoverGeminiModel(key);
+      if (found && !queue.includes(found)) queue.push(found);
+    }
   }
   throw new Error(lastError || "Gemini 调用失败");
+}
+// 问 Gemini 这个 key 现在能用哪些模型，挑一个 flash。挑不出来就返回空串，
+// 调用方照旧报原来的错。
+async function discoverGeminiModel(key){
+  try{
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {}, 20000);
+    if (!response.ok) return "";
+    const data = await response.json();
+    return (data?.models || [])
+      .filter(model => (model.supportedGenerationMethods || []).includes("generateContent"))
+      .map(model => String(model.name || "").replace(/^models\//, ""))
+      // 只要通用的 flash：embedding/tts/live/image 这些做不了看图说话。
+      .filter(name => /flash/i.test(name) && !/embedding|tts|live|image|audio|thinking/i.test(name))
+      // 版本号大的排前面，用数字比较，免得 "gemini-10" 排在 "gemini-9" 后面。
+      .sort((a, b) => b.localeCompare(a, "en", {numeric: true}))[0] || "";
+  }catch(error){
+    console.warn("NutriFlow could not list Gemini models", error);
+    return "";
+  }
 }
 // 把 API 的错误体翻成人话——401 最常见，就是 key 填错或没开通。
 async function describeApiError(response, label){
@@ -2672,6 +2710,25 @@ function updateManualLine(rowId, field, value){
     if (!Number.isFinite(row.totalPrice)) row.totalPrice = 0;
   }
   row.unitPrice = unitPriceText(row.amount, row.totalPrice || null);
+  saveManualPurchases();
+}
+// 整单的店名和日期改的是这一单**所有行**——它们本来就是每行各存一份的
+// （用户："采购里的所有东西都要能改"）。
+function updateManualReceipt(receiptId, field, value){
+  const rows = manualPurchases.filter(row => row.receiptId === receiptId);
+  if (!rows.length) return;
+  if (field === "store"){
+    const store = String(value).trim();
+    rows.forEach(row => { row.store = store; });
+  } else if (field === "date"){
+    const day = String(value).trim();
+    if (!day) return;
+    // 只换日期那一半，后面的时分要留着——采购历史按它排序，也看得出是早上还是晚上买的。
+    rows.forEach(row => {
+      const time = String(row.date || "").slice(10);
+      row.date = `${day}${time}`;
+    });
+  }
   saveManualPurchases();
 }
 function removeManualLine(rowId){
@@ -4264,6 +4321,27 @@ function renderPriceComparison(){
     </div>`;
   }).join("") : `<div class="note">还没有可比较的单价数据。按重量购买且记录了金额的食材会出现在这里。</div>`;
 }
+// 就地刷新一张采购卡的合计，以及卡片头上的「N 次 · N 件 · ¥X」。
+// 只动这两个文本节点，不碰输入框——正在打字的那个必须原地不动。
+function refreshReceiptTotals(card){
+  if (card){
+    const rows = manualPurchases.filter(row => row.receiptId === card.dataset.receipt);
+    const box = card.querySelector(".receipt-total");
+    if (rows.length && box){
+      const sum = rows.reduce((total, row) => total + Number(row.totalPrice || 0), 0);
+      const photos = box.querySelector("small");
+      box.textContent = `¥${sum.toFixed(2)}`;
+      if (photos) box.appendChild(photos);
+    }
+  }
+  const meta = document.getElementById("purchaseMeta");
+  if (!meta) return;
+  // 口径必须和 renderShopping 里那句完全一致，否则改一笔金额之后两处数字就打架了。
+  const rows = allPurchases();
+  const receiptKeys = new Set(rows.map(row => row.receiptId));
+  const total = rows.reduce((sum, row) => sum + Number(row.totalPrice || 0), 0);
+  meta.textContent = `${receiptKeys.size} 次 · ${rows.length} 件 · ¥${total.toFixed(2)}`;
+}
 async function renderShopping(){
   const renderVersion = ++shoppingRenderVersion;
   const photosByReceipt = await loadPhotosByOwner();
@@ -4391,6 +4469,10 @@ async function renderShopping(){
         <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件${categorySummary ? ` · ${categorySummary}` : ""}${receipt.note ? `<br>${receipt.note}` : ""}</small></div>
         <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
       </summary>
+      ${editing ? `<div class="receipt-edit-head">
+        <input class="receipt-field" type="text" value="${escapeAttribute(receipt.store)}" placeholder="在哪买的" data-receipt-field="store" data-receipt-id="${receipt.key}" aria-label="在哪买的">
+        <input class="receipt-field" type="date" value="${escapeAttribute(String(receipt.date || "").slice(0, 10))}" data-receipt-field="date" data-receipt-id="${receipt.key}" aria-label="日期">
+      </div>` : ""}
       <div class="receipt-lines">${lines}</div>
       ${receipt.items.every(item => item.manual) ? `<div class="receipt-actions">
         <button type="button" class="receipt-edit-toggle${editing ? " on" : ""}" data-edit-receipt="${receipt.key}" title="${editing ? "改完了" : "编辑这次采购"}" aria-label="${editing ? "改完了" : "编辑这次采购"}">${editing ? "✓" : "✏️"}</button>
@@ -4421,6 +4503,16 @@ async function renderShopping(){
   document.getElementById("purchaseHistory").querySelectorAll("[data-line]").forEach(input => {
     input.addEventListener("change", () => {
       updateManualLine(input.dataset.line, input.dataset.field, input.value);
+      // 改完立刻把这一单的合计和卡片头上的总数刷新。**不刷新的话金额改了页面一动不动，
+      // 看着就像没生效**（用户："采购里的所有东西都要能改，现在金额改不了"）——
+      // 其实早就存下来了，只是没有任何反馈。仍然刻意不调 renderShopping()：
+      // 整块重渲染会替换掉正在打字的输入框，光标和键盘一起跳掉。
+      refreshReceiptTotals(input.closest("[data-receipt]"));
+    });
+  });
+  document.getElementById("purchaseHistory").querySelectorAll("[data-receipt-field]").forEach(input => {
+    input.addEventListener("change", () => {
+      updateManualReceipt(input.dataset.receiptId, input.dataset.receiptField, input.value);
     });
   });
   document.getElementById("purchaseHistory").querySelectorAll("[data-line-del]").forEach(button => {
