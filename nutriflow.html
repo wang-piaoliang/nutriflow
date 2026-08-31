@@ -1373,7 +1373,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v141</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v142</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1910,9 +1910,53 @@ async function callQwen(key, base64, mime, prompt){
 // 单钉版本号会坏（gemini-2.5-flash 到 2026-08 已对新 key 返回 404
 // 「no longer available to new users」），单用别名又拿不到最新的模型，所以两者都要。
 // 注意 ListModels 会把已经退役的模型也列出来，不能拿它判断可用性——只能真发一次请求。
-const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+// 写死模型名这条路是走不通的：Google 每隔几个月退役一批，写死的名字一过期整个识别
+// 就哑了；而且**免费额度是按模型分开算的**，猜错档位（pro 类每天只有个位数）一天
+// 十来张图就撞满。所以改成**问一次 ListModels，自己挑**——这个接口不吃
+// generateContent 的配额，问一次就够，挑中的记下来，一天之内不再问。
+// 下面这两个只是"还没问到之前的应急默认"，不再当作主要手段。
+const GEMINI_MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest"];
 const GEMINI_MODEL_KEY = "nutriflow_ai_gemini_model";
+const GEMINI_MODEL_AT_KEY = "nutriflow_ai_gemini_model_at";
 const GEMINI_PINNED_KEY = "nutriflow_ai_model_gemini";
+const GEMINI_MODEL_TTL = 86400000;
+// 挑模型的偏好：免费额度最宽松的在最前面。lite 档通常比 flash 高一个数量级，
+// 而认小票/餐食这种活儿 lite 完全够用；pro 类一天十几次就没了，绝对不能选。
+function rankGeminiModel(name){
+  if (/pro/i.test(name)) return 99;
+  if (/flash-lite/i.test(name)) return 0;
+  if (/flash/i.test(name)) return 1;
+  return 50;
+}
+// 问 Gemini 这个 key 现在到底能用哪些模型，按"免费额度宽松 + 版本新"排好返回。
+// ListModels 会把已退役的也列出来，所以这只是候选顺序，能不能用还得真发一次才知道。
+async function listGeminiModels(key){
+  try{
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {}, 20000);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data?.models || [])
+      .filter(model => (model.supportedGenerationMethods || []).includes("generateContent"))
+      .map(model => String(model.name || "").replace(/^models\//, ""))
+      // 只要做得了看图说话的通用款：embedding/tts/live/image/audio 这些不行。
+      .filter(name => /flash|pro/i.test(name) && !/embedding|tts|live|image|audio|thinking|vision-preview/i.test(name))
+      .filter(name => rankGeminiModel(name) < 50)
+      .sort((a, b) => rankGeminiModel(a) - rankGeminiModel(b) || b.localeCompare(a, "en", {numeric: true}));
+  }catch(error){
+    console.warn("NutriFlow could not list Gemini models", error);
+    return [];
+  }
+}
+function rememberGeminiModel(model){
+  localStorage.setItem(GEMINI_MODEL_KEY, model);
+  localStorage.setItem(GEMINI_MODEL_AT_KEY, String(Date.now()));
+}
+function rememberedGeminiModel(){
+  const at = Number(localStorage.getItem(GEMINI_MODEL_AT_KEY) || 0);
+  if (!at || Date.now() - at > GEMINI_MODEL_TTL) return "";
+  return localStorage.getItem(GEMINI_MODEL_KEY) || "";
+}
 // 发一次请求，只管一个模型。返回 {text} 或 {status, error}，让上层决定要不要换下一个。
 async function callGeminiModel(key, base64, mime, prompt, model){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
@@ -1938,70 +1982,54 @@ async function callGeminiModel(key, base64, mime, prompt, model){
       : "连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
   }
   if (response.ok){
-    localStorage.setItem(GEMINI_MODEL_KEY, model);
+    rememberGeminiModel(model);
     const data = await response.json();
     return {text: (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("")};
   }
   return {status: response.status, error: await describeApiError(response, "Gemini")};
 }
+// 一次调用最多试几个模型。**429 也值得换一个**——免费额度是按模型分开算的，
+// A 撞满了不代表 B 也满了；但换一次就是一次请求，所以要封顶，不能顺着列表撞到底。
+const GEMINI_MAX_ATTEMPTS = 3;
 async function callGemini(key, base64, mime, prompt){
-  // 自己在设置里指定的模型优先。免费额度是按模型分的，Google 一改配额我这边写死的
-  // 名字就跟不上了——留个口子，用户自己能立刻换到还有额度的那个，不用等我发版。
+  // 自己在设置里指定了就只用它，不再自作主张换。
   const pinned = (localStorage.getItem(GEMINI_PINNED_KEY) || "").trim();
   if (pinned){
     const result = await callGeminiModel(key, base64, mime, prompt, pinned);
     if (result.text !== undefined) return result.text;
     throw new Error(result.error);
   }
-  // 上次成功用的那个排前面，省得每次都先撞一遍 404。
-  const remembered = localStorage.getItem(GEMINI_MODEL_KEY);
-  const models = remembered
-    ? [remembered, ...GEMINI_MODELS.filter(m => m !== remembered)]
-    : GEMINI_MODELS.slice();
+  const remembered = rememberedGeminiModel();
+  const queue = remembered ? [remembered] : [];
+  let asked = false;
   let lastError = null;
-  // 候选全试完还不行，就去 ListModels 问一遍这个账号当下真正能用的是哪个 flash，
-  // 再试它一次。ListModels 会把已退役的也列出来、不能光看它，但拿来当"最后一根
-  // 稻草"是对的：写死的名字迟早过期，过期之后整个识别就哑了，用户只看到一句报错。
-  // 注意用下标遍历：for...of 会在开头把数组定死，后面往 queue 里追加的候选就轮不到了。
-  const queue = models.slice();
-  let discovered = false;
-  for (let index = 0; index < queue.length; index += 1){
-    const result = await callGeminiModel(key, base64, mime, prompt, queue[index]);
+  for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS; attempt += 1){
+    if (!queue.length){
+      if (asked) break;
+      asked = true;
+      // 问一遍账号里现在真正能用的是哪些（这个接口不吃 generateContent 的配额）。
+      const found = await listGeminiModels(key);
+      queue.push(...(found.length ? found : GEMINI_MODELS));
+      // 记住的那个已经试过了，别再试一遍。
+      if (remembered){
+        const at = queue.indexOf(remembered);
+        if (at >= 0) queue.splice(at, 1);
+      }
+      if (!queue.length) break;
+    }
+    const model = queue.shift();
+    const result = await callGeminiModel(key, base64, mime, prompt, model);
     if (result.text !== undefined) return result.text;
     lastError = result.error;
-    // 只有「这个模型没了」才值得换下一个。429/401 换个模型也一样，而且**每换一次
-    // 就是一次请求**——限流的时候乱换只会烧得更快。
-    if (result.status !== 404 && result.status !== 400) break;
-    // 写死的候选都试完还不行，问一次账号里现在有什么，接在队尾再试。只问一次。
-    if (index === queue.length - 1 && !discovered){
-      discovered = true;
-      const found = await discoverGeminiModel(key);
-      if (found && !queue.includes(found)) queue.push(found);
-    }
+    // key 不对（401/403）换模型也没用，立刻收手。其余（404 模型没了、400 参数、
+    // 429 这个模型的额度满了）都值得换下一个再试。
+    if (result.status === 401 || result.status === 403) break;
+    // 记住的那个不好使了就忘掉，下一轮去重新问一遍。
+    if (model === remembered) localStorage.removeItem(GEMINI_MODEL_AT_KEY);
   }
   throw new Error(lastError || "Gemini 调用失败");
 }
 
-// 问 Gemini 这个 key 现在能用哪些模型，挑一个 flash。挑不出来就返回空串，
-// 调用方照旧报原来的错。
-async function discoverGeminiModel(key){
-  try{
-    const response = await fetchWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {}, 20000);
-    if (!response.ok) return "";
-    const data = await response.json();
-    return (data?.models || [])
-      .filter(model => (model.supportedGenerationMethods || []).includes("generateContent"))
-      .map(model => String(model.name || "").replace(/^models\//, ""))
-      // 只要通用的 flash：embedding/tts/live/image 这些做不了看图说话。
-      .filter(name => /flash/i.test(name) && !/embedding|tts|live|image|audio|thinking/i.test(name))
-      // 版本号大的排前面，用数字比较，免得 "gemini-10" 排在 "gemini-9" 后面。
-      .sort((a, b) => b.localeCompare(a, "en", {numeric: true}))[0] || "";
-  }catch(error){
-    console.warn("NutriFlow could not list Gemini models", error);
-    return "";
-  }
-}
 // 把 API 的错误体翻成人话——401 最常见，就是 key 填错或没开通。
 async function describeApiError(response, label){
   let detail = "";
