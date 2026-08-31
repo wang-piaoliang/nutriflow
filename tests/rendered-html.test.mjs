@@ -681,6 +681,38 @@ test("marks manual foods inline and hides their delete control until editing", a
   );
 });
 
+test("keeps a key per provider and falls back when one is rate-limited", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 原来只有一个 key，换 provider 就把另一个冲掉——于是"Gemini 限流了先用通义千问顶
+  // 一下"的代价是回头还得重新去翻 Gemini 的 key（用户："现在都根本不识别了"）。
+  evaluate('setAiKey("qwen", "sk-qwen")');
+  evaluate('setAiKey("gemini", "AIza-gem")');
+  assert.equal(evaluate('aiKeyOf("qwen")'), "sk-qwen");
+  assert.equal(evaluate('aiKeyOf("gemini")'), "AIza-gem");
+  // 换 provider 之后两个都还在。
+  evaluate(`localStorage.setItem(AI_PROVIDER_KEY, "gemini")`);
+  assert.equal(evaluate("aiConfig().key"), "AIza-gem");
+  evaluate(`localStorage.setItem(AI_PROVIDER_KEY, "qwen")`);
+  assert.equal(evaluate("aiConfig().key"), "sk-qwen");
+
+  // 主力挂了、备胎有 key 就顶上，并把备胎记成当前 provider——别每张照片都先撞一次挂掉的那个。
+  assert.match(html, /async function callModel\(prompt, base64, mime\)/);
+  assert.match(html, /const backupKey = aiKeyOf\(backup\);/);
+  assert.match(html, /if \(!backupKey\) throw error;/);
+  assert.match(html, /localStorage.setItem\(AI_PROVIDER_KEY, backup\);/);
+  // 两条识别路径都走 callModel，不再各写一份 provider 分支。
+  assert.match(html, /const raw = await callModel\(RECEIPT_PROMPT, base64, mime\);/);
+  assert.match(html, /const raw = await callModel\(RECOGNIZE_PROMPT, base64, mime\);/);
+  assert.ok(!/\? await callGemini\(key, base64, mime/.test(html), "provider 分支应该只剩 callModel 一处");
+
+  // 换 key / 换 provider 之后，之前因为限流退避着的任务不用再等。
+  assert.match(html, /saveAiQueue\(aiQueue\(\).map\(job => \(\{...job, tries: 0, nextTryAt: 0\}\)\)\);/);
+  // 也给一个"立刻重试"，别让人明知额度回来了还得干等。
+  assert.match(html, /id="retryRecognition"/);
+});
+
 test("backs off instead of hammering a rate-limited model", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1837,7 +1869,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v139"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v140"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
