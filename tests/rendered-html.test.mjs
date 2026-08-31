@@ -777,6 +777,11 @@ test("asks Gemini which models it can actually use, and prefers the cheap one", 
   // 设置里指定了模型就只用它，不再自作主张换。
   assert.match(html, /const GEMINI_PINNED_KEY = "nutriflow_ai_model_gemini";/);
   assert.match(html, /id="aiModel"/);
+  // 模型是 app 自己挑的，得把**实际用上的那个**显示出来——不显示的话用户没有任何
+  // 办法知道挑中了哪个（用户："你调了么"）。挑中的当场刷新这行字。
+  assert.match(html, /已配置 · \$\{name\} · \$\{using \? `\$\{using\}/);
+  assert.match(html, /document.dispatchEvent\(new CustomEvent\("nutriflow:model-picked"\)\);/);
+  assert.match(html, /document.addEventListener\("nutriflow:model-picked", label\);/);
 
   // 限流时一单剩下的照片别再发——每张都是一次请求，一单四张就白烧四倍。
   assert.match(html, /if \(isQuotaError\(error\)\) break;/);
@@ -1887,7 +1892,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v142"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v143"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

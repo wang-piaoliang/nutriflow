@@ -1373,7 +1373,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v142</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v143</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1983,6 +1983,7 @@ async function callGeminiModel(key, base64, mime, prompt, model){
   }
   if (response.ok){
     rememberGeminiModel(model);
+    document.dispatchEvent(new CustomEvent("nutriflow:model-picked"));
     const data = await response.json();
     return {text: (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("")};
   }
@@ -5397,10 +5398,17 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   const saveBtn = document.getElementById("aiSave");
   const status = document.getElementById("aiStatus");
   if (!providerInput || !keyInput || !saveBtn || !status) return;
+  // 把**实际用上的那个模型**显示出来。模型是 app 自己问 ListModels 挑的，不显示的话
+  // 用户没有任何办法知道它挑中了哪个、有没有挑对——只能听我说，而我手上没有 key、
+  // 没法替他验证。显示出来就变成"自己看一眼"。
   const label = () => {
     const {provider, key} = aiConfig();
     const name = provider === "gemini" ? "Gemini" : "Qwen-VL";
-    status.textContent = key ? `已配置 · ${name}` : "未配置";
+    if (!key){ status.textContent = "未配置"; return; }
+    if (provider !== "gemini"){ status.textContent = `已配置 · ${name} · qwen3-vl-plus`; return; }
+    const pinned = (localStorage.getItem(GEMINI_PINNED_KEY) || "").trim();
+    const using = pinned || rememberedGeminiModel();
+    status.textContent = `已配置 · ${name} · ${using ? `${using}${pinned ? "（手动指定）" : ""}` : "首次识别时自动挑"}`;
   };
   // 保存后要收起来。之前存完 key 那一长串还明晃晃摆在输入框里，
   // 除了按钮闪一下"已保存"没有任何变化，看不出到底存没存上（用户反馈）。
@@ -5431,6 +5439,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   showSaved();
   // 换 provider 时把那一家已经存过的 key 填回来——两个 key 各存各的，
   // 换过去不用再翻一遍，换回来也还在。
+  document.addEventListener("nutriflow:model-picked", label);
   providerInput.addEventListener("change", () => {
     keyInput.value = aiKeyOf(providerInput.value);
     syncModelField();
