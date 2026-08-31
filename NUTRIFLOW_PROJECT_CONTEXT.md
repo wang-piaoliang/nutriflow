@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v141`
+- 当前离线缓存：`nutriflow-pwa-v142`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**Gemini 模型改成自己问、自己挑**（用户："那你直接弄"）。用户发来的 AI Studio 用量图坐实了 v141 的推断：整月每天 5–30 次请求，**最后一天飙到约 170 次、成功率掉到接近 0**，错误图上是一根约 145 高的 `429 TooManyRequests` 柱子——正是我那个 30 秒心跳烧的。
+  - 写死模型名这条路走不通：Google 每隔几个月退役一批，而且**免费额度是按模型分开算的**，猜错档位（pro 类一天只有个位数）十来张图就撞满。改成开口问 `ListModels`（这个接口不吃 generateContent 的配额），按 `rankGeminiModel()` 排序自己挑：**flash-lite 0 → flash 1 → pro 99（直接排除）**，同档比版本号。挑中的记一天（`GEMINI_MODEL_TTL`），不每次都问。
+  - **429 现在值得换一个模型**——额度按模型分开算，A 撞满不代表 B 也满。但换一次就是一次请求，所以 `GEMINI_MAX_ATTEMPTS = 3` 封顶；**401/403 立刻收手**（key 的问题，换模型纯属白烧）。
+  - 顺手把「发一次请求」抽成 `callGeminiModel()`，返回 `{text}` 或 `{status, error}`，由上层决定要不要换下一个；`GEMINI_MODELS` 降级成"还没问到之前的应急默认"。
+  - CDP 四个场景实测：① 账号里 pro/flash/lite 都在 → 只发 1 次请求、挑中 lite；② lite 撞 429 → 自动换 flash 成功并记住；③ 401 → 只发 1 次就收手；④ 连续两次调用只问了 1 次 ListModels。离线缓存与版本号升至 v142。
 
 - 2026-08-17：**把额度烧光的其实是我自己写的重试循环**（用户："我今天都没上传，为啥 gemini 会没有额度"）。算一遍就清楚了：v136 加的 30 秒兜底心跳 × 一单四张照片（`recognizeReceipts` 是**一张一次请求**）× `callGemini` 失败时还会换模型再试 ≈ **每 30 秒 8 次请求，一小时近千次**。只要队列里卡着一单，页面开着就一直在烧，用户什么都没传也能把当天配额撞光。v139 的退避止住了血，这一版把剩下的浪费也堵上：
   - **限流时中断整单**：`recognizeReceipts` 里一张照片撞上 429/401 就 `break`，剩下几张不再发——新增 `isQuotaError()` 判定。实测 4 张照片从 4 次请求降到 **1 次**。

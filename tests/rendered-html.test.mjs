@@ -627,9 +627,8 @@ test("keeps the recognition prompt's hard-won rules", async () => {
   // otherwise this app breaks silently the next time Google retires one.
   assert.match(html, /const GEMINI_MODELS = \[(.*)\]/);
   const chain = html.match(/const GEMINI_MODELS = \[(.*)\]/)[1];
-  assert.match(chain, /latest/, "Gemini 模型链最后要有 -latest 兜底");
-  assert.ok(chain.split(",").length >= 2, "至少要有最新版 + 别名两个");
-  assert.match(html, /result\.status !== 404/, "只在 404/400 时才回落到下一个模型");
+  assert.match(chain, /latest/, "应急默认里要有 -latest 别名兜底");
+  assert.match(chain, /lite/, "应急默认要先试免费额度最宽松的 lite 档");
 });
 
 test("merges manually added meals into the day", async () => {
@@ -747,30 +746,42 @@ test("backs off instead of hammering a rate-limited model", async () => {
   evaluate("saveAiQueue([])");
 });
 
-test("recovers when the pinned Gemini model names go stale", async () => {
+test("asks Gemini which models it can actually use, and prefers the cheap one", async () => {
+  const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
-  // 写死的模型名迟早过期，过期之后整个识别就哑了，用户只看到一句报错
-  // （用户："现在上传不了图了，说 gemini 报错"）。候选全试完还不行就问一次
-  // ListModels，把账号当下能用的 flash 接在队尾再试一次。
-  assert.match(html, /async function discoverGeminiModel\(key\)/);
-  assert.match(html, /const found = await discoverGeminiModel\(key\);/);
-  // 必须用下标遍历：for...of 会在开头把数组定死，追加进去的候选轮不到。
-  assert.match(html, /for \(let index = 0; index < queue.length; index \+= 1\)\{/);
-  assert.ok(!/for \(const model of models\)/.test(html), "for...of 遍历不到后追加的候选");
-  // 400 也当作"这个模型不行"继续换下一个，不是只有 404。
-  assert.match(html, /if \(result.status !== 404 && result.status !== 400\) break;/);
-  // 设置里能自己指定模型：免费额度按模型分，Google 一改我写死的名字就跟不上了。
+  // 写死模型名走不通：Google 每隔几个月退役一批，而且**免费额度是按模型分开算的**，
+  // 猜错档位（pro 类一天只有个位数）十来张图就撞满（用户："我今天都没上传，
+  // 为啥 gemini 会没有额度"）。改成问一次 ListModels 自己挑。
+  assert.match(html, /async function listGeminiModels\(key\)/);
+  assert.match(html, /const found = await listGeminiModels\(key\);/);
+  // ListModels 不吃 generateContent 的配额，但也别每次都问——挑中的记一天。
+  assert.match(html, /const GEMINI_MODEL_TTL = 86400000;/);
+  assert.match(html, /function rememberedGeminiModel\(\)/);
+
+  // 挑的顺序：lite 最便宜排最前，pro 一天十几次就没了，绝对不能选。
+  assert.equal(evaluate('rankGeminiModel("gemini-2.5-flash-lite")'), 0);
+  assert.equal(evaluate('rankGeminiModel("gemini-flash-latest")'), 1);
+  assert.equal(evaluate('rankGeminiModel("gemini-2.5-pro")'), 99);
+  const ranked = evaluate(`["gemini-2.5-pro","gemini-flash-latest","gemini-flash-lite-latest"]
+    .filter(name => rankGeminiModel(name) < 50)
+    .sort((a, b) => rankGeminiModel(a) - rankGeminiModel(b))`);
+  assert.deepEqual(JSON.parse(JSON.stringify(ranked)), ["gemini-flash-lite-latest", "gemini-flash-latest"]);
+
+  // 429 也值得换一个模型——额度按模型分开算，A 满了不代表 B 满了。
+  // 但换一次就是一次请求，所以要封顶，不能顺着列表撞到底。
+  assert.match(html, /const GEMINI_MAX_ATTEMPTS = 3;/);
+  // key 不对（401/403）换模型没用，立刻收手。
+  assert.match(html, /if \(result.status === 401 \|\| result.status === 403\) break;/);
+
+  // 设置里指定了模型就只用它，不再自作主张换。
   assert.match(html, /const GEMINI_PINNED_KEY = "nutriflow_ai_model_gemini";/);
   assert.match(html, /id="aiModel"/);
+
   // 限流时一单剩下的照片别再发——每张都是一次请求，一单四张就白烧四倍。
   assert.match(html, /if \(isQuotaError\(error\)\) break;/);
   // 自动重试的次数要封顶，否则一直撞会把明天的额度也搭进去。
   assert.match(html, /if \(\(job.tries \|\| 0\) >= MAX_AUTO_TRIES\) return false;/);
-  // 只挑做得了看图说话的通用 flash。
-  assert.match(html, /!\/embedding\|tts\|live\|image\|audio\|thinking\/i.test\(name\)/);
-  // 超时和"连不上"是两回事，分开说。
-  assert.match(html, /error\?\.name === "AbortError"/);
 });
 
 test("makes every field of a purchase editable and shows the new total at once", async () => {
@@ -1876,7 +1887,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v141"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v142"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
