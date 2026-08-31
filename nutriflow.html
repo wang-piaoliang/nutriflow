@@ -999,6 +999,7 @@ summary.week-block-head::after{
 .pending-tile img{width:100%;height:100%;object-fit:cover;display:block}
 .pending-del{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;padding:0}
 .buy-add-hint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+.buy-add-hint button{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:3px 9px;font-size:12px;cursor:pointer}
 .receipt-del{margin:8px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:13px}
 /* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
 .storage-error{
@@ -1371,7 +1372,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v139</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v140</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1670,11 +1671,48 @@ function markRecognized(photoId){
   ids.push(photoId);
   persist(AI_DONE_KEY, ids.slice(-500));
 }
+// key 按 provider 分开存。原来只有一个 `nutriflow_ai_key`，换 provider 就把另一个
+// 的 key 冲掉了——于是"Gemini 限流了先用通义千问顶一下"这件事，代价是回头还得
+// 重新去翻 Gemini 的 key。分开存之后两个都留着，还能在一个挂了的时候自动顶上。
+function aiKeyOf(provider){
+  const own = (localStorage.getItem(`${AI_KEY_KEY}_${provider}`) || "").trim();
+  if (own) return own;
+  // 迁移：老版本只有一个 key，算作当前 provider 的。
+  const legacy = (localStorage.getItem(AI_KEY_KEY) || "").trim();
+  return provider === (localStorage.getItem(AI_PROVIDER_KEY) || "qwen") ? legacy : "";
+}
+function setAiKey(provider, key){
+  localStorage.setItem(`${AI_KEY_KEY}_${provider}`, String(key || "").trim());
+  localStorage.setItem(AI_KEY_KEY, String(key || "").trim());   // 兼容老逻辑里的读法
+}
 function aiConfig(){
-  return {
-    provider: localStorage.getItem(AI_PROVIDER_KEY) || "qwen",
-    key: (localStorage.getItem(AI_KEY_KEY) || "").trim(),
-  };
+  const provider = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
+  return {provider, key: aiKeyOf(provider)};
+}
+// 主力挂了就用备胎顶上：另一个 provider 有 key 就换它再试一次。
+// 限流（429）和配额是最常见的场景——用户截图里就是 Gemini 429，然后"根本不识别了"。
+async function callModel(prompt, base64, mime){
+  const {provider, key} = aiConfig();
+  if (!key) throw new Error("还没填 API key，去「营养」页最下面的「🔍 照片识别」配置。");
+  const call = (name, token) => name === "gemini"
+    ? callGemini(token, base64, mime, prompt)
+    : callQwen(token, base64, mime, prompt);
+  try{
+    return await call(provider, key);
+  }catch(error){
+    const backup = provider === "gemini" ? "qwen" : "gemini";
+    const backupKey = aiKeyOf(backup);
+    if (!backupKey) throw error;
+    console.warn(`NutriFlow falling back to ${backup}`, error);
+    try{
+      const raw = await call(backup, backupKey);
+      // 顶上了就把它记成当前 provider，别每张照片都先撞一次挂掉的那个。
+      localStorage.setItem(AI_PROVIDER_KEY, backup);
+      return raw;
+    }catch(backupError){
+      throw new Error(`${error.message}（换 ${backup === "gemini" ? "Gemini" : "通义千问"} 也不行：${backupError.message}）`);
+    }
+  }
 }
 // 这段规则是这个项目实际踩出来的，不是通用提示词，改动前先看 NUTRIFLOW_PROJECT_CONTEXT.md。
 const RECOGNIZE_PROMPT = `你在帮一个人记录他今天吃了什么。看这张餐食照片，列出你能认出的每一样食物。
@@ -1757,13 +1795,9 @@ function parseReceipt(text){
   };
 }
 async function recognizeReceipt(blob){
-  const {provider, key} = aiConfig();
-  if (!key) throw new Error("还没填 API key，去「目标」页最下面的「🔍 照片识别」配置。");
   const base64 = await blobToBase64(blob);
   const mime = blob.type || "image/jpeg";
-  const raw = provider === "gemini"
-    ? await callGemini(key, base64, mime, RECEIPT_PROMPT)
-    : await callQwen(key, base64, mime, RECEIPT_PROMPT);
+  const raw = await callModel(RECEIPT_PROMPT, base64, mime);
   const result = parseReceipt(raw);
   if (!result.items.length) throw new Error("没从这张照片里读出商品，可能不是小票或者太糊。");
   return result;
@@ -2079,14 +2113,23 @@ function showQueueHint(){
   const box = document.querySelector(".buy-add-hint");
   if (!box) return;
   const jobs = aiQueue();
-  if (!jobs.length) return;
+  if (!jobs.length){ box.textContent = ""; box.hidden = true; return; }
   const due = jobs.filter(jobIsDue).length;
   const waitMs = Math.min(...jobs.map(jobDueAt).filter(Boolean).concat(Infinity)) - Date.now();
   const wait = due || !Number.isFinite(waitMs) || waitMs <= 0
     ? "马上会再试"
     : `约 ${Math.max(1, Math.round(waitMs / 60000))} 分钟后自动重试`;
-  box.textContent = `还有 ${jobs.length} 项等着识别（${wait}）。照片都存着，不会丢。`;
+  // 附一个"立刻重试"：退避是按分钟算的，人明明知道额度已经回来了，
+  // 却只能干等着——那比等本身更难受。
+  box.innerHTML = `还有 ${jobs.length} 项等着识别（${wait}）。照片都存着，不会丢。 <button type="button" id="retryRecognition">立刻重试</button>`;
   box.hidden = false;
+  box.querySelector("#retryRecognition")?.addEventListener("click", () => {
+    saveAiQueue(aiQueue().map(job => ({...job, tries: 0, nextTryAt: 0})));
+    box.textContent = "正在重试…";
+    void drainRecognitionQueue().then(done => {
+      if (!done) showQueueHint();
+    });
+  });
 }
 let lastRecognizeError = null;
 async function autoRecognize(owner, saved, options){
@@ -2149,13 +2192,9 @@ async function autoRecognize(owner, saved, options){
   return added;
 }
 async function recognizePhoto(blob){
-  const {provider, key} = aiConfig();
-  if (!key) throw new Error("还没填 API key，去首页最下面的「🔍 照片识别」配置。");
   const base64 = await blobToBase64(blob);
   const mime = blob.type || "image/jpeg";
-  const raw = provider === "gemini"
-    ? await callGemini(key, base64, mime, RECOGNIZE_PROMPT)
-    : await callQwen(key, base64, mime, RECOGNIZE_PROMPT);
+  const raw = await callModel(RECOGNIZE_PROMPT, base64, mime);
   const result = parseRecognition(raw);
   if (!result.items.length) throw new Error("模型没认出食物，可能是照片太糊或不是餐食照片。");
   return result;
@@ -5319,14 +5358,23 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     }
   };
   providerInput.value = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
-  keyInput.value = localStorage.getItem(AI_KEY_KEY) || "";
+  keyInput.value = aiKeyOf(providerInput.value);
   label();
   showSaved();
+  // 换 provider 时把那一家已经存过的 key 填回来——两个 key 各存各的，
+  // 换过去不用再翻一遍，换回来也还在。
+  providerInput.addEventListener("change", () => {
+    keyInput.value = aiKeyOf(providerInput.value);
+    label();
+  });
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(AI_PROVIDER_KEY, providerInput.value);
-    localStorage.setItem(AI_KEY_KEY, keyInput.value.trim());
+    setAiKey(providerInput.value, keyInput.value);
     label();
     showSaved();
+    // 之前因为限流退避着的任务，换了 key/provider 就没必要再等了。
+    saveAiQueue(aiQueue().map(job => ({...job, tries: 0, nextTryAt: 0})));
+    void drainRecognitionQueue();
   });
   editBtn?.addEventListener("click", () => {
     if (form) form.hidden = false;
