@@ -629,7 +629,7 @@ test("keeps the recognition prompt's hard-won rules", async () => {
   const chain = html.match(/const GEMINI_MODELS = \[(.*)\]/)[1];
   assert.match(chain, /latest/, "Gemini 模型链最后要有 -latest 兜底");
   assert.ok(chain.split(",").length >= 2, "至少要有最新版 + 别名两个");
-  assert.match(html, /response\.status !== 404/, "只在 404 时才回落到下一个模型");
+  assert.match(html, /result\.status !== 404/, "只在 404/400 时才回落到下一个模型");
 });
 
 test("merges manually added meals into the day", async () => {
@@ -759,7 +759,14 @@ test("recovers when the pinned Gemini model names go stale", async () => {
   assert.match(html, /for \(let index = 0; index < queue.length; index \+= 1\)\{/);
   assert.ok(!/for \(const model of models\)/.test(html), "for...of 遍历不到后追加的候选");
   // 400 也当作"这个模型不行"继续换下一个，不是只有 404。
-  assert.match(html, /if \(response.status !== 404 && response.status !== 400\) break;/);
+  assert.match(html, /if \(result.status !== 404 && result.status !== 400\) break;/);
+  // 设置里能自己指定模型：免费额度按模型分，Google 一改我写死的名字就跟不上了。
+  assert.match(html, /const GEMINI_PINNED_KEY = "nutriflow_ai_model_gemini";/);
+  assert.match(html, /id="aiModel"/);
+  // 限流时一单剩下的照片别再发——每张都是一次请求，一单四张就白烧四倍。
+  assert.match(html, /if \(isQuotaError\(error\)\) break;/);
+  // 自动重试的次数要封顶，否则一直撞会把明天的额度也搭进去。
+  assert.match(html, /if \(\(job.tries \|\| 0\) >= MAX_AUTO_TRIES\) return false;/);
   // 只挑做得了看图说话的通用 flash。
   assert.match(html, /!\/embedding\|tts\|live\|image\|audio\|thinking\/i.test\(name\)/);
   // 超时和"连不上"是两回事，分开说。
@@ -1869,7 +1876,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v140"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v141"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

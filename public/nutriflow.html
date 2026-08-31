@@ -1221,6 +1221,7 @@ summary.week-block-head::after{
             <option value="gemini">Google Gemini · 认得更全，但要挂梯子</option>
           </select>
           <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="text" id="aiModel" placeholder="模型名（留空＝自动挑）" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" id="aiSave">保存</button>
         </div>
       </article>
@@ -1372,7 +1373,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v140</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v141</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1829,6 +1830,9 @@ async function recognizeReceipts(blobs, onProgress){
       });
     }catch(error){
       failures.push(error);
+      // 限流或者 key 不对的话，这一单剩下的几张再发也是一样的下场，而**每张都是一次
+      // 请求**——一单四张就白烧四次配额。这类错误直接中断整单，留给退避去重试。
+      if (isQuotaError(error)) break;
     }
     if (typeof onProgress === "function") onProgress(index + 1);
   }
@@ -1908,7 +1912,47 @@ async function callQwen(key, base64, mime, prompt){
 // 注意 ListModels 会把已经退役的模型也列出来，不能拿它判断可用性——只能真发一次请求。
 const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
 const GEMINI_MODEL_KEY = "nutriflow_ai_gemini_model";
+const GEMINI_PINNED_KEY = "nutriflow_ai_model_gemini";
+// 发一次请求，只管一个模型。返回 {text} 或 {status, error}，让上层决定要不要换下一个。
+async function callGeminiModel(key, base64, mime, prompt, model){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+  let response;
+  try{
+    response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        contents: [{parts: [
+          {inline_data: {mime_type: mime, data: base64}},
+          {text: prompt},
+        ]}],
+        generationConfig: {responseMimeType: "application/json"},
+      }),
+    });
+  }catch(error){
+    // fetch 直接抛＝根本没连上。Gemini 的域名在国内直连不通（实测 20s 超时），
+    // 手机不挂梯子就是这个下场，说清楚比报一句 Failed to fetch 有用。
+    // 超时（AbortError）单独说：那是请求发出去了但一直没回来，和"连不上"不是一回事。
+    throw new Error(error?.name === "AbortError"
+      ? "Gemini 90 秒没回应，已经放弃这次。照片和任务都留着，回到前台会自动重试；老这样就在设置里换成通义千问。"
+      : "连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
+  }
+  if (response.ok){
+    localStorage.setItem(GEMINI_MODEL_KEY, model);
+    const data = await response.json();
+    return {text: (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("")};
+  }
+  return {status: response.status, error: await describeApiError(response, "Gemini")};
+}
 async function callGemini(key, base64, mime, prompt){
+  // 自己在设置里指定的模型优先。免费额度是按模型分的，Google 一改配额我这边写死的
+  // 名字就跟不上了——留个口子，用户自己能立刻换到还有额度的那个，不用等我发版。
+  const pinned = (localStorage.getItem(GEMINI_PINNED_KEY) || "").trim();
+  if (pinned){
+    const result = await callGeminiModel(key, base64, mime, prompt, pinned);
+    if (result.text !== undefined) return result.text;
+    throw new Error(result.error);
+  }
   // 上次成功用的那个排前面，省得每次都先撞一遍 404。
   const remembered = localStorage.getItem(GEMINI_MODEL_KEY);
   const models = remembered
@@ -1922,37 +1966,12 @@ async function callGemini(key, base64, mime, prompt){
   const queue = models.slice();
   let discovered = false;
   for (let index = 0; index < queue.length; index += 1){
-    const model = queue[index];
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-    let response;
-    try{
-      response = await fetchWithTimeout(url, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          contents: [{parts: [
-            {inline_data: {mime_type: mime, data: base64}},
-            {text: prompt},
-          ]}],
-          generationConfig: {responseMimeType: "application/json"},
-        }),
-      });
-    }catch(error){
-      // fetch 直接抛＝根本没连上。Gemini 的域名在国内直连不通（实测 20s 超时），
-      // 手机不挂梯子就是这个下场，说清楚比报一句 Failed to fetch 有用。
-      // 超时（AbortError）单独说：那是请求发出去了但一直没回来，和"连不上"不是一回事。
-      throw new Error(error?.name === "AbortError"
-        ? "Gemini 90 秒没回应，已经放弃这次。照片和任务都留着，回到前台会自动重试；老这样就在设置里换成通义千问。"
-        : "连不上 Gemini。它的服务器在国内直连不通，手机得挂着梯子才能用；或者在设置里换成通义千问。");
-    }
-    if (response.ok){
-      localStorage.setItem(GEMINI_MODEL_KEY, model);
-      const data = await response.json();
-      return (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("");
-    }
-    lastError = await describeApiError(response, "Gemini");
-    // 只有「这个模型没了」才值得换下一个，401/429 换了也一样。
-    if (response.status !== 404 && response.status !== 400) break;
+    const result = await callGeminiModel(key, base64, mime, prompt, queue[index]);
+    if (result.text !== undefined) return result.text;
+    lastError = result.error;
+    // 只有「这个模型没了」才值得换下一个。429/401 换个模型也一样，而且**每换一次
+    // 就是一次请求**——限流的时候乱换只会烧得更快。
+    if (result.status !== 404 && result.status !== 400) break;
     // 写死的候选都试完还不行，问一次账号里现在有什么，接在队尾再试。只问一次。
     if (index === queue.length - 1 && !discovered){
       discovered = true;
@@ -1962,6 +1981,7 @@ async function callGemini(key, base64, mime, prompt){
   }
   throw new Error(lastError || "Gemini 调用失败");
 }
+
 // 问 Gemini 这个 key 现在能用哪些模型，挑一个 flash。挑不出来就返回空串，
 // 调用方照旧报原来的错。
 async function discoverGeminiModel(key){
@@ -2049,8 +2069,19 @@ function dequeueReceiptJob(receiptId){
 // 失败了就往后推一段再试。**429 尤其不能马上重试**——它的意思就是"额度用完了或者
 // 太频繁"，30 秒后再撞一次只是白烧配额，还可能把限流窗口一直续上
 // （用户截图：HTTP 429，免费额度可能用完）。
+// 429（限流/额度用完）和 401/403（key 不对）都属于"再发一次也是一样"的错。
+function isQuotaError(error){
+  return /429|401|403|限流|额度|quota|rate/i.test(String((error && error.message) || error || ""));
+}
+// 自动重试的次数封顶。免费额度是按天算的，一直自动撞只会把明天的额度也搭进去；
+// 到了上限就停下来等人点「立刻重试」。
+const MAX_AUTO_TRIES = 5;
 function jobDueAt(job){ return job && job.nextTryAt ? job.nextTryAt : 0; }
-function jobIsDue(job){ return Date.now() >= jobDueAt(job); }
+function jobIsDue(job){
+  if (!job) return false;
+  if ((job.tries || 0) >= MAX_AUTO_TRIES) return false;   // 撞够了就停，等人手动催
+  return Date.now() >= jobDueAt(job);
+}
 function delayJob(match, error){
   const message = String((error && error.message) || error || "");
   const rateLimited = /429|限流|额度/.test(message);
@@ -5357,19 +5388,35 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       editBtn.textContent = `已保存 ${key.slice(0, 6)}…${key.slice(-4)}，点这里换一个`;
     }
   };
+  const modelInput = document.getElementById("aiModel");
+  const syncModelField = () => {
+    if (!modelInput) return;
+    // 只有 Gemini 需要指定模型：通义千问那边就一个 qwen3-vl-plus，没得挑。
+    modelInput.hidden = providerInput.value !== "gemini";
+    modelInput.value = localStorage.getItem(GEMINI_PINNED_KEY) || "";
+    modelInput.placeholder = `模型名（留空＝自动挑，如 ${GEMINI_MODELS[GEMINI_MODELS.length - 1]}）`;
+  };
   providerInput.value = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
   keyInput.value = aiKeyOf(providerInput.value);
+  syncModelField();
   label();
   showSaved();
   // 换 provider 时把那一家已经存过的 key 填回来——两个 key 各存各的，
   // 换过去不用再翻一遍，换回来也还在。
   providerInput.addEventListener("change", () => {
     keyInput.value = aiKeyOf(providerInput.value);
+    syncModelField();
     label();
   });
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(AI_PROVIDER_KEY, providerInput.value);
     setAiKey(providerInput.value, keyInput.value);
+    if (modelInput){
+      const pinned = modelInput.value.trim();
+      localStorage.setItem(GEMINI_PINNED_KEY, pinned);
+      // 换了指定模型就把"上次成功用的那个"忘掉，否则自动模式还会先撞旧的。
+      if (!pinned) localStorage.removeItem(GEMINI_MODEL_KEY);
+    }
     label();
     showSaved();
     // 之前因为限流退避着的任务，换了 key/provider 就没必要再等了。

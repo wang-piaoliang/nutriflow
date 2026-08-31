@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v140`
+- 当前离线缓存：`nutriflow-pwa-v141`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,13 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**把额度烧光的其实是我自己写的重试循环**（用户："我今天都没上传，为啥 gemini 会没有额度"）。算一遍就清楚了：v136 加的 30 秒兜底心跳 × 一单四张照片（`recognizeReceipts` 是**一张一次请求**）× `callGemini` 失败时还会换模型再试 ≈ **每 30 秒 8 次请求，一小时近千次**。只要队列里卡着一单，页面开着就一直在烧，用户什么都没传也能把当天配额撞光。v139 的退避止住了血，这一版把剩下的浪费也堵上：
+  - **限流时中断整单**：`recognizeReceipts` 里一张照片撞上 429/401 就 `break`，剩下几张不再发——新增 `isQuotaError()` 判定。实测 4 张照片从 4 次请求降到 **1 次**。
+  - **自动重试封顶 5 次**（`MAX_AUTO_TRIES`）：免费额度按天算，一直自动撞只会把明天的也搭进去。撞够了 `jobIsDue` 返回 false，停下来等人点「立刻重试」。实测退避序列 5→10→20→30→30 分钟后转入停等。
+  - **限流时不再换模型**：换一次就是一次请求，429 的时候乱换只会烧得更快（只有 404/400 才值得换）。
+  - **设置里可以自己指定 Gemini 模型**（`nutriflow_ai_model_gemini`，留空＝自动挑）。免费额度是按模型分的，Google 一改配额，代码里写死的名字就跟不上——留个口子让用户立刻换到还有额度的那个，不用等发版。顺手把「发一次请求」抽成 `callGeminiModel()`，返回 `{text}` 或 `{status, error}`，由上层决定要不要换下一个。
+  离线缓存与版本号升至 v141。
 
 - 2026-08-17：**两个 provider 各存各的 key，一个挂了自动顶上**（用户："现在都根本不识别了，很糟糕"）。先确认过不是代码回归：CDP 里把底层模型调用打成桩，采购小票和餐食照片两条链路都正常记录、队列清空、无异常。真正的原因就是截图里那个 **Gemini 429（免费额度用完）**，而当时的设计下用户是没有退路的——`nutriflow_ai_key` 只有一个格子，**换 provider 就把另一家的 key 冲掉**，所以"先用通义千问顶一下"的代价是回头还得重新去翻 Gemini 的 key。
   - key 改成按 provider 分开存（`nutriflow_ai_key_<provider>`，老的单 key 自动迁移成当前 provider 的）。设置里换 provider 会把那一家存过的 key 填回来。
