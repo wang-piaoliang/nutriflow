@@ -759,6 +759,9 @@ test("asks Gemini which models it can actually use, and prefers the cheap one", 
   assert.match(html, /const GEMINI_MODEL_TTL = 86400000;/);
   assert.match(html, /function rememberedGeminiModel\(\)/);
 
+  // 名字里带 flash/pro 但根本不是拿来看图的也要挡掉——用真 key 拉过这个账号的
+  // 53 个模型来对，漏网的有 nano-banana-pro、lyria（音乐）、deep-research、robotics。
+  assert.match(html, /omni\|vision-preview\|transcribe\|robotics\|computer-use\|deep-research\|lyria\|banana/);
   // 挑的顺序：lite 最便宜排最前，pro 一天十几次就没了，绝对不能选。
   assert.equal(evaluate('rankGeminiModel("gemini-2.5-flash-lite")'), 0);
   assert.equal(evaluate('rankGeminiModel("gemini-flash-latest")'), 1);
@@ -1892,7 +1895,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v143"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v144"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

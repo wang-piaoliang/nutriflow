@@ -1373,7 +1373,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v143</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v144</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1940,7 +1940,10 @@ async function listGeminiModels(key){
       .filter(model => (model.supportedGenerationMethods || []).includes("generateContent"))
       .map(model => String(model.name || "").replace(/^models\//, ""))
       // 只要做得了看图说话的通用款：embedding/tts/live/image/audio 这些不行。
-      .filter(name => /flash|pro/i.test(name) && !/embedding|tts|live|image|audio|thinking|vision-preview/i.test(name))
+      // 用真 key 拉过一次这个账号的列表（53 个模型）来对：要挡掉的不只是 embedding/tts，
+      // 还有 nano-banana-pro、lyria（音乐）、deep-research、robotics 这些名字里带 pro/flash
+      // 却根本不是拿来看图的。omni 是实时音视频那条线，认图片会绕远路，也排除。
+      .filter(name => /flash|pro/i.test(name) && !/embedding|tts|live|image|audio|thinking|omni|vision-preview|transcribe|robotics|computer-use|deep-research|lyria|banana/i.test(name))
       .filter(name => rankGeminiModel(name) < 50)
       .sort((a, b) => rankGeminiModel(a) - rankGeminiModel(b) || b.localeCompare(a, "en", {numeric: true}));
   }catch(error){

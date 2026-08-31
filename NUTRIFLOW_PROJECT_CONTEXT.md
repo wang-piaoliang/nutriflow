@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v143`
+- 当前离线缓存：`nutriflow-pwa-v144`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,10 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**拿真 key 实调了一次，挑模型的过滤条件按真实返回收紧**。此前所有"实测"都是打桩的逻辑分支（key 只在用户设备上，仓库和 agent 都没有）；用户临时提供 key 后做了三件桩测做不到的验证：① `ListModels` 真实返回 **53 个模型、39 个支持 generateContent**，字段结构和假设一致；② `callGemini` 走完整挑选逻辑真实调用成功，挑中 `gemini-flash-lite-latest`（实际解析到 `gemini-3.5-flash-lite`），返回合法 JSON，第二次调用直接复用记住的那个、不再问 ListModels；③ 顺带确认**当时配额已经重置**（HTTP 200 而非 429），一张图约 1100 token。
+  - 真实列表暴露了过滤规则的漏网之鱼：`nano-banana-pro-preview`、`lyria-3-pro-preview`（音乐）、`deep-research-pro-preview`、`gemini-robotics-*`、`gemini-2.5-computer-use-*`、`gemini-3.5-transcribe`、`gemini-omni-*` 这些名字里带 `flash`/`pro` 却根本不是拿来看图的。`rank>=50` 挡住了带 `pro` 的那几个，但 omni/transcribe 会漏进 rank 1 当备选、白烧请求。排除词补全后候选从 13 个收到 **11 个**，前五名全是 flash-lite。
+  - key 用完即弃：测试脚本和拉回来的模型清单都已删除，**key 不写进任何文件、不入库、不发布**，已提醒用户去 AI Studio 轮换。离线缓存与版本号升至 v144。
 
 - 2026-08-17：**把「实际用的是哪个模型」显示出来**（用户："你调了么"——问的是我有没有真调过 API。没有：key 只在用户设备的 localStorage 里，仓库和我这边都没有，所有"实测"都是打桩测的逻辑分支）。模型现在是 app 自己问 `ListModels` 挑的，不显示的话用户没有任何办法知道挑中了哪个、对不对，只能听我说，而我手上没 key、没法替他验证。设置里那行状态改成「已配置 · Gemini · gemini-flash-lite-latest」，手动指定的会标注「（手动指定）」，还没挑过的写「首次识别时自动挑」。`callGeminiModel` 成功时派发 `nutriflow:model-picked` 事件，设置里那行字当场刷新——不然要退出去再进来才看得到。离线缓存与版本号升至 v143。
 
