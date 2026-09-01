@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v144`
+- 当前离线缓存：`nutriflow-pwa-v145`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**小票识别可以交给用户自己的 Worker（可选，默认关）**。起因是用户问"能不能不上架 App Store 自己用 iOS 应用"——他想解决的其实是「切走就不识别」，而那件事不必靠原生：**问题在于活儿在手机上干**。iOS 一挂后台就掐断请求，认一张小票要十几秒，必然失败；挪到 Cloudflare Worker 上，手机只负责把照片发过去（几百 KB、一两秒），剩下十几秒由 `ctx.waitUntil()` 接着干完，**手机马上锁屏也不影响**。
+  - Worker 端（`api/worker.js`）新增 `POST /recognize`：先把 `{status:"pending"}` 写进 documents，再把模型调用挂到 `ctx.waitUntil` 上，结果写回 `job_<id>`；手机还连着就顺便把结果直接返回，省一次轮询。**照片不落库**，只在那一次请求的内存里过一道。没设 `GEMINI_KEY` 时返回 501，健康检查里也报 `recognize:false`。
+  - 网页端默认**关闭**（`nutriflow_cloud_recognize`）：照片会离开设备，和「照片只存本机」的既定规矩冲突，必须本人在设置里勾。**只对小票生效，餐食照片始终在本机认**。
+  - 两个容易搞反的判断，都单独处理了：① **连接断了 ≠ Worker 没收到**——那正是这功能要对付的场景，所以 transport 失败一律按 `PENDING` 处理，保留 `serverJobId` 回头去 `/doc` 取结果，**不把照片再传一遍**；只有 Worker 明确回了错（501/4xx）才退回手机识别并摘掉 `serverJobId`，否则补跑会永远等一个根本没人跑的任务。② 但也不能无限等：问满 `CLOUD_MAX_POLLS = 6` 次还是空，就认定这单压根没送到，同样退回手机识别。
+  - 用假 D1 + 假 Gemini 跑真 `worker.js` 验过关键场景：模型还在跑时库里已有 `pending`；**手机断开连接后 `waitUntil` 仍把活儿干完、落库 done**；手机回来用现成的 `GET /doc/job_<id>` 取到结果。浏览器端也验了整条链路：`/recognize` 被掐断 → 占位单和带 `serverJobId` 的任务都在 → 回来只发一个 `/doc/job_<id>`（照片没有重传）→ 占位单原地变成真实商品、队列清空。离线缓存与版本号升至 v145。
 
 - 2026-08-17：**拿真 key 实调了一次，挑模型的过滤条件按真实返回收紧**。此前所有"实测"都是打桩的逻辑分支（key 只在用户设备上，仓库和 agent 都没有）；用户临时提供 key 后做了三件桩测做不到的验证：① `ListModels` 真实返回 **53 个模型、39 个支持 generateContent**，字段结构和假设一致；② `callGemini` 走完整挑选逻辑真实调用成功，挑中 `gemini-flash-lite-latest`（实际解析到 `gemini-3.5-flash-lite`），返回合法 JSON，第二次调用直接复用记住的那个、不再问 ListModels；③ 顺带确认**当时配额已经重置**（HTTP 200 而非 429），一张图约 1100 token。
   - 真实列表暴露了过滤规则的漏网之鱼：`nano-banana-pro-preview`、`lyria-3-pro-preview`（音乐）、`deep-research-pro-preview`、`gemini-robotics-*`、`gemini-2.5-computer-use-*`、`gemini-3.5-transcribe`、`gemini-omni-*` 这些名字里带 `flash`/`pro` 却根本不是拿来看图的。`rank>=50` 挡住了带 `pro` 的那几个，但 omni/transcribe 会漏进 rank 1 当备选、白烧请求。排除词补全后候选从 13 个收到 **11 个**，前五名全是 flash-lite。

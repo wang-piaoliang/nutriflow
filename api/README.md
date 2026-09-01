@@ -36,6 +36,27 @@ npx wrangler deploy
 #    https://nutriflow-sync.<你的子域>.workers.dev
 ```
 
+### 可选：让 Worker 代替手机去认小票
+
+iOS 一把网页挂到后台就掐断正在跑的请求，而认一张小票要十几秒——「拍完就切走」几乎
+必然失败。网页那边已经做了落盘 + 队列 + 回到前台自动补跑，但那治标：**活儿在手机上干**
+这件事本身才是问题。
+
+多设一个密钥就能把这十几秒挪到云上：
+
+```bash
+npx wrangler secret put GEMINI_KEY     # 粘贴你的 Google AI Studio key
+npx wrangler deploy
+```
+
+之后在网页「营养」页最下面勾上「小票交给我的 Worker 认」。手机只负责把照片发过来
+（几百 KB、一两秒），剩下的由 `ctx.waitUntil()` 接着干完，**手机马上锁屏也不影响**；
+结果写进 `documents` 表的 `job_<id>`，手机下次打开用现成的 `GET /doc/job_<id>` 取回来。
+
+- 照片**不落库**，只在那一次请求的内存里过一道。
+- 不设 `GEMINI_KEY` 的话这个端点返回 501，网页会自动退回「在手机上识别」，不影响同步。
+- 只对**小票**生效。餐食照片始终在本机识别，不会离开设备。
+
 > 建表不用手动做——Worker 第一次收到请求会自动 `CREATE TABLE IF NOT EXISTS`。
 > 如果想手动初始化：`npx wrangler d1 execute nutriflow --remote --file=schema.sql`
 

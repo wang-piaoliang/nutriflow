@@ -11,12 +11,26 @@
 //   GET  /            健康检查
 //   GET  /doc/:key    读一段文档  -> {value, updatedAt} 或 {value:null}
 //   PUT  /doc/:key    写一段文档，body {value}  -> {ok:true, updatedAt}
+//   POST /recognize   代替手机去调模型认小票（可选，见下）
 //
 // 表在第一次请求时惰性建好（CREATE TABLE IF NOT EXISTS），不用单独跑迁移。
+//
+// ---- 为什么要有 /recognize ----
+// iOS 一旦把网页挂到后台就会掐断正在跑的请求，而识别一张小票要十几秒。用户经常是
+// 「拍完照片就切走」，回来发现什么都没记上。网页这边已经做了落盘 + 队列 + 回到前台
+// 自动补跑，但那治标——真正的问题是**活儿在手机上干**。
+//
+// 挪到这里就没这个问题了：手机只负责把照片发过来（几百 KB，一两秒），剩下的十几秒
+// 由 Worker 用 ctx.waitUntil() 接着干完，**手机就算马上锁屏也不影响**。结果写进
+// documents 表，key 是 job_<id>，手机下次打开用现成的 GET /doc/job_<id> 取回来。
+//
+// 照片本身不落库，只在这一次请求的内存里过一道。要用这个功能得另外设一个密钥：
+//   npx wrangler secret put GEMINI_KEY
+// 不设的话这个端点直接返回 501，网页会自己退回「在手机上识别」的老路。
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -46,14 +60,87 @@ function cleanKey(key) {
   return /^[A-Za-z0-9_]{1,64}$/.test(key) ? key : null;
 }
 
+// 挑模型的规矩和网页那边一样：免费额度按模型分开算，lite 档最宽松，pro 一天只有
+// 个位数、绝不能选。这里不再问 ListModels——Worker 是长期跑的，写死一个浮动别名
+// 更省事，真过期了改这一行重新 deploy 即可。
+const GEMINI_MODEL = "gemini-flash-lite-latest";
+
+async function callGemini(key, photos, prompt) {
+  // 一单可能是好几张截图，逐张认、把商品并起来——和网页里 recognizeReceipts 一个思路。
+  const texts = [];
+  for (const photo of photos) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ inline_data: { mime_type: photo.mime || "image/jpeg", data: photo.data } }, { text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      }
+    );
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Gemini HTTP ${response.status}: ${detail.slice(0, 200)}`);
+    }
+    const data = await response.json();
+    texts.push((data?.candidates?.[0]?.content?.parts || []).map((part) => part.text || "").join(""));
+  }
+  return texts;
+}
+
+async function writeDoc(env, key, value) {
+  await ensureTable(env);
+  await env.DB.prepare(
+    "INSERT INTO documents (key, value, updated_at) VALUES (?, ?, ?) " +
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  )
+    .bind(key, JSON.stringify(value), new Date().toISOString())
+    .run();
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     if (url.pathname === "/" || url.pathname === "") {
-      return json({ ok: true, service: "nutriflow-sync" });
+      // 网页靠 recognize 这个字段判断要不要走云端识别，所以健康检查要报出来。
+      return json({ ok: true, service: "nutriflow-sync", recognize: Boolean(env.GEMINI_KEY) });
+    }
+
+    if (url.pathname === "/recognize") {
+      if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+      if (!authorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!env.GEMINI_KEY) return json({ error: "GEMINI_KEY not configured" }, 501);
+      const body = await request.json().catch(() => null);
+      const photos = Array.isArray(body?.photos) ? body.photos.filter((p) => p && p.data) : [];
+      const jobId = cleanKey(String(body?.jobId || ""));
+      if (!jobId || !photos.length) return json({ error: "need jobId and photos" }, 400);
+      if (typeof body?.prompt !== "string" || !body.prompt) return json({ error: "need prompt" }, 400);
+
+      // 先写一条 pending，这样手机哪怕立刻断了，回来也能查到"这单在跑"。
+      await writeDoc(env, `job_${jobId}`, { status: "pending", at: new Date().toISOString() });
+
+      // 关键在这里：把模型调用挂到 waitUntil 上。**手机断开连接也会跑完**，
+      // 这正是把活儿从手机挪到这儿的全部意义。
+      const work = callGemini(env.GEMINI_KEY, photos, body.prompt)
+        .then((texts) => writeDoc(env, `job_${jobId}`, { status: "done", texts, at: new Date().toISOString() }))
+        .catch((error) =>
+          writeDoc(env, `job_${jobId}`, { status: "error", error: String(error && error.message), at: new Date().toISOString() })
+        );
+      ctx.waitUntil(work);
+
+      // 手机还连着就顺便把结果直接给它，省一次轮询；断了也没关系，上面那份已经落库。
+      try {
+        await work;
+        const row = await env.DB.prepare("SELECT value FROM documents WHERE key = ?").bind(`job_${jobId}`).first();
+        return json(row ? JSON.parse(row.value) : { status: "pending" });
+      } catch {
+        return json({ status: "pending" });
+      }
     }
 
     const match = url.pathname.match(/^\/doc\/([^/]+)$/);

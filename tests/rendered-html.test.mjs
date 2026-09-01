@@ -680,6 +680,44 @@ test("marks manual foods inline and hides their delete control until editing", a
   );
 });
 
+test("can hand receipt recognition to the user's own Worker", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../api/worker.js", import.meta.url), "utf8");
+
+  // iOS 挂后台就掐请求，而认一张小票要十几秒——真正的问题是"活儿在手机上干"。
+  // 挪到用户自己的 Worker 上，手机只管把照片发过去，剩下的 ctx.waitUntil 接着干完。
+  assert.match(worker, /ctx.waitUntil\(work\);/);
+  // 先写 pending 再跑，手机立刻断了回来也查得到"这单在跑"。
+  assert.ok(worker.indexOf('status: "pending"') < worker.indexOf("ctx.waitUntil(work)"));
+  // 没配 GEMINI_KEY 就报 501，网页据此退回本机识别，不影响同步本身。
+  assert.match(worker, /GEMINI_KEY not configured/);
+  assert.match(worker, /recognize: Boolean\(env.GEMINI_KEY\)/);
+  // 照片不落库，只在这一次请求里过一道。
+  assert.ok(!/photos/.test(worker.slice(worker.indexOf("async function writeDoc"), worker.indexOf("export default"))));
+
+  // 默认关闭：照片会离开设备，跟「照片只存本机」的规矩冲突，必须本人点头。
+  assert.equal(evaluate("cloudRecognizeOn()"), false);
+  assert.match(html, /localStorage.getItem\(CLOUD_RECOGNIZE_KEY\) === "1" && Boolean\(syncConfig\(\)\)/);
+  assert.match(html, /id="cloudRecognize"/);
+  // 只对小票生效，餐食照片始终在本机认。
+  assert.match(html, /prompt: RECEIPT_PROMPT/);
+  assert.ok(!/RECOGNIZE_PROMPT.*recognizeReceiptsOnServer|recognizeReceiptsOnServer.*RECOGNIZE_PROMPT/.test(html));
+
+  // 断线之后回来只取结果，**照片不再传一遍**。
+  assert.match(html, /const done = await fetchServerJob\(job.serverJobId\);/);
+  // 连接断了 ≠ Worker 没收到——那正是这个功能要对付的场景，按"还在跑"处理，
+  // 保留 serverJobId 回头去 /doc 取，别把照片再传一遍。
+  assert.match(html, /throw new Error\("PENDING"\);/);
+  // 但也不能永远等：问几次还是空就放弃云端，退回手机识别。
+  assert.match(html, /const CLOUD_MAX_POLLS = 6;/);
+  assert.match(html, /polls > CLOUD_MAX_POLLS \? \{serverJobId: ""\} : \{\}/);
+  // Worker 用不了（501/连不上）就地退回手机识别，并把 serverJobId 摘掉——
+  // 否则补跑会一直去 /doc 等一个根本没人跑的任务。
+  assert.match(html, /if \(error.message === "PENDING"\) throw error;/);
+  assert.match(html, /\{...job, serverJobId: ""\}/);
+});
+
 test("keeps a key per provider and falls back when one is rate-limited", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -966,7 +1004,7 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
   const startRecognize = html.slice(html.indexOf("async function startRecognize()"));
   assert.ok(startRecognize.indexOf('store: "识别中",') < startRecognize.indexOf("await recognizeReceipts(files)"),
     "占位的一单必须建在发请求之前");
-  assert.match(html, /enqueueReceiptJob\(receiptId\);/);
+  assert.match(html, /enqueueReceiptJob\(receiptId, cloudRecognizeOn\(\) \? /);
   assert.match(html, /已记下 \$\{count\} 件/);
   assert.match(html, /function replacePurchaseReceipt\(receiptId, \{date, store, items\}\)/);
 
@@ -1895,7 +1933,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v144"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v145"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
