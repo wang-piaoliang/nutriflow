@@ -1000,6 +1000,8 @@ summary.week-block-head::after{
 .pending-del{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;padding:0}
 .buy-add-hint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .buy-add-hint button{border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);padding:3px 9px;font-size:12px;cursor:pointer}
+.cloud-toggle{display:flex;align-items:flex-start;gap:8px;color:var(--muted);font-size:12px;line-height:1.45}
+.cloud-toggle input{flex:0 0 auto;margin-top:2px}
 .receipt-del{margin:8px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:13px}
 /* 存储写失败的警告。以前这种失败完全静默，条目看着加上了、一刷新就没。 */
 .storage-error{
@@ -1222,6 +1224,9 @@ summary.week-block-head::after{
           </select>
           <input type="password" id="aiKey" placeholder="API key" autocomplete="off" autocapitalize="off" spellcheck="false">
           <input type="text" id="aiModel" placeholder="模型名（留空＝自动挑）" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <!-- 默认关：打开就意味着小票照片会离开这台设备（发到用户自己的 Worker），
+               和「照片只存本机」的既定规矩冲突，必须本人点头。餐食照片不受影响。 -->
+          <label class="cloud-toggle"><input type="checkbox" id="cloudRecognize"> 小票交给我的 Worker 认（切走也不断，照片会传到你自己的 Worker）</label>
           <button type="button" id="aiSave">保存</button>
         </div>
       </article>
@@ -1373,7 +1378,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v144</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v145</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1809,6 +1814,76 @@ async function recognizeReceipt(blob){
 //  - 门店和日期取第一张读到的，后面的不覆盖（第一张通常是抬头那段）；
 //  - 相邻两张常有重叠行，按「商品名 + 规格」去重，只留先出现的那条；
 //  - 某一张识别失败不至于让整单白费，跳过它继续拼，最后至少有东西可核对。
+// ---- 云端识别（可选）----
+// iOS 挂后台就掐请求，而认一张小票要十几秒——真正的问题是"活儿在手机上干"。
+// 打开这个开关之后，手机只负责把照片发给**你自己的** Worker（几百 KB，一两秒），
+// 剩下的十几秒由 Worker 接着干完，手机马上锁屏也不影响。结果落在 job_<id> 里，
+// 下次打开取回来即可。默认**关闭**：照片会离开这台设备，这跟"照片只存本机"的
+// 既定规矩冲突，必须由用户自己点头。只对小票生效，餐食照片始终在本机认。
+const CLOUD_RECOGNIZE_KEY = "nutriflow_cloud_recognize";
+// 去 Worker 那儿问几次结果还是空，就认定这单没送到，退回手机识别。
+const CLOUD_MAX_POLLS = 6;
+function cloudRecognizeOn(){ return localStorage.getItem(CLOUD_RECOGNIZE_KEY) === "1" && Boolean(syncConfig()); }
+async function blobToPart(blob){
+  return {mime: blob.type || "image/jpeg", data: await blobToBase64(blob)};
+}
+// 让 Worker 去认这一单。成功返回模型的原始文本数组，失败抛错（调用方退回本机识别）。
+async function recognizeReceiptsOnServer(blobs, jobId){
+  const cfg = syncConfig();
+  if (!cfg) throw new Error("没配同步，用不了云端识别。");
+  const photos = await Promise.all(Array.from(blobs).map(blobToPart));
+  let response;
+  try{
+    response = await fetchWithTimeout(`${cfg.url}/recognize`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Authorization": `Bearer ${cfg.token}`},
+      body: JSON.stringify({jobId, photos, prompt: RECEIPT_PROMPT}),
+    }, 120000);
+  }catch(error){
+    // 连接断了 ≠ Worker 没收到。**这正是这个功能要对付的场景**（手机切走、锁屏），
+    // 十有八九 Worker 已经收下并在 waitUntil 里跑着了。所以按"还在跑"处理：
+    // 保留 serverJobId，回头去 /doc 取结果，别把照片再传一遍、更别退回手机识别。
+    throw new Error("PENDING");
+  }
+  // Worker 明确回了个错，才说明这条路走不通——那才退回手机识别。
+  if (response.status === 501) throw new Error("Worker 还没配 GEMINI_KEY，云端识别没开。");
+  if (!response.ok) throw new Error(`云端识别失败（HTTP ${response.status}）`);
+  const data = await response.json();
+  if (data.status === "done") return data.texts || [];
+  if (data.status === "error") throw new Error(data.error || "云端识别出错");
+  throw new Error("PENDING");   // 还在跑，调用方去轮询
+}
+// 手机断开之后回来取结果。没跑完返回 null。
+async function fetchServerJob(jobId){
+  const cfg = syncConfig();
+  if (!cfg) return null;
+  const response = await fetchWithTimeout(`${cfg.url}/doc/job_${jobId}`, {
+    headers: {"Authorization": `Bearer ${cfg.token}`},
+  }, 20000);
+  if (!response.ok) return null;
+  const data = await response.json();
+  const value = data && data.value;
+  if (!value || value.status === "pending") return null;
+  return value;
+}
+// 把模型返回的若干段文本合成一单，和本机那条路共用同一套合并/去重规则。
+function mergeReceiptTexts(texts){
+  const merged = {store: "", date: "", time: "", items: []};
+  const seen = new Set();
+  texts.forEach(text => {
+    let part;
+    try{ part = parseReceipt(text); }catch{ return; }
+    if (!merged.store && part.store) merged.store = part.store;
+    if (!merged.date && part.date){ merged.date = part.date; merged.time = part.time; }
+    part.items.forEach(item => {
+      const key = `${normalizeItemName(item.name)}|${parseAmount(item.amount)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.items.push(item);
+    });
+  });
+  return merged;
+}
 async function recognizeReceipts(blobs, onProgress){
   const list = Array.from(blobs || []).filter(Boolean);
   if (!list.length) throw new Error("没有可识别的照片。");
@@ -2089,10 +2164,10 @@ function dequeueRecognition(photoId){
   saveAiQueue(aiQueue().filter(job => job.photoId !== photoId));
 }
 // 小票走的是另一套识别（要把一单的几张图一起看），所以单独一种任务：一单一条。
-function enqueueReceiptJob(receiptId){
+function enqueueReceiptJob(receiptId, serverJobId){
   const list = aiQueue();
   if (list.some(job => job.kind === "receipt" && job.receiptId === receiptId)) return;
-  list.push({kind: "receipt", receiptId});
+  list.push({kind: "receipt", receiptId, ...(serverJobId ? {serverJobId} : {})});
   saveAiQueue(list);
 }
 function dequeueReceiptJob(receiptId){
@@ -2817,6 +2892,30 @@ async function resumeReceiptJob(job, photos){
   if (!files.length || !manualPurchases.some(row => row.receiptId === job.receiptId)){
     dequeueReceiptJob(job.receiptId);
     return false;
+  }
+  // 交给过 Worker 的，先去看看它跑完没有——**照片不用再传一遍**，那十几秒早在云上跑完了。
+  if (job.serverJobId){   // 空串＝云端那条路已经放弃了，走下面的本机识别
+    try{
+      const done = await fetchServerJob(job.serverJobId);
+      if (done && done.status === "done"){
+        await applyReceiptResult(job.receiptId, mergeReceiptTexts(done.texts || []));
+        dequeueReceiptJob(job.receiptId);
+        await renderShopping();
+        renderFoods();
+        return true;
+      }
+      if (!done){
+        // 还没跑完。多问几次还是空，那多半是请求压根没到 Worker（断网时发的），
+        // 再等下去就是永远等——放弃云端这条路，摘掉 serverJobId 退回手机识别。
+        const polls = (job.polls || 0) + 1;
+        saveAiQueue(aiQueue().map(item => item.receiptId === job.receiptId
+          ? {...item, polls, ...(polls > CLOUD_MAX_POLLS ? {serverJobId: ""} : {})}
+          : item));
+        return false;   // 只是还没好，别退避
+      }
+    }catch(error){
+      console.warn("取云端识别结果失败", error);
+    }
   }
   try{
     const receipt = await recognizeReceipts(files);
@@ -5427,6 +5526,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       editBtn.textContent = `已保存 ${key.slice(0, 6)}…${key.slice(-4)}，点这里换一个`;
     }
   };
+  const cloudInput = document.getElementById("cloudRecognize");
   const modelInput = document.getElementById("aiModel");
   const syncModelField = () => {
     if (!modelInput) return;
@@ -5437,6 +5537,11 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   };
   providerInput.value = localStorage.getItem(AI_PROVIDER_KEY) || "qwen";
   keyInput.value = aiKeyOf(providerInput.value);
+  if (cloudInput){
+    cloudInput.checked = localStorage.getItem(CLOUD_RECOGNIZE_KEY) === "1";
+    // 没配同步就没有 Worker 可用，这个开关点了也没意义。
+    cloudInput.disabled = !syncConfig();
+  }
   syncModelField();
   label();
   showSaved();
@@ -5451,6 +5556,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(AI_PROVIDER_KEY, providerInput.value);
     setAiKey(providerInput.value, keyInput.value);
+    if (cloudInput) localStorage.setItem(CLOUD_RECOGNIZE_KEY, cloudInput.checked ? "1" : "0");
     if (modelInput){
       const pinned = modelInput.value.trim();
       localStorage.setItem(GEMINI_PINNED_KEY, pinned);
@@ -5600,16 +5706,36 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     }catch(error){
       console.error(error);
     }
-    enqueueReceiptJob(receiptId);
+    // 云端识别时把 jobId 一起记下：回来只要去取结果，不用把照片再传一遍。
+    enqueueReceiptJob(receiptId, cloudRecognizeOn() ? receiptId.replace(/[^A-Za-z0-9_]/g, "_") : "");
     await renderShopping();
     if (!aiConfig().key){
       jobHint("照片已经存成一条待补充的采购了，但还没配 API key 认不出来——去「营养」页最下面配一个，或者点那一单的 ✏️ 手填。");
       return;
     }
     backgroundJobs += 1;
-    jobHint(`正在后台识别${backgroundJobs > 1 ? `（还有 ${backgroundJobs} 单在跑）` : ""}…可以接着记下一单。`);
+    const onServer = cloudRecognizeOn();
+    jobHint(onServer
+      ? "已经交给你自己的 Worker 去认了，现在可以随便切走——它在云上跑，不受手机影响。"
+      : `正在后台识别${backgroundJobs > 1 ? `（还有 ${backgroundJobs} 单在跑）` : ""}…可以接着记下一单。`);
     try{
-      const receipt = await recognizeReceipts(files);
+      let receipt;
+      if (onServer){
+        try{
+          receipt = mergeReceiptTexts(await recognizeReceiptsOnServer(files, receiptId.replace(/[^A-Za-z0-9_]/g, "_")));
+        }catch(error){
+          // "PENDING" ＝ Worker 收下了、还在跑，照片别再传一遍，交给补跑去取结果。
+          if (error.message === "PENDING") throw error;
+          // 其他失败（Worker 没配 GEMINI_KEY、连不上…）就地退回手机识别。
+          // 同时**把 serverJobId 摘掉**，否则补跑会一直去 /doc 等一个根本没人跑的任务。
+          console.warn("云端识别不可用，退回本机", error);
+          saveAiQueue(aiQueue().map(job => job.receiptId === receiptId ? {...job, serverJobId: ""} : job));
+          jobHint(`云端识别没用上（${error.message}）改在手机上认，别切走。`);
+          receipt = await recognizeReceipts(files);
+        }
+      } else {
+        receipt = await recognizeReceipts(files);
+      }
       const {merged, count, store} = await applyReceiptResult(receiptId, receipt);
       dequeueReceiptJob(receiptId);
       await renderShopping();
