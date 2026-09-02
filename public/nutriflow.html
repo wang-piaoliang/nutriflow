@@ -1380,7 +1380,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v148</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v149</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2721,9 +2721,15 @@ function dedupeManualLines(){
       || String(a.date).localeCompare(String(b.date))
       || String(a.id).localeCompare(String(b.id)))
     .forEach(row => {
+      // 这一道按 **foodId** 而不是品名对：同一样东西在两张重叠截图上常被读成两个名字
+      // （用户："茄子被识别了两次，名字还不一样——长茄和线茄"），按名字对永远抓不住。
+      // 认不出来的（custom:）还是退回按名字，否则一堆 custom 会互相误伤。
+      const identity = String(row.foodId || "").startsWith("custom:") || !row.foodId
+        ? normalizeItemName(row.item)
+        : row.foodId;
       const key = [
         shortStore(row.store),
-        normalizeItemName(row.item),
+        identity,
         parseAmount(row.amount),
         Number(row.totalPrice).toFixed(2),
       ].join("|");
@@ -2837,53 +2843,66 @@ const purchaseItemAliases = [
   {id:"squid", keywords:["鱿鱼","墨鱼"]},
   {id:"scallop", keywords:["扇贝","干贝"]},
   {id:"shellfish", keywords:["贝","蛤","蛏","生蚝","牡蛎"]},
-  {id:"whiteFish", keywords:["鲈鱼","鳕鱼","巴沙鱼","龙利鱼","鱼"]},
+  {id:"whiteFish", keywords:["鲈鱼","鳕鱼","巴沙鱼","龙利鱼","黄鱼","带鱼","鲳鱼","多宝鱼","鱼"]},
   {id:"chickenTender", keywords:["鸡小胸","鸡胸","鸡排","鸡柳","鸡里脊"]},
   {id:"chickenThigh", keywords:["鸡腿","琵琶腿"]},
-  {id:"chicken", keywords:["鸡翅","鸡爪","整鸡","鸡"]},
+  {id:"chicken", keywords:["鸡翅","鸡爪","整鸡","鸡胗","鸡架","鸡"]},
   {id:"duck", keywords:["鸭"]},
-  {id:"beef", keywords:["牛"]},
+  // 小票常常只写部位名、不带「牛」字（用户："上脑不是肉吗"）。这些词几乎专属牛肉，
+  // 而且必须排在 leanPork 前面——否则「牛小排」会被那边的「小排」先抢走。
+  {id:"beef", keywords:["牛","上脑","眼肉","西冷","沙朗","菲力","板腱","匙仁","匙柄","保乐肩","嫩肩","肥牛","雪花肉"]},
   {id:"lamb", keywords:["羊"]},
   {id:"porkShoulder", keywords:["梅花肉"]},
-  {id:"porkTenderloin", keywords:["里脊"]},
-  {id:"leanPork", keywords:["猪","排骨","五花","炒肉","回锅肉","肉丝","肉片"]},
+  {id:"porkTenderloin", keywords:["里脊","通脊"]},
+  // 猪肉同理：前腿/后腿/大排/龙骨/筒骨这些小票上都不写「猪」。
+  // 「肉末/绞肉/肉糜」不写种类的时候默认按猪肉算，比落进「其他」强。
+  {id:"leanPork", keywords:["猪","排骨","五花","炒肉","回锅肉","肉丝","肉片","前腿","后腿","大排","肋排","龙骨","筒骨","汤骨","蹄髈","肉末","肉糜","绞肉","培根","火腿","腊肉","颈肉"]},
   {id:"liver", keywords:["肝"]},
   {id:"tofu", keywords:["豆腐","豆干","豆皮","腐竹"]},
   {id:"edamame", keywords:["毛豆"]},
   {id:"enoki", keywords:["金针菇"]},
-  {id:"mushroom", keywords:["香菇","口蘑","平菇","杏鲍菇","菌","菇"]},
+  // 木耳银耳按菌类算，都在「蔬菜」这一组里。
+  {id:"mushroom", keywords:["香菇","口蘑","平菇","杏鲍菇","木耳","银耳","菌","菇"]},
   {id:"bokChoy", keywords:["油菜","上海青","小青菜","鸡毛菜","青菜"]},
-  {id:"cabbage", keywords:["大白菜","娃娃菜","包菜","卷心菜","白菜"]},
-  {id:"leafy", keywords:["生菜","菠菜","油麦菜","空心菜","芥蓝","茼蒿","苋菜"]},
+  {id:"cabbage", keywords:["大白菜","娃娃菜","包菜","卷心菜","紫甘蓝","甘蓝","白菜"]},
+  // 目录里没单独条目的绿叶菜、茎菜一律落这儿：至少能进「蔬菜」组，
+  // 比掉进「其他」强（用户："尽量不要放在其他里"）。
+  {id:"leafy", keywords:["生菜","菠菜","油麦菜","空心菜","芥蓝","茼蒿","苋菜","芹菜","西芹","莴笋","莴苣","苦菊","芝麻菜","菜心","菜薹","菜苔","荠菜","木耳菜","红薯叶","香菜","豆芽","秋葵","芦笋","黄花菜"]},
   {id:"broccoli", keywords:["西兰花","西蓝花"]},
   {id:"cauliflower", keywords:["松花菜","花椰菜","花菜"]},
-  {id:"tomato", keywords:["番茄","西红柿","圣女果"]},
+  // 小票上常写品种名而不是「西红柿」（千禧果、串收…），不列进来就掉进「其他」。
+  {id:"tomato", keywords:["番茄","西红柿","圣女果","千禧","串收番茄","樱桃番茄","小番茄"]},
   {id:"carrot", keywords:["胡萝卜"]},
-  {id:"radish", keywords:["白萝卜","青萝卜","萝卜"]},
-  {id:"pepper", keywords:["彩椒","青椒","尖椒","螺丝椒","辣椒"]},
+  // radish 兼作「根茎菜」的通用桶：山药莲藕这些目录里没有，落这儿能进「蔬菜」组。
+  {id:"radish", keywords:["白萝卜","青萝卜","萝卜","山药","莲藕","荸荠","茭白","竹笋","冬笋","春笋"]},
+  {id:"pepper", keywords:["彩椒","青椒","尖椒","螺丝椒","杭椒","线椒","柿子椒","灯笼椒","辣椒"]},
   {id:"pumpkin", keywords:["南瓜"]},
-  {id:"eggplant", keywords:["茄子"]},
-  {id:"greenBeans", keywords:["豆角","四季豆","荷兰豆","豇豆","豌豆"]},
+  // 「长茄」「线茄」都不含「茄子」，各自落进 custom:，于是同一样东西两条名字两个分类
+  // （用户："茄子被识别了两次，名字还不一样-长茄和线茄"）。加单字「茄」兜住。
+  // 必须排在 tomato 之后——「番茄」里也有个「茄」。
+  {id:"eggplant", keywords:["茄子","长茄","线茄","茄"]},
+  {id:"greenBeans", keywords:["豆角","四季豆","荷兰豆","豇豆","豌豆","扁豆","刀豆"]},
   {id:"allium", keywords:["大蒜","洋葱","小葱","香葱","蒜","葱","姜","韭"]},
-  {id:"gourd", keywords:["丝瓜","冬瓜","黄瓜","西葫芦","苦瓜"]},
+  {id:"gourd", keywords:["丝瓜","冬瓜","黄瓜","西葫芦","苦瓜","佛手瓜","节瓜","瓠瓜"]},
   {id:"quinoa", keywords:["藜麦"]},
   {id:"oats", keywords:["燕麦"]},
   {id:"wholeWheatBread", keywords:["全麦"]},
-  {id:"noodle", keywords:["面条","挂面","乌冬","意面","米线","粉丝","面"]},
+  // 馒头包子饺子这些主食小票上五花八门，归到 noodle 至少能进「主食」组。
+  {id:"noodle", keywords:["面条","挂面","乌冬","意面","米线","粉丝","馒头","花卷","包子","饺子","馄饨","年糕","河粉","粉条","面"]},
   {id:"corn", keywords:["玉米"]},
   {id:"potato", keywords:["土豆","马铃薯"]},
   {id:"sweetPotato", keywords:["红薯","地瓜","紫薯"]},
-  {id:"rice", keywords:["大米","香米","糙米","小米","米"]},
+  {id:"rice", keywords:["大米","香米","糙米","小米","糯米","黑米","粳米","米"]},
   {id:"melon", keywords:["西瓜","哈密瓜","甜瓜","蜜瓜"]},
   {id:"banana", keywords:["香蕉"]},
   {id:"apple", keywords:["苹果","梨"]},
   {id:"orange", keywords:["橙","橘","柑","柚"]},
   {id:"kiwi", keywords:["猕猴桃","奇异果"]},
-  {id:"berries", keywords:["蓝莓","草莓","树莓","莓"]},
+  {id:"berries", keywords:["蓝莓","草莓","树莓","蔓越","莓"]},
   {id:"grape", keywords:["葡萄","提子"]},
   {id:"stoneFruit", keywords:["樱桃","桃","李","杏"]},
   {id:"nuts", keywords:["核桃","腰果","巴旦木","杏仁","花生","坚果"]},
-  {id:"tropical", keywords:["芒果","菠萝","火龙果","百香果","榴莲"]},
+  {id:"tropical", keywords:["芒果","菠萝","凤梨","火龙果","百香果","榴莲","木瓜","椰"]},
 ];
 function foodIdForItem(name){
   const clean = (name || "").trim();

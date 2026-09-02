@@ -294,10 +294,10 @@ test("summarises how many foods per category the week covered", async () => {
   // with the total.
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
-  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，
-  // 所以从 40 降到 31。
-  assert.match(elements.get("weekMeta").textContent, /31 种 · 7 天/);
-  assert.match(summary, /<b>🥩 11<\/b><span>鱼禽瘦肉<\/span>/);
+  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，所以从 40 降下来。
+  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），于是 31 → 30。
+  assert.match(elements.get("weekMeta").textContent, /30 种 · 7 天/);
+  assert.match(summary, /<b>🥩 10<\/b><span>鱼禽瘦肉<\/span>/);
   assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
   assert.match(summary, /<b>🥛 5<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 4<\/b><span>主食<\/span>/);
@@ -342,9 +342,9 @@ test("summarises past weeks in the timeline but never the current one twice", as
   assert.ok(list.indexOf('data-day="2026-07-27"') < list.indexOf('data-day="2026-07-26"'));
 
   // Shown exactly once, in the hero.
-  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，
-  // 所以从 40 降到 31。
-  assert.match(elements.get("weekMeta").textContent, /31 种 · 7 天/);
+  // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，所以从 40 降下来。
+  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），于是 31 → 30。
+  assert.match(elements.get("weekMeta").textContent, /30 种 · 7 天/);
 });
 
 test("orders meal items by food category", async () => {
@@ -1132,6 +1132,44 @@ test("re-anchors a receipt year the model misread", async () => {
   assert.match(healed, /19:30$/, "时分要留着");
   assert.ok(!healed.startsWith("2024"), `年份该被挪走：${healed}`);
   evaluate(`manualPurchases = []`);
+});
+
+test("classifies cut names and variety names instead of dumping them in 其他", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 小票上写的是部位名和品种名，不是目录里的类名（用户："上脑不是肉吗…好多都不对，
+  // 尽量不要放在其他里"）。
+  const category = name => evaluate(`(() => {
+    const id = foodIdForItem(${JSON.stringify(name)});
+    const rule = purchaseGroupRules.find(g => g.ids.includes(id));
+    return rule ? rule.name : "其他";
+  })()`);
+
+  [["上脑", "肉类"], ["眼肉", "肉类"], ["西冷", "肉类"], ["前腿肉", "肉类"], ["龙骨", "肉类"],
+   ["肉末", "肉类"], ["火腿", "肉类"], ["鸡胗", "肉类"], ["黄鱼", "水产"],
+   ["千禧果", "蔬菜"], ["长茄", "蔬菜"], ["线茄", "蔬菜"], ["芹菜", "蔬菜"], ["山药", "蔬菜"],
+   ["莲藕", "蔬菜"], ["秋葵", "蔬菜"], ["紫甘蓝", "蔬菜"], ["木耳", "蔬菜"], ["杭椒", "蔬菜"],
+   ["馒头", "主食"], ["饺子", "主食"]].forEach(([name, want]) => {
+    assert.equal(category(name), want, `${name} 应该归到「${want}」`);
+  });
+
+  // 「茄」这个单字必须排在 tomato 之后——「番茄」里也有个「茄」。
+  assert.equal(evaluate('foodIdForItem("番茄")'), "tomato");
+  // 「牛小排」不能被 leanPork 的「小排」抢走。
+  assert.equal(evaluate('foodIdForItem("牛小排")'), "beef");
+  // 番茄酱还是调料，不能因为放宽了就变成蔬菜。
+  assert.equal(evaluate('foodIdForItem("番茄酱")'), "sauce");
+
+  // 同一样东西在两张重叠截图上被读成两个名字，按名字对永远抓不住——这一道按 foodId 对。
+  evaluate("manualPurchases = []");
+  evaluate('addPurchaseReceipt({date:"2026-08-16 11:00", store:"盒马鲜生（大钟寺店）", items:[{name:"长茄", amount:"约500g", price:4.9},{name:"生菜", amount:"400g", price:2.9}]})');
+  evaluate('addPurchaseReceipt({date:"2026-08-16 11:00", store:"盒马鲜生", items:[{name:"线茄", amount:"约500g", price:4.9}]})');
+  assert.equal(evaluate("dedupeManualLines()"), 1, "长茄/线茄 同价同规格，是同一行被读了两遍");
+  // 但价格不同就是真的两样，不能误删。
+  evaluate("manualPurchases = []");
+  evaluate('addPurchaseReceipt({date:"2026-08-16 11:00", store:"盒马鲜生", items:[{name:"长茄", amount:"约500g", price:4.9},{name:"圆茄", amount:"约500g", price:6.2}]})');
+  assert.equal(evaluate("dedupeManualLines()"), 0);
+  evaluate("manualPurchases = []");
 });
 
 test("uses the local date, not UTC, and dedupes copies that drifted a day", async () => {
@@ -2034,7 +2072,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v148"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v149"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
