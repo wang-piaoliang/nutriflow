@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v146`
+- 当前离线缓存：`nutriflow-pwa-v147`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**小票年份被读成 2024**（用户："有一个日期还是 2024 年，你改掉了么"——没有，那和 v146 的 UTC 串天是两回事）。`parseReceipt` 拿到模型给的 `YYYY-MM-DD` 就原样存，从来没做过常识校验；年份印得小、或者被折痕压住，模型给个 2024 就这么进库了。
+  - 新增 `sanePurchaseDate(day)`：买菜的小票不可能是一年前的，所以要求落在「最近 400 天 ~ 明天」（+1 天留给时区误差）。超出就**保留月日、只把年份挪到最近的合理位置**——错的通常只有年，月日是对的。
+  - 两个必须分开处理的方向：**只有"太老"才值得挪年份**。未来的日期不能往回挪一年——`2026-08-22` 挪成 `2025-08-22` 会凭空造出一笔"去年买的"，比直接算今天错得更离谱，所以未来日期一律退回今天。月日本身不合法（2 月 30 号）也退回今天，不能让 `Date` 悄悄翻篇成 3 月 2 号。
+  - 识别进来的走这道，`healManualFoodIds()` 也给存量补一道，**保留时分**（采购历史按它排序）。
+  - 顺带确认了用户的追问「两个土豆是对的（一次之前买的，一次上周末买的）」：v146 那道按金额的去重**不会**碰它们——实跑验证隔 6 天的两笔土豆一条没删；只有"差一天且金额分毫不差"的那种（同一单被记两次）才合并。离线缓存与版本号升至 v147。
 
 - 2026-08-17：**「土豆重复 + 日期错」是同一个 bug：把 UTC 当成了今天**（用户："现有食材里面一模一样的土豆出现了多次，最新采购记录只有一次，和采购记录对不上，而且日期还错了"）。
   - 根因：代码里 7 处用 `new Date().toISOString().slice(0, 10)` 当"今天"。**这是 UTC**，东八区凌晨 0–8 点它给出的是**昨天**。白天用一切正常，半夜记一笔就串到前一天——用户正是在 23:16 之后连着记的。

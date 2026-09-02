@@ -1079,6 +1079,39 @@ test("re-classifies purchases that were stored before the alias table existed", 
   assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
 });
 
+test("re-anchors a receipt year the model misread", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  const today = evaluate("todayValue()");
+  const year = Number(today.slice(0, 4));
+
+  // 小票上的年份印得小、或者被折痕压住，模型就给个 2024（用户："有一个日期还是 2024 年"）。
+  // 买菜的小票不可能是一年前的：保留月日，只把年份挪到最近的合理位置。
+  const monthDay = today.slice(4);
+  assert.equal(evaluate(`sanePurchaseDate("2024${monthDay}")`), today);
+  // 正常的日期原样不动。
+  assert.equal(evaluate(`sanePurchaseDate("${today}")`), today);
+  const lastWeek = evaluate("dayValue(new Date(Date.now() - 7 * 86400000))");
+  assert.equal(evaluate(`sanePurchaseDate("${lastWeek}")`), lastWeek);
+  // 未来的日期也不合理（+1 天留给时区误差）。
+  const future = evaluate("dayValue(new Date(Date.now() + 30 * 86400000))");
+  assert.equal(evaluate(`sanePurchaseDate("${future}")`), today);
+  // 月日本身不合法（2 月 30 号）才退回今天，不能让 Date 悄悄翻篇成 3 月 2 号。
+  assert.equal(evaluate(`sanePurchaseDate("${year}-02-30")`), today);
+  assert.equal(evaluate('sanePurchaseDate("")'), today);
+
+  // 识别进来的和存量的都要过这道。
+  assert.match(html, /const day = sanePurchaseDate\(receipt.date \|\| todayValue\(\)\);/);
+  assert.match(html, /row.date = `\$\{fixed\}\$\{row.date.slice\(10\)\}`;/);
+  // 修年份要保留时分——采购历史按它排序。
+  evaluate(`manualPurchases = [{id:"x1", receiptId:"r1", date:"2024-07-05 19:30", store:"盒马", item:"土豆", amount:"1kg", totalPrice:3.5, foodId:"potato", bought:true, manual:true}]`);
+  evaluate("healManualFoodIds()");
+  const healed = evaluate('manualPurchases[0].date');
+  assert.match(healed, /19:30$/, "时分要留着");
+  assert.ok(!healed.startsWith("2024"), `年份该被挪走：${healed}`);
+  evaluate(`manualPurchases = []`);
+});
+
 test("uses the local date, not UTC, and dedupes copies that drifted a day", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1979,7 +2012,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v146"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v147"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
