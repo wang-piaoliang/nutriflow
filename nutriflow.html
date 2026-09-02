@@ -1378,7 +1378,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v146</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v147</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1772,6 +1772,36 @@ function foldCount(amount, count){
   if (!match) return amount ? `${amount} ×${count}` : `${count} 件`;
   const total = Number(match[1]) * count;
   return `${total}${match[2]}（${count}×${match[1]}${match[2]}）`;
+}
+// 小票上的年份经常被读错——「2026」印得小、或者被折痕压住，模型就给个 2024
+// （用户："有一个日期还是 2024 年"）。买菜的小票不可能是一年前的，所以这里做个
+// 常识校验：不在「最近 400 天 ~ 明天」这个区间里，就**保留月日、只把年份挪到最近的
+// 合理位置**——月日通常是对的，错的只有年。实在挪不进来（比如 2 月 30 号）才退回今天。
+const RECEIPT_MAX_AGE_DAYS = 400;
+function sanePurchaseDate(day){
+  const text = String(day || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return todayValue();
+  const [, month, date] = text.split("-").map(Number);
+  const today = new Date();
+  const plausible = value => {
+    const when = localDate(value);
+    // 月日不合法时 Date 会翻篇（2 月 30 号变 3 月 2 号），翻了就不算数。
+    if (dayValue(when) !== value) return false;
+    const ageDays = (localDate(todayValue()) - when) / 86400000;
+    return ageDays >= -1 && ageDays <= RECEIPT_MAX_AGE_DAYS;
+  };
+  if (plausible(text)) return text;
+  // 只有「太老」才值得挪年份——那多半是年份印糊了、月日是对的。
+  // **未来的日期不能往回挪一年**：2026-08-22 挪成 2025-08-22 会凭空造出一笔
+  // "去年买的"，比直接算今天错得更离谱。
+  if (localDate(text) <= localDate(todayValue())){
+    const pad = n => String(n).padStart(2, "0");
+    for (const year of [today.getFullYear(), today.getFullYear() - 1]){
+      const shifted = `${year}-${pad(month)}-${pad(date)}`;
+      if (plausible(shifted)) return shifted;
+    }
+  }
+  return todayValue();
 }
 function parseReceipt(text){
   const match = String(text || "").match(/\{[\s\S]*\}/);
@@ -2730,6 +2760,18 @@ function shortBrand(item){
 function healManualFoodIds(){
   let changed = false;
   manualPurchases.forEach(row => {
+    // 年份被读错的存量行（用户："有一个日期还是 2024 年"）。买菜的小票不可能是一年前
+    // 的，所以只修**明显不可能**的那些：保留月日和时分，把年份挪到最近的合理位置。
+    if (row && typeof row.date === "string"){
+      const day = row.date.slice(0, 10);
+      const fixed = sanePurchaseDate(day);
+      if (fixed !== day){
+        row.date = `${fixed}${row.date.slice(10)}`;
+        changed = true;
+      }
+    }
+  });
+  manualPurchases.forEach(row => {
     // 存量里的长牌子名也一起换掉——只在录入时处理的话，已经记下的那些永远不变。
     if (row && typeof row.item === "string"){
       const short = shortBrand(row.item);
@@ -2904,7 +2946,7 @@ function replacePurchaseReceipt(receiptId, {date, store, items}){
 // 把一单识别成结果写回去。识别成功（不管是当场还是回头补跑）都走这里。
 async function applyReceiptResult(receiptId, receipt){
   const items = receipt.items.filter(item => item.name);
-  const day = receipt.date || todayValue();
+  const day = sanePurchaseDate(receipt.date || todayValue());
   const date = receipt.time ? `${day} ${receipt.time}` : day;
   const store = receipt.store || "未记录地点";
   const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
