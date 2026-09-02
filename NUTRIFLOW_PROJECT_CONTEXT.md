@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v147`
+- 当前离线缓存：`nutriflow-pwa-v148`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**餐食照片一传上就显示，不用等识别**（用户："只要上传了照片就要在前端显示…现在经常我上传了然后就没了，我也不知道我是否上传成功"）。照片其实一直是**先存好**的（`savePrivatePhoto` 在识别之前），但「每天吃了什么」那份列表来自 `allDietRecords()`，它只认食物记录——**还没认出东西的那天压根不在列表里**，于是照片存了也无处可显示，看着就像什么都没发生。
+  - 修法：按「有照片的日子」补出占位的天（`meals: []`），认出来之后这一天自然长出餐次，不用再动。
+  - **踩了一个坑值得记**：第一版只往局部的 `records` 里 push，页面纹丝不动——因为渲染走的是 `weeksFromRecords()`，那个函数自己又调了一遍 `allDietRecords()`，补进去的几天原样丢掉。改成 `weeksFromRecords(records)` 接收传入的数组才生效。这类"改了看起来没生效"的问题，靠读代码很难发现，是 CDP 实跑发现的。
+  - 每天下面加一行「📷 N 张已存下，识别中…认出来会自动补进上面」——没认出来的照片和认完的长得一模一样，不说一声人没法判断。没配 key 时改说「点开大图可手动识别」，不能假称在识别。一餐都没有时头上写「待识别」而不是「0 餐」。
+  - 实测：上传一张今天的照片、识别永不返回 → 列表天数 11 → 12，今天那条当场出现、缩略图在、提示语正确。离线缓存与版本号升至 v148。
 
 - 2026-08-17：**小票年份被读成 2024**（用户："有一个日期还是 2024 年，你改掉了么"——没有，那和 v146 的 UTC 串天是两回事）。`parseReceipt` 拿到模型给的 `YYYY-MM-DD` 就原样存，从来没做过常识校验；年份印得小、或者被折痕压住，模型给个 2024 就这么进库了。
   - 新增 `sanePurchaseDate(day)`：买菜的小票不可能是一年前的，所以要求落在「最近 400 天 ~ 明天」（+1 天留给时区误差）。超出就**保留月日、只把年份挪到最近的合理位置**——错的通常只有年，月日是对的。

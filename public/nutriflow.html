@@ -1038,6 +1038,8 @@ summary.week-block-head::after{
 }
 .diet-day + .diet-day{margin-top:10px}
 #dietLogList{margin-top:12px}
+/* 「照片收到了，正在认」。不做成醒目的警告——它是常态，不是出错。 */
+.diet-pending{margin-top:6px;color:var(--muted);font-size:12px;line-height:1.45}
 .diet-day-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .diet-day-head strong{font-size:16px;min-width:0}
 .diet-day-head span{color:var(--muted);font-size:12px;min-width:0;text-align:right;overflow-wrap:anywhere}
@@ -1378,7 +1380,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v147</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v148</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -4090,9 +4092,11 @@ document.addEventListener("click", event => {
   void renderDietLog();
 });
 // 所有有记录的周，新到旧，每周带上自己的分类统计。
-function weeksFromRecords(){
+// 传入 records 是为了把「只有照片、还没认出东西」的那几天也带进来——
+// 它们不在 allDietRecords() 里（那份只认食物记录），不带的话照片传完页面毫无反应。
+function weeksFromRecords(records){
   const buckets = new Map();
-  allDietRecords().forEach(record => {
+  (records || allDietRecords()).forEach(record => {
     const monday = weekMondayOf(record.date);
     const key = monday.getTime();
     if (!buckets.has(key)) buckets.set(key, {monday, records:[]});
@@ -4860,7 +4864,18 @@ async function renderDietLog(){
   if (renderVersion !== dietRenderVersion) return;
   resetPhotoUrls("diet");
   const list = document.getElementById("dietLogList");
+  // 传了照片、还没认出东西的那天，`allDietRecords()` 里根本没有这一条——于是照片
+  // 传完页面一点变化都没有，人根本不知道传上没有（用户："我上传了然后就没了，
+  // 我也不知道我是否上传成功"）。所以先按「有照片的日子」补出占位的天，
+  // 认出来之后这一天自然就长出餐次来，不用再动。
   const records = allDietRecords();
+  const known = new Set(records.map(record => record.date));
+  Object.keys(photosByOwner)
+    .filter(owner => owner.startsWith("diet:"))
+    .map(owner => owner.slice(5))
+    .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date) && !known.has(date))
+    .forEach(date => records.push({date, meals: [], added: []}));
+  records.sort((a, b) => b.date.localeCompare(a.date));
   document.getElementById("dietLogMeta").textContent = `${records.length} 天`;
   const dayMarkup = record => {
     const meals = record.meals.map(meal => {
@@ -4891,9 +4906,16 @@ async function renderDietLog(){
     }).join("");
     const owner = dietPhotoOwner(record.date);
     const attachedPhotos = photosByOwner[owner] || [];
+    // 这一天还有几张排着队没认出来。照片本身在下面已经看得见了，这行字是告诉人
+    // 「东西收到了，正在认」——不然一张没认出来的照片和一张认完的长得一模一样。
+    const waiting = attachedPhotos.filter(photo => !recognizedIds().includes(photo.id)).length;
+    const pending = waiting
+      ? `<div class="diet-pending">📷 ${waiting} 张已存下，${aiConfig().key ? "识别中…认出来会自动补进上面" : "还没配 API key，点开大图可手动识别"}</div>`
+      : "";
     return `<div class="diet-day" data-day="${record.date}">
-      <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || `${record.meals.length} 餐`} · ${photoAddLabel(owner, attachedPhotos.length)}</span></div>
+      <div class="diet-day-head"><strong>${record.date}</strong><span>${record.summary || (record.meals.length ? `${record.meals.length} 餐` : "待识别")} · ${photoAddLabel(owner, attachedPhotos.length)}</span></div>
       ${meals}
+      ${pending}
       ${photoSectionMarkup("diet", owner, attachedPhotos, `${record.date} 餐食`)}
     </div>`;
   };
@@ -4902,7 +4924,7 @@ async function renderDietLog(){
   // 这里再来一份就是同样的内容写两遍；而且用户早就定过调子——一周没过完，
   // 现在就点评缺什么言之过早。等这周过完，它自然变成往期、汇总才出现。
   const thisMonday = currentWeek().monday.getTime();
-  const days = weeksFromRecords().map(week => {
+  const days = weeksFromRecords(records).map(week => {
     const isCurrent = week.monday.getTime() === thisMonday;
     // 当周没有标头（绿色 hero 已经是它了），所以也没什么可折叠的。
     if (isCurrent) return `<section class="week-block">${week.records.map(dayMarkup).join("")}</section>`;

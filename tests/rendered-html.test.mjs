@@ -1079,6 +1079,28 @@ test("re-classifies purchases that were stored before the alias table existed", 
   assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
 });
 
+test("shows a photo-only day right away, before recognition finishes", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 传了照片、还没认出东西的那天，allDietRecords() 里根本没有——照片传完页面
+  // 一点变化都没有，人根本不知道传上没有（用户："我上传了然后就没了，我也不知道
+  // 我是否上传成功"）。按「有照片的日子」补出占位的天。
+  assert.match(html, /\.filter\(owner => owner.startsWith\("diet:"\)\)/);
+  assert.match(html, /records.push\(\{date, meals: \[\], added: \[\]\}\)/);
+  // **关键**：补出来的天必须传给 weeksFromRecords()，不然它自己再调一次
+  // allDietRecords()，补的那几天原样丢掉——第一版就是栽在这儿。
+  assert.match(html, /function weeksFromRecords\(records\)\{/);
+  assert.match(html, /\(records \|\| allDietRecords\(\)\).forEach/);
+  assert.match(html, /const days = weeksFromRecords\(records\).map/);
+  // 没认出来的照片和认完的长得一模一样，得说一声"收到了，正在认"。
+  assert.match(html, /const waiting = attachedPhotos.filter\(photo => !recognizedIds\(\).includes\(photo.id\)\).length;/);
+  assert.match(html, /张已存下/);
+  // 还没配 key 的时候别说"识别中"，那是骗人。
+  assert.match(html, /还没配 API key，点开大图可手动识别/);
+  // 一餐都还没有时别写「0 餐」。
+  assert.match(html, /record.meals.length \? `\$\{record.meals.length\} 餐` : "待识别"/);
+});
+
 test("re-anchors a receipt year the model misread", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -2012,7 +2034,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v147"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v148"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
