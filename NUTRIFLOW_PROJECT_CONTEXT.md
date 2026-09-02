@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v145`
+- 当前离线缓存：`nutriflow-pwa-v146`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,14 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-08-17：**「土豆重复 + 日期错」是同一个 bug：把 UTC 当成了今天**（用户："现有食材里面一模一样的土豆出现了多次，最新采购记录只有一次，和采购记录对不上，而且日期还错了"）。
+  - 根因：代码里 7 处用 `new Date().toISOString().slice(0, 10)` 当"今天"。**这是 UTC**，东八区凌晨 0–8 点它给出的是**昨天**。白天用一切正常，半夜记一笔就串到前一天——用户正是在 23:16 之后连着记的。
+  - 更麻烦的是**日期一串，去重就整个失效**：`dedupeManualLines` 的 key 是「店 + 日期 + 品名 + 规格」，日期不一样就当成两笔，于是同一样东西在「现有食材」里留下两条，而「采购历史」那边看着只有一单。两个症状是一个根子。
+  - 修法：新增 `todayValue()`（走已有的 `dayValue()`，用本地年月日），7 处全部换掉，并加断言禁止 `toISOString().slice(0,10)` 再出现。
+  - 存量数据自愈：`dedupeManualLines` 加第二道——按「店 + 品名 + 规格 + **金额**」扫，日期相差 1 天以内的算同一笔。**这一道要求金额分毫不差**：同店、同物、同重量、同价、还挨在一天内，现实里就是同一笔记了两次。隔一周的、或者金额不同的都不动（已加断言）。
+  - **留哪一条不按日期挑**——事后无从判断哪个日期才是对的（串到前一天的可能错，"没读出日期退回用今天"的同样可能错）。改用更靠得住的信号：**它所在那一单有几件商品**。完整识别出的小票是十几行，漂出来的那份往往只剩孤零零一条，所以留行数多的那一单里的，行数相同才按日期早的留。
+  - 去重从"只在启动时跑一次"改成识别完就地也跑一遍，不用等下次打开才收拾。离线缓存与版本号升至 v146。
 
 - 2026-08-17：**小票识别可以交给用户自己的 Worker（可选，默认关）**。起因是用户问"能不能不上架 App Store 自己用 iOS 应用"——他想解决的其实是「切走就不识别」，而那件事不必靠原生：**问题在于活儿在手机上干**。iOS 一挂后台就掐断请求，认一张小票要十几秒，必然失败；挪到 Cloudflare Worker 上，手机只负责把照片发过去（几百 KB、一两秒），剩下十几秒由 `ctx.waitUntil()` 接着干完，**手机马上锁屏也不影响**。
   - Worker 端（`api/worker.js`）新增 `POST /recognize`：先把 `{status:"pending"}` 写进 documents，再把模型调用挂到 `ctx.waitUntil` 上，结果写回 `job_<id>`；手机还连着就顺便把结果直接返回，省一次轮询。**照片不落库**，只在那一次请求的内存里过一道。没设 `GEMINI_KEY` 时返回 501，健康检查里也报 `recognize:false`。

@@ -1079,6 +1079,52 @@ test("re-classifies purchases that were stored before the alias table existed", 
   assert.ok(html.includes("healManualFoodIds();") && html.indexOf("healManualFoodIds();") < html.lastIndexOf("render();"));
 });
 
+test("uses the local date, not UTC, and dedupes copies that drifted a day", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // `new Date().toISOString().slice(0,10)` 是 UTC：东八区凌晨 0–8 点它给出的是**昨天**。
+  // 白天用一切正常，半夜记一笔就串到前一天（用户："而且日期还错了"）。
+  assert.ok(!/toISOString\(\).slice\(0, 10\)/.test(html), "别再用 UTC 当「今天」");
+  assert.match(html, /function todayValue\(\)\{ return dayValue\(new Date\(\)\); \}/);
+  assert.equal(evaluate("todayValue()"), evaluate("dayValue(new Date())"));
+
+  // 日期一串，第一道去重就整个失效了——它的 key 里带着日期，于是同一样东西留下两条
+  // （用户："一模一样的土豆出现了多次，最新采购记录只有一次"）。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-18 09:00", store:"盒马鲜生（大钟寺店）", items:[{name:"土豆（黄心）", amount:"约1kg", price:3.5}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-17 09:00", store:"盒马鲜生", items:[{name:"土豆（黄心）", amount:"约1kg", price:3.5}]})`);
+  assert.equal(evaluate("manualPurchases.length"), 2);
+  assert.equal(evaluate("dedupeManualLines()"), 1, "差一天、其余全同的两条要合成一条");
+  assert.equal(evaluate("manualPurchases.length"), 1);
+  // 留下的是早的那条（两单行数一样时按日期早的留）。
+  assert.match(evaluate("manualPurchases[0].date"), /2026-08-17/);
+
+  // 行数不一样时按"哪一单更完整"留，不按日期——事后没法判断哪个日期才是对的。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-17 09:00", store:"盒马鲜生", items:[{name:"土豆", amount:"约1kg", price:3.5}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-18 09:00", store:"盒马鲜生", items:[
+    {name:"土豆", amount:"约1kg", price:3.5}, {name:"西红柿", amount:"500g", price:5.2}, {name:"生菜", amount:"400g", price:2.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 1);
+  const kept = evaluate('manualPurchases.find(r => r.item.includes("土豆"))');
+  assert.match(kept.date, /2026-08-18/, "该留那张有 3 行的完整小票里的，不是孤零零那条");
+  assert.equal(evaluate("manualPurchases.length"), 3);
+
+  // 但**真的买了两回**不能被误删：日期隔得远，或者金额不一样，都要留着。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-10 09:00", store:"盒马鲜生", items:[{name:"土豆", amount:"约1kg", price:3.5}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-17 09:00", store:"盒马鲜生", items:[{name:"土豆", amount:"约1kg", price:3.5}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "隔了一周的两次采购是真的两次");
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-17 09:00", store:"盒马鲜生", items:[{name:"土豆", amount:"约1kg", price:3.5}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-18 09:00", store:"盒马鲜生", items:[{name:"土豆", amount:"约1kg", price:4.2}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "金额不同就不能当成同一笔");
+  evaluate(`manualPurchases = []`);
+
+  // 识别完就地扫一遍，别等下次打开才收拾。
+  assert.match(html, /replacePurchaseReceipt\(receiptId, \{date, store, items: rows\}\);\n  \/\/ 原来去重只在启动时跑一次/);
+});
+
 test("never records the same receipt twice", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -1933,7 +1979,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v145"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v146"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

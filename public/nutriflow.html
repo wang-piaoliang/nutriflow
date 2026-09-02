@@ -1378,7 +1378,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v145</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v146</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2666,6 +2666,40 @@ function dedupeManualLines(){
       // 真买两份现在是同一行 count:2（v99 起），不会写成两行一模一样的。
       doomed.push(row.id);
     });
+  // 第二道：日期本身可能是错的（`toISOString` 那个 UTC 坑串到了前一天），
+  // 而上面那道 key 里带着日期，一串就整个失效——同一样东西于是留下两条
+  // （用户："一模一样的土豆出现了多次，最新采购记录只有一次"）。
+  // 所以再按「店 + 品名 + 规格 + **金额**」扫一遍，日期相差 1 天以内的算同一笔。
+  // 这一道**要求金额也一模一样**：同一家店、同一样东西、同样重量、连价格都分毫不差、
+  // 还挨在一天之内——现实里那就是同一笔被记了两次，不是真买了两回。
+  // 留哪一条？**不能按日期挑**——两条里到底哪个日期是对的，事后无从判断：
+  // 串到前一天的那条可能是错的，但"识别没读出日期、退回用今天"的那条同样可能是错的。
+  // 改用一个更靠得住的信号：**它所在的那一单有几件商品**。完整识别出来的小票是十几行，
+  // 而漂出来的那份往往只剩孤零零一条。所以留行数多的那一单里的，行数一样才按日期早的留。
+  const linesPerReceipt = manualPurchases.reduce((count, row) => {
+    count[row.receiptId] = (count[row.receiptId] || 0) + 1;
+    return count;
+  }, {});
+  const weight = row => linesPerReceipt[row.receiptId] || 0;
+  const byPrice = new Map();
+  manualPurchases
+    .slice()
+    .filter(row => !doomed.includes(row.id) && Number(row.totalPrice) > 0)
+    .sort((a, b) => weight(b) - weight(a)
+      || String(a.date).localeCompare(String(b.date))
+      || String(a.id).localeCompare(String(b.id)))
+    .forEach(row => {
+      const key = [
+        shortStore(row.store),
+        normalizeItemName(row.item),
+        parseAmount(row.amount),
+        Number(row.totalPrice).toFixed(2),
+      ].join("|");
+      const first = byPrice.get(key);
+      if (!first){ byPrice.set(key, row); return; }
+      const gap = Math.abs(localDate(String(row.date).slice(0, 10)) - localDate(String(first.date).slice(0, 10)));
+      if (gap <= 86400000) doomed.push(row.id);
+    });
   if (!doomed.length) return 0;
   markDeleted(doomed);
   manualPurchases = manualPurchases.filter(row => !doomed.includes(row.id));
@@ -2870,7 +2904,7 @@ function replacePurchaseReceipt(receiptId, {date, store, items}){
 // 把一单识别成结果写回去。识别成功（不管是当场还是回头补跑）都走这里。
 async function applyReceiptResult(receiptId, receipt){
   const items = receipt.items.filter(item => item.name);
-  const day = receipt.date || new Date().toISOString().slice(0, 10);
+  const day = receipt.date || todayValue();
   const date = receipt.time ? `${day} ${receipt.time}` : day;
   const store = receipt.store || "未记录地点";
   const rows = items.length ? items : [{name: "待补充", amount: "", price: null, placeholder: true}];
@@ -2883,6 +2917,9 @@ async function applyReceiptResult(receiptId, receipt){
     return {merged: true, count: items.length, store};
   }
   replacePurchaseReceipt(receiptId, {date, store, items: rows});
+  // 原来去重只在启动时跑一次，于是"这一单刚认完就和之前那单重了"要等到下次打开
+  // 才会被收拾。识别完就地扫一遍，当场看到的就是干净的。
+  dedupeManualLines();
   return {merged: false, count: items.length, store};
 }
 // 回到前台后补跑一单小票：照片都在库里，按 receiptId 捞出来重认一遍。
@@ -3160,7 +3197,7 @@ function bindDiningForm(){
     if (photoEl) photoEl.value = "";
     showPending();
     recognizedTime = "";
-    const entry = addDining({date: dateEl.value || new Date().toISOString().slice(0, 10), place: "", price: null});
+    const entry = addDining({date: dateEl.value || todayValue(), place: "", price: null});
     const owner = diningOwner(entry.id);
     const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
     await renderDining();
@@ -3192,7 +3229,7 @@ function bindDiningForm(){
   });
   addBtn.addEventListener("click", async () => {
     const place = (placeEl.value || "").trim();
-    const date = dateEl.value || new Date().toISOString().slice(0, 10);
+    const date = dateEl.value || todayValue();
     const price = priceEl.value.trim() === "" ? null : Number(priceEl.value);
     if (!place && price == null){ placeEl.focus(); return; }
     addDining({date, place, price});
@@ -4858,6 +4895,12 @@ function guessMealByClock(now = new Date()){
 // 所以默认摆最近 7 天的横向 chip，最早的三天用「今天/昨天/前天」，其余写 M/D 周X；
 // 真要选更早的，点末尾的 📅 才把原生日历放出来。
 const WEEKDAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
+// **今天**是几号，按这台设备的本地时区算。
+// `new Date().toISOString().slice(0,10)` 是 UTC：在东八区，**凌晨 0 点到 8 点之间
+// 它给出的是昨天**。这个错法很隐蔽——白天用一切正常，半夜记一笔就串到前一天，
+// 而且串了日期之后连去重都失效了（去重的 key 里带日期），同一样东西就冒出两条
+// （用户："一模一样的土豆出现了多次…而且日期还错了"）。
+function todayValue(){ return dayValue(new Date()); }
 function dayValue(date){
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -4984,7 +5027,7 @@ function bindDietForm(container){
     const files = Array.from(photoInput.files || []).filter(file => file.type.startsWith("image/"));
     photoInput.value = "";
     if (!files.length) return;
-    const date = container.querySelector("#dietFormDate").value || new Date().toISOString().slice(0, 10);
+    const date = container.querySelector("#dietFormDate").value || todayValue();
     const setLabel = (text) => {
       if (!photoLabel) return;
       photoLabel.textContent = text;
@@ -5637,7 +5680,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }
 
   linesEl.innerHTML = lineMarkup();
-  if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+  if (dateEl) dateEl.value = todayValue();
   addLineBtn?.addEventListener("click", addLine);
   // 最后一行不许删光，否则表单变成空的、没处填。
   linesEl.addEventListener("click", event => {
@@ -5697,7 +5740,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     // （用户："我上传照片，然后离开网页，回来照片就不上传识别了…只要我上传了，
     // 最终都是能被识别的"）。
     const {receiptId} = addPurchaseReceipt({
-      date: new Date().toISOString().slice(0, 10),
+      date: todayValue(),
       store: "识别中",
       items: [{name: "待补充", amount: "", price: null, placeholder: true}],
     });
@@ -5762,7 +5805,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     // 识别没配 key、或者模型没认出来的时候，总不能把小票照片也一起卡在门外。
     // 存成一条占位行，照片有地方挂、这次采购在历史里露得出来，回头再补。
     if (!items.length && !pendingPhotos.length){ linesEl.querySelector(".buy-name")?.focus(); return; }
-    const day = (dateEl?.value || new Date().toISOString().slice(0, 10));
+    const day = (dateEl?.value || todayValue());
     // 硬编码那批小票都是 "2026-07-30 10:18" 的格式，自己录的只有日期就显得
     // 少了一截（用户："这几次采购都没有具体的时间"）。优先用小票上认出来的
     // 时间；认不到就用此刻的钟点——只在记的是今天时才这么补，补昨天的钟点没意义。
