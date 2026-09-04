@@ -1775,11 +1775,16 @@ test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
   // 按日期存纯文本，展示时再按自然周分组——加一天/跨周都不用迁移数据结构。
-  evaluate('setMealPlan("2026-09-12", "番茄炒蛋")');
-  assert.equal(evaluate('mealPlans["2026-09-12"]'), "番茄炒蛋");
-  // 清空就删掉，别留一堆空串。
+  // 没写过的那天清空 = 什么都没发生，不留空串。
   evaluate('setMealPlan("2026-09-12", "   ")');
   assert.equal(evaluate('mealPlans["2026-09-12"]'), undefined);
+  evaluate('setMealPlan("2026-09-12", "番茄炒蛋")');
+  assert.equal(evaluate('mealPlans["2026-09-12"]'), "番茄炒蛋");
+  // 但**本来有内容**的那天被清空，要留一个空串：对象文档按 key 合且本地优先，
+  // key 直接删掉的话合并时远端那份会被原样捡回来，「删掉」就同步不出去。
+  evaluate('setMealPlan("2026-09-12", "   ")');
+  assert.equal(evaluate('mealPlans["2026-09-12"]'), "   ");
+  evaluate('delete mealPlans["2026-09-12"]');
 
   // 用户备忘录里那两周的计划写成底稿：没存过的那天读底稿，存过的以存的为准。
   // 底稿不写进 localStorage——云同步是整份替换，写进去下一次拉取就没了。
@@ -1803,7 +1808,12 @@ test("keeps a weekly meal-plan notepad with tappable ingredients", async () => {
 
   // 本周展开、过去的折叠（用户："过去了的周就折叠"）。
   assert.match(html, /<section class="plan-week">/);
-  assert.match(html, /<details class="plan-week">/);
+  assert.match(html, /<details class="plan-week"\$\{week.next && week.filled \? " open" : ""\}>/);
+  // 下周常驻在最前面：到周末才想起来排下周就晚了，买菜是提前买的
+  // （用户："到周末了可以出现下周的计划表吧，至少是可以展开的"）。
+  assert.match(html, /nextMonday.setDate\(monday.getDate\(\) \+ 7\);/);
+  assert.match(html, /\{start: nextMonday, current: false, next: true, filled: weekPlanCount\(nextMonday\)\}\].concat\(past\)/);
+  assert.match(html, /week.next \? `下周 \$\{weekLabel\(week.start\)\}`/);
 
   // 可点添加的食材和「现有食材」同一个口径：调料油水不算，吃完勾掉的不再出现。
   assert.match(html, /NOT_INGREDIENT.includes\(row.foodId\)\) return;/);
@@ -2279,7 +2289,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v153"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v154"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

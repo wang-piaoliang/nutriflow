@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v153`
+- 当前离线缓存：`nutriflow-pwa-v154`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-04：**每周计划只推不拉——同步里对象型文档被整个跳过了**（用户："你瞎说，我手机上有"）。`syncPull` 里有一行 `if (!Array.isArray(local)) continue;   // remaining 是对象，不参与合并`。写这行的时候确实只有 `remaining` 一个对象文档，**后来加的 `meal_plan` 被它一起吞掉了**：`schedulePush` 照常把计划推上云，但任何设备都永远拉不下来。所以手机上有、电脑上空——这不是"没写"，是同步缺了一半。
+  - 修法：对象文档按 key 合并、本地优先（和数组那边 `mergeById` 一个规矩），合完不一致就推回去。`remaining`（剩余量）也跟着一起修好了，它同样从来没同步过。
+  - 配套改 `setMealPlan`：**本来有内容的那天被清空时要留一个空串**。对象按 key 合且本地优先，key 直接 `delete` 的话合并时远端那份会被原样捡回来，「删掉」这个动作就同步不出去。没写过的那天清空仍然什么都不留。
+  - **下周常驻在最前面**（用户："到周末了可以出现下周的计划表吧，至少是可以展开的"）。折叠着、空的时候写「点开排下周」，已经排了就默认展开。到周末才想起来排下周就晚了，买菜是提前买的。
+  - CDP 端到端实测（两台"设备"共用一个假云）：手机写本周计划 → 推上云 → **全新设备（localStorage 清空）只配同步 → 拉到并渲染出来**；下周 9/7–9/13 出现在最上面、7 天齐全。离线缓存与版本号升至 v154。
 
 - 2026-09-04：**账号制同步：换设备打开就是自己的数据，零配置**（用户："我想要和 PRETTIER 一样的架构…我不想点同步，很麻烦"）。这是三步走的第三步，服务端**纯新增**，GitHub Pages 那份继续照常跑，用户自己决定什么时候切。
   - 服务端（本仓库的 Next.js 应用）：`db/schema.ts` 加 `sync_docs` 表，主键是**「谁 + 哪份文档」**；`app/api/sync/[key]/route.ts` 提供 `GET/PUT`，语义和 `api/worker.js` 的 `/doc/:key` 完全一致，**唯一区别是身份从哪来**——那边靠设备上填的 `SYNC_TOKEN`，这边靠 `getChatGPTUser()` 从请求头读的登录态。`app/api/sync/whoami` 让网页判断当前该走哪条路。`.openai/hosting.json` 的 `d1` 由 `null` 改成 `"DB"`，并生成了迁移 `drizzle/0000_*.sql`。
