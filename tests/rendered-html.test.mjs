@@ -361,9 +361,10 @@ test("summarises how many foods per category the week covered", async () => {
   // The total moved to weekMeta (prominent, top of the green hero); the tiles
   // come in category order 鱼禽瘦肉 → 蔬菜 → 蛋奶豆 → 主食 → 水果坚果.
   // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，所以从 40 降下来。
-  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），于是 31 → 30。
-  assert.match(elements.get("weekMeta").textContent, /30 种 · 7 天/);
-  assert.match(summary, /<b>🥩 10<\/b><span>鱼禽瘦肉<\/span>/);
+  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），31 → 30；
+  // 再后来单独的「肉」也归了猪肉（原先被反向匹配错认成牛肉），30 → 28。
+  assert.match(elements.get("weekMeta").textContent, /28 种 · 7 天/);
+  assert.match(summary, /<b>🥩 8<\/b><span>鱼禽瘦肉<\/span>/);
   assert.match(summary, /<b>🥦 9<\/b><span>蔬菜<\/span>/);
   assert.match(summary, /<b>🥛 5<\/b><span>蛋奶豆<\/span>/);
   assert.match(summary, /<b>🍚 4<\/b><span>主食<\/span>/);
@@ -409,8 +410,9 @@ test("summarises past weeks in the timeline but never the current one twice", as
 
   // Shown exactly once, in the hero.
   // 数的是「吃到几种食材」不是「几道菜」：牛排和牛肉、煎蛋和蛋归到同一种，所以从 40 降下来。
-  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），于是 31 → 30。
-  assert.match(elements.get("weekMeta").textContent, /30 种 · 7 天/);
+  // 后来「火腿」也认成了猪肉（原先落在 custom: 里自成一种），31 → 30；
+  // 再后来单独的「肉」也归了猪肉（原先被反向匹配错认成牛肉），30 → 28。
+  assert.match(elements.get("weekMeta").textContent, /28 种 · 7 天/);
 });
 
 test("orders meal items by food category", async () => {
@@ -1343,6 +1345,7 @@ test("carries the sync setup to another device through a link", async () => {
 
 test("shows the specific food name, not a vague category word", async () => {
   const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
   // 同一种食材只留一个展示名，规则本来是「留最短的」——那是为了让蛋/卤蛋/煎蛋
   // 显示成「蛋」。但有一顿的食材原文就写了个「肉」，它和「牛排」同归牛肉、
@@ -1350,6 +1353,23 @@ test("shows the specific food name, not a vague category word", async () => {
   // （用户："为什么牛排没有出现在统计里呢，也没有牛肉"）。
   assert.equal(evaluate('betterTagName("牛排", "肉")'), true, "具体的该顶掉笼统的");
   assert.equal(evaluate('betterTagName("肉", "牛排")'), false);
+  // **光写一个「肉」默认是猪肉**（用户："一般肉是指猪肉"）。原来它被认成牛肉——
+  // 不只是标签，分类也是错的。
+  assert.equal(evaluate('foodIdForItem("肉")'), "leanPork");
+  // 带种类的不能被这条误伤：各自那条规则排在猪肉之前，先截住。
+  [["牛肉", "beef"], ["鸡肉", "chicken"], ["羊肉", "lamb"], ["鸭肉", "duck"],
+   ["鱼肉", "whiteFish"], ["虾肉", "shrimp"], ["蟹肉", "shellfish"],
+   ["肉末", "leanPork"], ["肉桂", "seasoning"]].forEach(([name, want]) => {
+    assert.equal(evaluate(`foodIdForItem(${JSON.stringify(name)})`), want, `${name} 该是 ${want}`);
+  });
+  // 反向匹配目录只对两个字以上开放：单字反查几乎必然撞上笼统词，谁在目录里排得
+  // 靠前就归给谁，纯属碰运气（「肉」当初就是这么变成牛肉的）。
+  assert.match(html, /clean.length >= 2 && food.name.includes\(clean\)/);
+  assert.match(evaluate('foodIdForItem("菜")'), /^custom:/);
+  // 真正常用的单字别名表都覆盖了，不受这条影响。
+  assert.equal(evaluate('foodIdForItem("蛋")'), "egg");
+  assert.equal(evaluate('foodIdForItem("鱼")'), "whiteFish");
+
   // 但原来那条规矩不能坏：蛋仍然要赢卤蛋。
   assert.equal(evaluate('betterTagName("蛋", "卤蛋")'), true);
   assert.equal(evaluate('betterTagName("卤蛋", "蛋")'), false);
@@ -1360,8 +1380,16 @@ test("shows the specific food name, not a vague category word", async () => {
   ]}];
   const tally = evaluate(`tallyByCategory(${JSON.stringify(day)})`);
   const meat = tally.counts.find((entry) => entry.rule.name === "鱼禽瘦肉");
-  assert.deepEqual(JSON.parse(JSON.stringify(meat.names)), ["牛排"], "该显示牛排，不是「肉」");
-  assert.equal(meat.count, 1, "牛排和「肉」是同一种食材，只算一种");
+  // 「肉」＝猪肉、「牛排」＝牛肉，是两种，各自列出来——修好归类之后它们本来就不该合并。
+  assert.deepEqual(JSON.parse(JSON.stringify(meat.names)).sort(), ["牛排", "肉"].sort());
+  assert.equal(meat.count, 2);
+
+  // 真正会撞在一起的是同一种食材的不同写法：这时候才轮到「具体的赢笼统的」。
+  const both = evaluate(`tallyByCategory(${JSON.stringify([{date: "2026-09-04", meals: [
+    {name: "晚餐", items: ["牛排"]}, {name: "午餐", items: ["牛肉"]},
+  ]}])})`);
+  const beef = both.counts.find((entry) => entry.rule.name === "鱼禽瘦肉");
+  assert.equal(beef.count, 1, "牛排和牛肉是同一种食材");
 });
 
 test("classifies cut names and variety names instead of dumping them in 其他", async () => {
@@ -2312,7 +2340,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v155"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v156"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

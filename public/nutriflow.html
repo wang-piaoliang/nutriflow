@@ -1403,7 +1403,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v155</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v156</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2909,7 +2909,7 @@ const purchaseItemAliases = [
   {id:"oil", keywords:["食用油","菜籽油","花生油","橄榄油","调和油","香油","玉米油","葵花籽油"]},
   // 「小米椒」得单列一条：它不含「小米辣」也不含「辣椒」，前面两条都拦不住，
   // 一路掉到 rice 的「小米」上，成了大米（用户："小米椒被归到大米类别了"）。
-  {id:"seasoning", keywords:["小米辣","小米椒","朝天椒","干辣椒","花椒","八角","桂皮","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
+  {id:"seasoning", keywords:["小米辣","小米椒","朝天椒","干辣椒","花椒","八角","桂皮","肉桂","香叶","料酒","味精","鸡精","胡椒","孜然","五香"]},
   {id:"water", keywords:["矿泉水","天然水","饮用水","纯净水","苏打水"]},
   {id:"avocado", keywords:["牛油果"]},
   // 「蛋糕卷」「沙拉酱 蛋黄口味」都含「蛋」但不是蛋（用户："蛋糕/沙拉酱都归到鸡蛋里面了"），
@@ -2926,7 +2926,7 @@ const purchaseItemAliases = [
   {id:"tuna", keywords:["金枪鱼"]},
   {id:"squid", keywords:["鱿鱼","墨鱼"]},
   {id:"scallop", keywords:["扇贝","干贝"]},
-  {id:"shellfish", keywords:["贝","蛤","蛏","生蚝","牡蛎"]},
+  {id:"shellfish", keywords:["贝","蛤","蛏","生蚝","牡蛎","蟹"]},
   {id:"whiteFish", keywords:["鲈鱼","鳕鱼","巴沙鱼","龙利鱼","黄鱼","带鱼","鲳鱼","多宝鱼","鱼"]},
   {id:"chickenTender", keywords:["鸡小胸","鸡胸","鸡排","鸡柳","鸡里脊"]},
   {id:"chickenThigh", keywords:["鸡腿","琵琶腿"]},
@@ -2940,7 +2940,11 @@ const purchaseItemAliases = [
   {id:"porkTenderloin", keywords:["里脊","通脊"]},
   // 猪肉同理：前腿/后腿/大排/龙骨/筒骨这些小票上都不写「猪」。
   // 「肉末/绞肉/肉糜」不写种类的时候默认按猪肉算，比落进「其他」强。
-  {id:"leanPork", keywords:["猪","排骨","五花","炒肉","回锅肉","肉丝","肉片","前腿","后腿","大排","肋排","龙骨","筒骨","汤骨","蹄髈","肉末","肉糜","绞肉","培根","火腿","腊肉","颈肉"]},
+  // **光写一个「肉」默认是猪肉**（用户："一般肉是指猪肉"）。这条得放在最后一个
+  // 关键词的位置上没关系——同一条规则里谁先匹配都返回同一个 id；关键是**整条规则
+  // 排在牛/羊/鸡/鸭/鱼/虾之后**，那样「牛肉」「鸡肉」「鱼肉」才会先被各自那条截住，
+  // 只有单独的「肉」和认不出种类的（肉末、肉夹馍）才落到猪肉这儿。
+  {id:"leanPork", keywords:["猪","排骨","五花","炒肉","回锅肉","肉丝","肉片","前腿","后腿","大排","肋排","龙骨","筒骨","汤骨","蹄髈","肉末","肉糜","绞肉","培根","火腿","腊肉","颈肉","肉"]},
   {id:"liver", keywords:["肝"]},
   {id:"tofu", keywords:["豆腐","豆干","豆皮","腐竹"]},
   {id:"edamame", keywords:["毛豆"]},
@@ -2993,7 +2997,11 @@ function foodIdForItem(name){
   if (!clean) return "custom:";
   const alias = purchaseItemAliases.find(rule => rule.keywords.some(keyword => clean.includes(keyword)));
   if (alias) return alias.id;
-  const known = foods.find(food => clean.includes(food.name) || food.name.includes(clean));
+  // 反向匹配（目录名包含输入）只对**两个字以上**开放。单字拿去反查目录几乎必然
+  // 撞上笼统词：「肉」会匹配到「牛肉」、「菜」会匹配到「生菜类」、「米」匹配「大米」，
+  // 谁在目录里排得靠前就归给谁，纯属碰运气（用户："一般肉是指猪肉"——而它当时被
+  // 认成了牛肉）。真正常用的单字（蛋、鱼、虾、菜…）上面的别名表都已经覆盖了。
+  const known = foods.find(food => clean.includes(food.name) || (clean.length >= 2 && food.name.includes(clean)));
   return known ? known.id : `custom:${clean}`;
 }
 // 单价那行文案照硬编码那批的写法生成，"约 X 元/kg" 让单价对比能解析。
