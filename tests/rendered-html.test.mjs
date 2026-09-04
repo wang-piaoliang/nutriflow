@@ -1,7 +1,73 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import test from "node:test";
 import vm from "node:vm";
+
+// `cloudflare:workers` 只有 Workers 运行时里才有，node 直接加载会挂在
+// ERR_UNSUPPORTED_ESM_URL_SCHEME 上。给它一个桩，好把账号制同步那几条真正跑一遍
+// ——尤其是"读不到别人的数据"，那是安全属性，光看代码不算数。
+// 必须在 import dist/ 之前注册。
+registerHooks({
+  resolve(spec, ctx, next){
+    if (spec === "cloudflare:workers") return { url: "cfstub:workers", shortCircuit: true };
+    return next(spec, ctx);
+  },
+  load(url, ctx, next){
+    if (url === "cfstub:workers"){
+      return { format: "module", source: "export const env = globalThis.__CF_ENV__;", shortCircuit: true };
+    }
+    return next(url, ctx);
+  },
+});
+
+// 极简 D1 桩：够跑 drizzle 生成的 insert…on conflict / select。
+function makeStubDb(){
+  const rows = new Map();
+  const prepare = (sql) => ({
+    _sql: sql,
+    _args: [],
+    bind(...args){ this._args = args; return this; },
+    _exec(){
+      if (/^insert/i.test(this._sql)){
+        const [email, key, value, updatedAt] = this._args;
+        rows.set(`${email}|${key}`, { user_email: email, doc_key: key, value, updated_at: updatedAt });
+        return [];
+      }
+      if (/^select/i.test(this._sql)){
+        const [a, b] = this._args;
+        const row = rows.get(`${a}|${b}`);
+        return row ? [row] : [];
+      }
+      return [];
+    },
+    async run(){ return { success: true, results: this._exec() }; },
+    async all(){ return { success: true, results: this._exec() }; },
+    async first(){ return this._exec()[0] ?? null; },
+    async raw(){ return this._exec().map((row) => Object.values(row)); },
+  });
+  return { rows, DB: { prepare, batch: async (list) => list.map(() => ({ results: [] })) } };
+}
+
+async function callApi(path, { email, method = "GET", body } = {}){
+  const { rows, DB } = callApi.store ||= makeStubDb();
+  globalThis.__CF_ENV__ = { DB };
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  const { default: worker } = await import(workerUrl.href);
+  const response = await worker.fetch(
+    new Request(`http://localhost${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(email ? { "oai-authenticated-user-email": email } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }),
+    { DB, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil(){}, passThroughOnException(){} },
+  );
+  return { status: response.status, json: await response.json().catch(() => null), rows };
+}
 
 // Runs the app's own script in a stubbed DOM so runtime errors surface here.
 // Source-only regex assertions cannot catch them: `render` fires
@@ -1134,6 +1200,67 @@ test("re-anchors a receipt year the model misread", async () => {
   evaluate(`manualPurchases = []`);
 });
 
+test("syncs by account with no per-device setup, and never across accounts", async () => {
+  const ME = "wxiaodui@gmail.com";
+  const OTHER = "someone-else@example.com";
+
+  // 用户要的是 PRETTIER 那样：换台设备打开就是自己的数据，不用配任何东西
+  // （"我不想点同步，很麻烦"）。身份来自 ChatGPT 登录态，不是设备上填的口令。
+  assert.deepEqual((await callApi("/api/sync/whoami")).json, { signedIn: false });
+  const who = await callApi("/api/sync/whoami", { email: ME });
+  assert.equal(who.json.signedIn, true);
+  assert.equal(who.json.email, ME);
+
+  // 没登录必须是 **401**，不能靠 redirect 打发——那样前端 fetch 拿到的是一坨 HTML，
+  // 报错完全看不懂。
+  assert.equal((await callApi("/api/sync/diet_entries")).status, 401);
+  assert.equal((await callApi("/api/sync/diet_entries", { method: "PUT", body: { value: [] } })).status, 401);
+
+  // 写 → 读回来。
+  const wrote = await callApi("/api/sync/diet_entries", {
+    email: ME, method: "PUT", body: { value: [{ id: "e1", meal: "晚餐" }] },
+  });
+  assert.equal(wrote.status, 200);
+  const mine = await callApi("/api/sync/diet_entries", { email: ME });
+  assert.deepEqual(mine.json.value, [{ id: "e1", meal: "晚餐" }]);
+
+  // **同一个 key，别人读不到、也覆盖不掉**——主键是「谁 + 哪份文档」。
+  assert.equal((await callApi("/api/sync/diet_entries", { email: OTHER })).json.value, null);
+  await callApi("/api/sync/diet_entries", { email: OTHER, method: "PUT", body: { value: [{ id: "x9" }] } });
+  const stillMine = await callApi("/api/sync/diet_entries", { email: ME });
+  assert.deepEqual(stillMine.json.value, [{ id: "e1", meal: "晚餐" }], "别人写自己的那份不能动我的");
+  const theirs = await callApi("/api/sync/diet_entries", { email: OTHER });
+  assert.deepEqual(theirs.json.value, [{ id: "x9" }]);
+  assert.deepEqual([...stillMine.rows.keys()].sort(),
+    [`${OTHER}|diet_entries`, `${ME}|diet_entries`].sort(), "库里就该是按人分开的两行");
+
+  // 没写过的 key 返回 null，不是报错——首次打开的设备走的就是这条路。
+  assert.equal((await callApi("/api/sync/meal_plan", { email: ME })).json.value, null);
+  assert.equal((await callApi("/api/sync/diet_entries", { email: ME, method: "PUT", body: {} })).status, 400);
+});
+
+test("keeps one HTML file working on both deployments", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 一份文件两边跑：托管应用上走账号制，GitHub Pages 上退回口令制。
+  // 分两份文件迟早会改了这边忘了那边。
+  assert.match(html, /async function detectAccountSync\(\)/);
+  assert.match(html, /fetch\("\/api\/sync\/whoami", \{credentials: "same-origin"\}\)/);
+  // 静态部署上这个接口根本不存在，fetch 直接失败 —— catch 掉就自然退回口令制。
+  assert.match(html, /\}catch\{\n    accountSync = null;/);
+  assert.match(html, /if \(accountSync\) return \{account: true, email: accountSync.email\};/);
+  // 账号制走同源 + cookie，不带任何口令。
+  assert.match(html, /const url = cfg.account \? `\/api\/sync\/\$\{key\}` : `\$\{cfg.url\}\/doc\/\$\{key\}`;/);
+  assert.match(html, /cfg.account \? \{credentials: "same-origin"\} : \{\}/);
+  // 401 在两条路上含义不同，别报错误的原因。
+  assert.match(html, /cfg.account \? "登录过期了，刷新一下页面" : "口令不对"/);
+  // **必须先 await 探测再判断**：同步地读 syncConfig() 只会看到还没探测过的状态，
+  // 账号制那条路永远轮不到。
+  assert.match(html, /void detectAccountSync\(\).then\(\(\) => \{/);
+  // 账号制下那些填口令的控件要收起来——留着会让人以为还得手动配一遍。
+  assert.match(html, /shareBtn.hidden = !syncConfig\(\) \|\| Boolean\(accountSync\);/);
+});
+
 test("exports and imports everything except the secrets", async () => {
   const { evaluate } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -2152,7 +2279,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v152"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v153"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

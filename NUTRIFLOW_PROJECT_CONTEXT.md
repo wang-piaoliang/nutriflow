@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v152`
+- 当前离线缓存：`nutriflow-pwa-v153`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,14 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-04：**账号制同步：换设备打开就是自己的数据，零配置**（用户："我想要和 PRETTIER 一样的架构…我不想点同步，很麻烦"）。这是三步走的第三步，服务端**纯新增**，GitHub Pages 那份继续照常跑，用户自己决定什么时候切。
+  - 服务端（本仓库的 Next.js 应用）：`db/schema.ts` 加 `sync_docs` 表，主键是**「谁 + 哪份文档」**；`app/api/sync/[key]/route.ts` 提供 `GET/PUT`，语义和 `api/worker.js` 的 `/doc/:key` 完全一致，**唯一区别是身份从哪来**——那边靠设备上填的 `SYNC_TOKEN`，这边靠 `getChatGPTUser()` 从请求头读的登录态。`app/api/sync/whoami` 让网页判断当前该走哪条路。`.openai/hosting.json` 的 `d1` 由 `null` 改成 `"DB"`，并生成了迁移 `drizzle/0000_*.sql`。
+  - **没登录必须返回 401，不能 redirect**：这是给 fetch 用的接口，重定向到登录页只会让前端拿到一坨 HTML，报错完全看不懂。
+  - **一份 HTML 两边跑**：启动时问一次 `/api/sync/whoami`，有登录态就走 `/api/sync/:key`（同源 + cookie，不带任何口令），否则退回原来的 Worker 口令制。静态部署上这个接口根本不存在，fetch 直接失败、catch 掉就自然退回去。分成两份文件迟早会改了这边忘了那边。**必须先 await 探测再判断**——同步地读 `syncConfig()` 只会看到还没探测过的状态，账号制那条路永远轮不到。
+  - 账号制下把填口令的控件全收起来（包括 v150 那个"带到另一台设备"，账号制下根本没有口令要带；第一版漏了它，`refreshShare()` 又把它打开了，CDP 实测发现的）。401 的文案两条路不一样：账号制是"登录过期了"，口令制才是"口令不对"。
+  - **修好了一个从会话开始就红着的测试**：`db/index.ts` 原本顶层 `import { env } from "cloudflare:workers"`，任何 import 它的路由都会把这个只有 Workers 运行时才有的模块带进构建产物的模块图，node 加载 `dist/` 直接挂在 `ERR_UNSUPPORTED_ESM_URL_SCHEME`。改成**用到才动态 import**（`getDb()` 变成 async），模块图就干净了。**测试从 70/71 变成 73/73 全绿**。
+  - 测试里用 `registerHooks` 给 `cloudflare:workers` 打桩，把真正的数据库逻辑跑起来验过：两个账号写同一个 `key`，**互相读不到、也覆盖不掉**，库里就是按人分开的两行。这是安全属性，光看代码不算数。离线缓存与版本号升至 v153。
 
 - 2026-09-04：**照片分批导出/导入**（用户实测照片共 **78.2 MB**）。78MB 的 JPEG 转成 base64 是约 104MB，而 `JSON.stringify` 一个那么大的数组峰值内存是它的两三倍——手机上的标签页就是这么被系统杀掉的。所以照片**一批 10MB**：转完一批立刻下载并松手，中间 `await` 400ms 让浏览器回收上一个 blob，峰值内存始终很低。78.2MB 大约 8 个文件。
   - `photoBatches()` 的一个边界：**单张就超限也得自成一批**，否则它永远进不去（已加断言：一张 25MB + 一张 1KB → 两批）。
