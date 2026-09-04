@@ -1341,6 +1341,29 @@ test("carries the sync setup to another device through a link", async () => {
   assert.ok(!/nutriflow_sync_token[^\n]*=\s*["'][^"']+["']/.test(html), "仓库里不能出现写死的口令");
 });
 
+test("shows the specific food name, not a vague category word", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 同一种食材只留一个展示名，规则本来是「留最短的」——那是为了让蛋/卤蛋/煎蛋
+  // 显示成「蛋」。但有一顿的食材原文就写了个「肉」，它和「牛排」同归牛肉、
+  // 又只有一个字，就把牛排挤掉了，看上去像是牛排根本没被统计
+  // （用户："为什么牛排没有出现在统计里呢，也没有牛肉"）。
+  assert.equal(evaluate('betterTagName("牛排", "肉")'), true, "具体的该顶掉笼统的");
+  assert.equal(evaluate('betterTagName("肉", "牛排")'), false);
+  // 但原来那条规矩不能坏：蛋仍然要赢卤蛋。
+  assert.equal(evaluate('betterTagName("蛋", "卤蛋")'), true);
+  assert.equal(evaluate('betterTagName("卤蛋", "蛋")'), false);
+
+  const day = [{date: "2026-09-04", meals: [
+    {name: "晚餐", items: ["牛排", "茄子", "土豆"]},
+    {name: "午餐", items: ["肉", "杂粮饭"]},
+  ]}];
+  const tally = evaluate(`tallyByCategory(${JSON.stringify(day)})`);
+  const meat = tally.counts.find((entry) => entry.rule.name === "鱼禽瘦肉");
+  assert.deepEqual(JSON.parse(JSON.stringify(meat.names)), ["牛排"], "该显示牛排，不是「肉」");
+  assert.equal(meat.count, 1, "牛排和「肉」是同一种食材，只算一种");
+});
+
 test("classifies cut names and variety names instead of dumping them in 其他", async () => {
   const { evaluate } = await runAppScript();
 
@@ -2289,7 +2312,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v154"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v155"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

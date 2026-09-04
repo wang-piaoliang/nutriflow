@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v154`
+- 当前离线缓存：`nutriflow-pwa-v155`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,11 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-04：**「吃完」勾选接入同步 + 统计里笼统词把具体食材挤掉了**。
+  - **牛排"没被统计"其实是被顶掉了展示名**（用户："为什么牛排没有出现在统计里呢，也没有牛肉"）。`tallyByCategory` 里同一种食材只留一个展示名，规则是「留最短的」——那条当初是为了让蛋/卤蛋/煎蛋都显示成「蛋」。但用户那周有一顿的食材原文就写了个「肉」，它和「牛排」同归 `beef`、又只有一个字，于是把「牛排」挤掉了；**数量是对的（本来就该算一种），错的只是那个标签**。新增 `betterTagName()` + `VAGUE_TAGS`（肉/菜/饭/汤/面/主食/蔬菜/水果/海鲜/肉类）：**具体的永远赢笼统的**，两边都具体时才比长短。断言同时锁住"牛排赢肉"和"蛋赢卤蛋"，后者是原来那条规矩，不能改坏。
+  - **「吃完」勾选加进 `SYNC_DOCS`**。原来它不走同步，但那说不通：土豆吃完了是**关于这袋土豆的事实**，不是某台设备的偏好。同一张「现有食材」卡上拖滑块会同步、勾方框不会，用起来只会觉得是坏的（用户看着这张卡问"我在这里更新手机上也会有吧"）。`CONSUMED_KEY` 提到 `SYNC_DOCS` 之前声明（两处都要用），`saveConsumed` 加 `schedulePush`，导出不再单独塞一份 consumed（它现在自己就在 SYNC_DOCS 里）。
+  - 注：这两条都建立在 v154 修好「对象型文档不参与拉取」之上——`consumed` 和 `remaining` 一样是对象，v154 之前就算登记进 SYNC_DOCS 也只推不拉。离线缓存与版本号升至 v155。
 
 - 2026-09-04：**每周计划只推不拉——同步里对象型文档被整个跳过了**（用户："你瞎说，我手机上有"）。`syncPull` 里有一行 `if (!Array.isArray(local)) continue;   // remaining 是对象，不参与合并`。写这行的时候确实只有 `remaining` 一个对象文档，**后来加的 `meal_plan` 被它一起吞掉了**：`schedulePush` 照常把计划推上云，但任何设备都永远拉不下来。所以手机上有、电脑上空——这不是"没写"，是同步缺了一半。
   - 修法：对象文档按 key 合并、本地优先（和数组那边 `mergeById` 一个规矩），合完不一致就推回去。`remaining`（剩余量）也跟着一起修好了，它同样从来没同步过。

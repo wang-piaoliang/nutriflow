@@ -1403,7 +1403,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v154</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v155</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2402,6 +2402,8 @@ const SYNC_TOKEN_KEY = "nutriflow_sync_token";
 const DEFAULT_SYNC_URL = "https://nutriflow-sync.nutriflow.workers.dev";
 // 需要同步的文档清单。以后再有手动录入的数据，往这里加一条即可（用户要求：这类默认都同步）。
 // set() 直接写 localStorage、不要调用会再次触发推送的 save 函数，否则 pull→set→push 会绕圈。
+// 「吃完」的勾选。SYNC_DOCS 和 load 都要用，所以声明得在两者之前。
+const CONSUMED_KEY = "nutriflow_consumed_v1";
 const SYNC_DOCS = [
   {
     key: "diet_entries",
@@ -2435,6 +2437,15 @@ const SYNC_DOCS = [
     get: () => mealPlans,
     set: (value) => { mealPlans = value; localStorage.setItem(MEAL_PLAN_KEY, JSON.stringify(mealPlans)); },
     rerender: () => { renderMealPlan(); },
+  },
+  {
+    // 「吃完」的勾选。原来它不走同步——但那说不通：土豆吃完了是**关于这袋土豆的事实**，
+    // 不是某台设备的偏好。同一张卡上拖滑块会同步、勾方框不会，用起来只会觉得是坏的
+    // （用户在电脑上看着这张卡问"我在这里更新手机上也会有吧"）。
+    key: "consumed",
+    get: () => consumed,
+    set: (value) => { consumed = value; persist(CONSUMED_KEY, consumed); },
+    rerender: () => { void renderShopping(); },
   },
   {
     key: "remaining",
@@ -3492,7 +3503,7 @@ let editingReceipt = "";
 let editingDining = "";
 // 重渲染会把 <details> 关掉。记住哪几张是展开的，编辑完仍然停在原地。
 const openReceipts = new Set();
-let consumed = load("nutriflow_consumed_v1", {});
+let consumed = load(CONSUMED_KEY, {});
 
 function clone(value){return JSON.parse(JSON.stringify(value))}
 function load(key, fallback){
@@ -3520,7 +3531,8 @@ function persist(key, value){
   }
 }
 function saveConsumed(){
-  persist("nutriflow_consumed_v1", consumed);
+  persist(CONSUMED_KEY, consumed);
+  schedulePush("consumed");
 }
 // 「现有食材」每条下面那根细进度条：手动拖，记还剩多少（0–100%）。没拖过就是 100%。
 // 按用户定的规则「手动录入的数据默认接入云同步」，它登记进 SYNC_DOCS。
@@ -4143,6 +4155,15 @@ function weekLabel(monday){
   return `${label(monday)}–${label(sunday)}`;
 }
 // 按分类统计这批记录吃到的不同食物。用 itemTag 去重：烤鸭和鸭肉是同一种。
+// 这些词只说明"是哪一类"，没说是什么东西，拿来当展示名等于什么都没说。
+const VAGUE_TAGS = ["肉", "菜", "饭", "汤", "面", "主食", "蔬菜", "水果", "海鲜", "肉类"];
+function betterTagName(candidate, current){
+  const vagueNow = VAGUE_TAGS.includes(current);
+  const vagueNew = VAGUE_TAGS.includes(candidate);
+  // 具体的永远赢笼统的；两边都具体（或都笼统）时才比长短，短的更像食材本身。
+  if (vagueNow !== vagueNew) return vagueNow;
+  return candidate.length < current.length;
+}
 function tallyByCategory(records){
   const eaten = dietItemCategoryRules.map(() => new Map());
   records.forEach(record => record.meals.forEach(meal => meal.items.forEach(item => {
@@ -4155,10 +4176,13 @@ function tallyByCategory(records){
       // 数的是「吃到几种食材」，不是「几道菜」：蛋、卤蛋、煎蛋是同一种食材，
       // 之前按 tag 原文去重就各算一种（用户："蛋/卤蛋是分开的-这其实都是蛋"）。
       // 归到同一个食材 id 上去重；认不出来的仍按名字各算一种。
-      // Map 的 value 留最短的那个名字当展示名——"蛋"比"卤蛋"更像食材本身。
+      // 展示名留最短的那个——"蛋"比"卤蛋"更像食材本身。**但笼统词不算数**：
+      // 有一顿的食材原文就写了个"肉"，它和"牛排"同归牛肉、又只有一个字，
+      // 于是把"牛排"挤掉了，看上去就像牛排没被统计（用户："为什么牛排没有出现在
+      // 统计里呢，也没有牛肉"）。笼统词只有在没有别的名字时才顶上。
       const key = foodIdForItem(tag);
       const shown = eaten[rank].get(key);
-      if (!shown || tag.length < shown.length) eaten[rank].set(key, tag);
+      if (!shown || betterTagName(tag, shown)) eaten[rank].set(key, tag);
     });
   })));
   const counts = dietItemCategoryRules
@@ -6176,12 +6200,10 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 // localStorage 和 IndexedDB 都是**按域名隔离**的：换个网址等于换了个空房间，
 // 浏览器一清也全没。所以要能整包带走、整包带回来。
 // **一个密钥都不导出**（同步口令、API key）——这个文件是要发来发去的。
-const CONSUMED_KEY = "nutriflow_consumed_v1";
 function exportPayload(){
   const docs = {};
+  // consumed 现在也在 SYNC_DOCS 里了，跟着一起导出，不用再单独加一份。
   SYNC_DOCS.forEach(doc => { docs[doc.key] = doc.get(); });
-  // consumed（吃完的勾选）不走云同步，但它同样是用户自己的数据，搬家得带上。
-  docs.consumed = consumed;
   return {app: "nutriflow", version: 1, exportedAt: new Date().toISOString(), docs};
 }
 // 合并而不是覆盖：导到一台已经有数据的设备上时，不能把那边的记录抹掉。
@@ -6202,11 +6224,6 @@ function importPayload(payload){
     }
     touched += 1;
   });
-  if (payload.docs.consumed && typeof payload.docs.consumed === "object"){
-    consumed = {...payload.docs.consumed, ...consumed};
-    persist(CONSUMED_KEY, consumed);
-    touched += 1;
-  }
   return touched;
 }
 // 照片到底占多大——搬家之前得先知道这个数，不然只能靠猜。
