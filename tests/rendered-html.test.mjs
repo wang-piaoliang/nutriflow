@@ -1134,6 +1134,25 @@ test("re-anchors a receipt year the model misread", async () => {
   evaluate(`manualPurchases = []`);
 });
 
+test("carries the sync setup to another device through a link", async () => {
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 同步口令是**按浏览器**存在 localStorage 里的，换台设备就是"未配置"，于是只剩
+  // 写死在 HTML 里那批数据（用户："为什么这个项目会自动同步，但这个不会"）。
+  // 换设备最烦的一步是"去把口令翻出来再手打一遍"，所以给一个一键链接。
+  assert.match(html, /id="syncShare"/);
+  assert.match(html, /function applySyncLink\(\)/);
+  // 口令放在 **#fragment** 里：fragment 不会被浏览器发给服务器，也不进访问日志。
+  assert.match(html, /const link = `\$\{location.origin\}\$\{location.pathname\}#sync=\$\{payload\}`;/);
+  assert.match(html, /location.hash \|\| ""\).match\(\/\^#sync=\(\.\+\)\$\//);
+  // 读完立刻从地址栏抹掉——口令不该留在历史记录里、也不该被顺手分享出去。
+  assert.match(html, /history.replaceState\(null, "", location.pathname \+ location.search\);/);
+  // 必须跑在 initSync 之前，否则这一次打开还是"未配置"，得再刷新一遍才生效。
+  assert.ok(html.indexOf("function applySyncLink()") < html.indexOf("function initSync()"));
+  // 口令绝不能写进仓库——链接是在用户设备上现生成的。
+  assert.ok(!/nutriflow_sync_token[^\n]*=\s*["'][^"']+["']/.test(html), "仓库里不能出现写死的口令");
+});
+
 test("classifies cut names and variety names instead of dumping them in 其他", async () => {
   const { evaluate } = await runAppScript();
 
@@ -2072,7 +2091,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v149"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v150"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

@@ -560,6 +560,7 @@ summary.week-block-head::after{
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+.sync-link{width:100%;box-sizing:border-box;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:12px;word-break:break-all;min-height:64px}
 .sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
 .buy-add-manual > input[type=text]{width:100%;box-sizing:border-box;margin-top:8px}
 .dining-add-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -1204,7 +1205,10 @@ summary.week-block-head::after{
           <span class="subtle" id="syncStatus">未配置</span>
         </div>
         <button class="sync-edit" type="button" id="syncEdit" hidden>已开启，点这里改设置</button>
-        <div class="note" id="syncNote">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，通常每台设备只需填一次口令、点保存即可；不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
+        <!-- 换台设备最烦的一步是"去把口令翻出来再手打一遍"。这个按钮把地址和口令
+             打包成一个链接，在新设备上打开就配好了，不用记也不用抄。 -->
+        <button class="sync-edit" type="button" id="syncShare" hidden>把同步配置带到另一台设备</button>
+        <div class="note" id="syncNote">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，**每台设备各配一次**（口令存在这台设备的浏览器里，不会跟着网址走）；已经配好的那台可以用下面的按钮生成一个链接，在新设备上打开就配好了，不用再手打口令。不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
         <div class="sync-form" id="syncForm">
           <input type="url" id="syncUrl" placeholder="Worker 地址 https://…workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
           <input type="text" id="syncToken" placeholder="同步口令（部署时设的 SYNC_TOKEN）" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -1380,7 +1384,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v149</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v150</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -6001,6 +6005,23 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 })();
 
 // 云同步：填充已存配置、绑定保存、（已配置时）打开与回前台各拉取一次。
+// 从「带到另一台设备」那个链接落地：把 #sync=... 里的地址和口令存下来，
+// **然后立刻把它从地址栏抹掉**——口令不该留在历史记录和分享出去的链接里。
+// 必须跑在 initSync 之前，否则这一次打开还是"未配置"，得再刷新一遍才生效。
+(function applySyncLink(){
+  const match = String(location.hash || "").match(/^#sync=(.+)$/);
+  if (!match) return;
+  try{
+    const data = JSON.parse(decodeURIComponent(escape(atob(match[1]))));
+    if (!data || !data.url || !data.token) return;
+    localStorage.setItem(SYNC_URL_KEY, String(data.url));
+    localStorage.setItem(SYNC_TOKEN_KEY, String(data.token));
+  }catch(error){
+    console.warn("NutriFlow could not read the sync link", error);
+  }finally{
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();
 (function initSync(){
   const urlInput = document.getElementById("syncUrl");
   const tokenInput = document.getElementById("syncToken");
@@ -6017,13 +6038,41 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     if (note) note.hidden = collapsed;
     if (editBtn) editBtn.hidden = !collapsed;
   }
+  const shareBtn = document.getElementById("syncShare");
+  function refreshShare(){
+    if (shareBtn) shareBtn.hidden = !syncConfig();
+  }
   collapse(!!syncConfig());
+  refreshShare();
   editBtn?.addEventListener("click", () => collapse(false));
+  // 口令放在 URL 的 **#fragment** 里而不是查询串：fragment 不会被浏览器发给服务器，
+  // 也不会进 GitHub Pages 的访问日志。落地那边读完立刻从地址栏抹掉。
+  shareBtn?.addEventListener("click", async () => {
+    const cfg = syncConfig();
+    if (!cfg) return;
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify({url: cfg.url, token: cfg.token}))));
+    const link = `${location.origin}${location.pathname}#sync=${payload}`;
+    try{
+      await navigator.clipboard.writeText(link);
+      shareBtn.textContent = "链接已复制——在另一台设备上打开它就配好了";
+    }catch{
+      // 剪贴板在非 https 或者权限被拒时用不了，那就把链接摊出来让人自己复制。
+      shareBtn.textContent = "复制不了，长按选中这段：";
+      const box = document.createElement("textarea");
+      box.className = "sync-link";
+      box.readOnly = true;
+      box.value = link;
+      shareBtn.insertAdjacentElement("afterend", box);
+      box.select();
+    }
+    setTimeout(() => { shareBtn.textContent = "把同步配置带到另一台设备"; }, 8000);
+  });
   saveBtn.addEventListener("click", () => {
     localStorage.setItem(SYNC_URL_KEY, urlInput.value.trim());
     localStorage.setItem(SYNC_TOKEN_KEY, tokenInput.value.trim());
     if (syncConfig()){ syncPull(); collapse(true); }
     else { setSyncStatus("未配置"); collapse(false); }
+    refreshShare();
   });
   if (syncConfig()){
     syncPull();
