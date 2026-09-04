@@ -1403,7 +1403,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v153</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v154</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2578,7 +2578,26 @@ async function syncPull(){
       if (doc.pullSeparately) continue;
       const data = await syncRequest(doc.key, "GET");
       const local = doc.get();
-      if (!Array.isArray(local)) continue;   // remaining 是对象，不参与合并
+      // 对象型的文档（每周计划、剩余量）按 key 合，本地优先——和数组那边一个规矩。
+      // **原来这里是 `continue`**，写的时候只有 remaining 一个对象文档，后来加了
+      // meal_plan 就被一起吞掉了：只推不拉，手机上写的计划任何别的设备都拉不下来
+      // （用户："你瞎说，我手机上有"）。
+      if (!Array.isArray(local)){
+        const incoming = data && data.value && typeof data.value === "object" && !Array.isArray(data.value)
+          ? data.value
+          : {};
+        const merged = {...incoming, ...local};
+        const changed = JSON.stringify(merged) !== JSON.stringify(local);
+        if (changed){
+          doc.set(merged);
+          doc.rerender();
+        }
+        // 本地比服务端多东西就推回去（新设备第一次拉完通常是一样的，不会白推）。
+        if (JSON.stringify(merged) !== JSON.stringify(incoming) || dirtyDocs().includes(doc.key)){
+          await pushDoc(doc);
+        }
+        continue;
+      }
       const remote = data && Array.isArray(data.value) ? data.value : [];
       const merged = mergeById(local, remote);
       // 合并结果和服务端不一致（本地有新东西、或有该删的），就把结果推回去。
@@ -3541,9 +3560,11 @@ function weekPlanCount(start){
 }
 function setMealPlan(day, text){
   const value = String(text || "");
-  // 清空就删掉，别留一堆空串占地方。但这天要是有底稿，得留一个空串把底稿压住，
-  // 否则用户刚删完，下次渲染底稿又冒出来。
-  if (value.trim() || MEAL_PLAN_SEED[day] !== undefined) mealPlans[day] = value;
+  // 清空就删掉，别留一堆空串占地方。两种情况要留一个空串：
+  // ① 这天有底稿——不留的话用户刚删完、下次渲染底稿又冒出来；
+  // ② 这天本来有内容——对象文档按 key 合且本地优先，key 直接删掉的话，
+  //    合并时远端那份会被原样捡回来，「删掉」这个动作就同步不出去。
+  if (value.trim() || MEAL_PLAN_SEED[day] !== undefined || day in mealPlans) mealPlans[day] = value;
   else delete mealPlans[day];
   saveMealPlans();
 }
@@ -4287,13 +4308,18 @@ function renderMealPlan(){
   cleanStoredPlanIcons();
   applyPlanFold();
   const {monday} = currentWeek();
-  // 本周永远排最前且展开；往前的周只列「真写过东西」的那几周，空白周不占地方
-  // （用户："再往前的那周就删掉吧，没有计划"）。过去的周默认折叠。
-  const weeks = Array.from({length: 13}, (unused, offset) => {
+  // 下周排在最前面（折叠），本周紧跟其后且展开；再往前的周只列「真写过东西」的
+  // 那几周，空白周不占地方（用户："再往前的那周就删掉吧，没有计划"）。
+  // **下周要常驻**：到周末才想起来排下周就晚了，买菜是提前买的
+  // （用户："到周末了可以出现下周的计划表吧，至少是可以展开的"）。
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(monday.getDate() + 7);
+  const past = Array.from({length: 13}, (unused, offset) => {
     const start = new Date(monday);
     start.setDate(monday.getDate() - offset * 7);
     return {start, current: offset === 0, filled: weekPlanCount(start)};
   }).filter(week => week.current || week.filled);
+  const weeks = [{start: nextMonday, current: false, next: true, filled: weekPlanCount(nextMonday)}].concat(past);
   box.innerHTML = weeks.map(week => {
     const days = Array.from({length: 7}, (unused, index) => {
       const date = new Date(week.start);
@@ -4307,7 +4333,7 @@ function renderMealPlan(){
     const body = `<div class="plan-days">${days}</div>`;
     return week.current
       ? `<section class="plan-week"><div class="plan-week-head"><strong>本周 ${weekLabel(week.start)}</strong></div>${body}</section>`
-      : `<details class="plan-week"><summary class="plan-week-head"><strong>${weekLabel(week.start)}</strong><span class="subtle">${week.filled} 天有计划</span></summary>${body}</details>`;
+      : `<details class="plan-week"${week.next && week.filled ? " open" : ""}><summary class="plan-week-head"><strong>${week.next ? `下周 ${weekLabel(week.start)}` : weekLabel(week.start)}</strong><span class="subtle">${week.filled ? `${week.filled} 天有计划` : (week.next ? "点开排下周" : "0 天有计划")}</span></summary>${body}</details>`;
   }).join("");
   // 输入即存。不重渲染——重渲染会把正在打字的框换掉、光标和键盘一起跳走。
   box.querySelectorAll("[data-plan-day]").forEach(area => {
