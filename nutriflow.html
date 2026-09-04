@@ -1403,7 +1403,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v152</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v153</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2443,7 +2443,28 @@ const SYNC_DOCS = [
     rerender: () => { void renderShopping(); },
   },
 ];
+// 同步有两条路，同一份 HTML 两边都能跑：
+//   ① **账号制**（部署在托管应用上时）：身份来自 ChatGPT 登录态，`/api/sync/:key`，
+//      **设备上什么都不用配**——这是用户要的"和 PRETTIER 一样"。
+//   ② **口令制**（GitHub Pages 上）：靠设备上填的 SYNC_TOKEN 调自建 Worker。
+// 启动时问一次 /api/sync/whoami：有人登录就走 ①，否则退回 ②。
+// GitHub Pages 上这个接口根本不存在，fetch 直接失败，也就自然退回 ② —— 所以
+// **不用为两种部署各出一份文件**，这点很重要：一份文件两边跑，才不会改了这边忘了那边。
+let accountSync = null;   // {email} 或 null；null = 没登录 / 不在托管应用上
+async function detectAccountSync(){
+  try{
+    const res = await fetch("/api/sync/whoami", {credentials: "same-origin"});
+    if (!res.ok) return null;
+    const data = await res.json();
+    accountSync = data && data.signedIn ? {email: data.email} : null;
+  }catch{
+    accountSync = null;   // 静态部署上问不到这个接口，很正常
+  }
+  return accountSync;
+}
 function syncConfig(){
+  // 账号制优先：它不需要 url/token，返回一个标记对象让上层照旧走同一套流程。
+  if (accountSync) return {account: true, email: accountSync.email};
   const url = ((localStorage.getItem(SYNC_URL_KEY) || DEFAULT_SYNC_URL).trim()).replace(/\/+$/, "");
   const token = (localStorage.getItem(SYNC_TOKEN_KEY) || "").trim();
   return url && token ? {url, token} : null;
@@ -2451,12 +2472,22 @@ function syncConfig(){
 async function syncRequest(key, method, body){
   const cfg = syncConfig();
   if (!cfg) return null;
-  const res = await fetch(`${cfg.url}/doc/${key}`, {
+  // 账号制走同源接口、带 cookie，不带任何口令；口令制走 Worker、带 Bearer。
+  const url = cfg.account ? `/api/sync/${key}` : `${cfg.url}/doc/${key}`;
+  const res = await fetch(url, {
     method,
-    headers: {"Authorization":`Bearer ${cfg.token}`, "Content-Type":"application/json"},
+    ...(cfg.account ? {credentials: "same-origin"} : {}),
+    headers: {
+      "Content-Type": "application/json",
+      ...(cfg.account ? {} : {"Authorization": `Bearer ${cfg.token}`}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(res.status === 401 ? "口令不对" : `同步失败 (${res.status})`);
+  if (!res.ok){
+    // 账号制下的 401 是"登录过期了"，跟"口令填错了"是两回事，别报错误的原因。
+    if (res.status === 401) throw new Error(cfg.account ? "登录过期了，刷新一下页面" : "口令不对");
+    throw new Error(`同步失败 (${res.status})`);
+  }
   return res.json();
 }
 // 「本地有改动还没推上去」的标记。**必须写进 localStorage**，因为它要扛住刷新：
@@ -6059,7 +6090,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   }
   const shareBtn = document.getElementById("syncShare");
   function refreshShare(){
-    if (shareBtn) shareBtn.hidden = !syncConfig();
+    // 账号制下这个按钮没意义（根本没有口令要带），而且会让人以为还得手动配一遍。
+    if (shareBtn) shareBtn.hidden = !syncConfig() || Boolean(accountSync);
   }
   collapse(!!syncConfig());
   refreshShare();
@@ -6093,12 +6125,26 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     else { setSyncStatus("未配置"); collapse(false); }
     refreshShare();
   });
-  if (syncConfig()){
-    syncPull();
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") syncPull();
-    });
-  }
+  // 先问一次"这里有没有登录态"，再决定走哪条路。**必须先 await 再判断**——
+  // 直接同步地读 syncConfig() 只会看到还没探测过的状态，账号制那条路永远轮不到。
+  void detectAccountSync().then(() => {
+    if (accountSync){
+      // 账号制下那些填口令的控件没有意义，收起来，并说清楚现在靠什么认人。
+      collapse(true);
+      if (editBtn) editBtn.hidden = true;
+      if (note){
+        note.hidden = false;
+        note.textContent = `已按账号自动同步（${accountSync.email}）。这台设备不用配任何东西，换设备打开就是你的数据。照片仍然只存本机。`;
+      }
+    }
+    refreshShare();
+    if (syncConfig()){
+      syncPull();
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") syncPull();
+      });
+    }
+  });
 })();
 // ---- 备份 / 搬家 ----
 // localStorage 和 IndexedDB 都是**按域名隔离**的：换个网址等于换了个空房间，
