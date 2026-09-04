@@ -560,6 +560,10 @@ summary.week-block-head::after{
 .sync-form{display:grid;gap:8px;margin-top:12px}
 .sync-form input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:16px}
 .sync-form button{padding:11px;border:none;border-radius:8px;background:var(--text);color:var(--surface);font-size:15px;font-weight:600}
+.backup-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.backup-row button,.backup-import{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;padding:9px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:14px;cursor:pointer}
+.backup-import{position:relative;overflow:hidden}
+.backup-import input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;clip-path:inset(50%)}
 .sync-link{width:100%;box-sizing:border-box;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text);font-size:12px;word-break:break-all;min-height:64px}
 .sync-edit{margin-top:8px;padding:0;border:none;background:none;color:var(--muted);font-size:13px;text-align:left;text-decoration:underline}
 .buy-add-manual > input[type=text]{width:100%;box-sizing:border-box;margin-top:8px}
@@ -1208,6 +1212,20 @@ summary.week-block-head::after{
         <!-- 换台设备最烦的一步是"去把口令翻出来再手打一遍"。这个按钮把地址和口令
              打包成一个链接，在新设备上打开就配好了，不用记也不用抄。 -->
         <button class="sync-edit" type="button" id="syncShare" hidden>把同步配置带到另一台设备</button>
+      </article>
+
+      <article class="card">
+        <div class="section-title">
+          <h2>备份 / 搬家</h2>
+          <span class="subtle">存本机的东西都在这</span>
+        </div>
+        <!-- localStorage 和 IndexedDB 都是按域名隔离的：换网址等于换个空房间，
+             浏览器一清也全没。所以要能整包带走。密钥一个都不导出。 -->
+        <div class="note" id="backupStatus">文字数据随时可以导出。</div>
+        <div class="backup-row">
+          <button type="button" id="backupExport">导出全部记录</button>
+          <label class="backup-import">导入<input type="file" accept="application/json,.json" id="backupImport"></label>
+        </div>
         <div class="note" id="syncNote">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，**每台设备各配一次**（口令存在这台设备的浏览器里，不会跟着网址走）；已经配好的那台可以用下面的按钮生成一个链接，在新设备上打开就配好了，不用再手打口令。不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
         <div class="sync-form" id="syncForm">
           <input type="url" id="syncUrl" placeholder="Worker 地址 https://…workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -1384,7 +1402,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v150</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v151</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -6080,6 +6098,98 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       if (document.visibilityState === "visible") syncPull();
     });
   }
+})();
+// ---- 备份 / 搬家 ----
+// localStorage 和 IndexedDB 都是**按域名隔离**的：换个网址等于换了个空房间，
+// 浏览器一清也全没。所以要能整包带走、整包带回来。
+// **一个密钥都不导出**（同步口令、API key）——这个文件是要发来发去的。
+const CONSUMED_KEY = "nutriflow_consumed_v1";
+function exportPayload(){
+  const docs = {};
+  SYNC_DOCS.forEach(doc => { docs[doc.key] = doc.get(); });
+  // consumed（吃完的勾选）不走云同步，但它同样是用户自己的数据，搬家得带上。
+  docs.consumed = consumed;
+  return {app: "nutriflow", version: 1, exportedAt: new Date().toISOString(), docs};
+}
+// 合并而不是覆盖：导到一台已经有数据的设备上时，不能把那边的记录抹掉。
+// 数组按 id 合（复用云同步那套 mergeById），对象按 key 合。
+function importPayload(payload){
+  if (!payload || payload.app !== "nutriflow" || !payload.docs) throw new Error("这不像是 NutriFlow 导出的文件。");
+  let touched = 0;
+  SYNC_DOCS.forEach(doc => {
+    const incoming = payload.docs[doc.key];
+    if (incoming === undefined) return;
+    const current = doc.get();
+    if (Array.isArray(current) && Array.isArray(incoming)){
+      doc.set(mergeById(current, incoming));
+    } else if (current && typeof current === "object" && incoming && typeof incoming === "object"){
+      doc.set({...incoming, ...current});   // 本地已有的那份优先，和云同步一个规矩
+    } else {
+      doc.set(incoming);
+    }
+    touched += 1;
+  });
+  if (payload.docs.consumed && typeof payload.docs.consumed === "object"){
+    consumed = {...payload.docs.consumed, ...consumed};
+    persist(CONSUMED_KEY, consumed);
+    touched += 1;
+  }
+  return touched;
+}
+// 照片到底占多大——搬家之前得先知道这个数，不然只能靠猜。
+async function photoFootprint(){
+  try{
+    const photos = await listPrivatePhotos();
+    const bytes = photos.reduce((sum, photo) => sum + ((photo.blob && photo.blob.size) || 0), 0);
+    return {count: photos.length, bytes};
+  }catch(error){
+    console.warn("NutriFlow could not measure photo storage", error);
+    return {count: 0, bytes: 0};
+  }
+}
+function formatBytes(bytes){
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+(function initBackup(){
+  const exportBtn = document.getElementById("backupExport");
+  const importInput = document.getElementById("backupImport");
+  const status = document.getElementById("backupStatus");
+  if (!exportBtn || !importInput) return;
+  const say = text => { if (status) status.textContent = text; };
+  void photoFootprint().then(({count, bytes}) => {
+    say(count
+      ? `文字数据随时可以导出。另外这台设备上还有 ${count} 张照片、共 ${formatBytes(bytes)}——照片不在这个文件里。`
+      : "文字数据随时可以导出。这台设备上还没有照片。");
+  });
+  exportBtn.addEventListener("click", () => {
+    const text = JSON.stringify(exportPayload(), null, 2);
+    const blob = new Blob([text], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nutriflow-${todayValue()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    say(`已导出（${formatBytes(blob.size)}）。这个文件里没有同步口令和 API key。`);
+  });
+  importInput.addEventListener("change", async () => {
+    const file = (importInput.files || [])[0];
+    if (!file) return;
+    try{
+      const touched = importPayload(JSON.parse(await file.text()));
+      render();
+      void renderDining();
+      say(`已导入 ${touched} 类数据，和这台设备原有的记录合并了（没有覆盖）。`);
+    }catch(error){
+      say(`导入失败：${error.message}`);
+    }finally{
+      importInput.value = "";
+    }
+  });
 })();
 bindDiningForm();
 // 先把早先落成 custom: 的行重新归类，再渲染——否则第一屏还是旧图标和旧汇总。
