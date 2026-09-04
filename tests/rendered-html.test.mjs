@@ -1174,6 +1174,24 @@ test("exports and imports everything except the secrets", async () => {
   assert.match(html, /照片不在这个文件里/);
   assert.equal(evaluate("formatBytes(1536)"), "2 KB");
   assert.equal(evaluate("formatBytes(5 * 1024 * 1024)"), "5.0 MB");
+
+  // 照片必须**分批**导出。用户实测 78.2MB，转 base64 是 104MB，而 JSON.stringify
+  // 一个那么大的数组峰值内存是它的两三倍——手机上的标签页就是这么被杀掉的。
+  const mb = n => `{id:"p${n}", blob:{size:${n} * 1024 * 1024}}`;
+  const sizes = evaluate(`photoBatches([${[3,3,3,3,3,3,3,3,3,3].map((n, i) => mb(3).replace("p3", "p" + i)).join(",")}]).map(b => b.length)`);
+  assert.deepEqual(JSON.parse(JSON.stringify(sizes)), [3, 3, 3, 1], "30MB 要拆成 4 批");
+  // 单张就超限也得自成一批，否则它永远进不去。
+  const huge = evaluate(`photoBatches([{id:"a", blob:{size:25*1024*1024}}, {id:"b", blob:{size:1024}}]).map(b => b.length)`);
+  assert.deepEqual(JSON.parse(JSON.stringify(huge)), [1, 1]);
+  assert.match(html, /const PHOTO_BATCH_BYTES = 10 \* 1024 \* 1024;/);
+  // 一批一批地转、转完立刻下载并松手，不能先把所有照片都转成 base64 再拼。
+  assert.match(html, /downloadJson\(\n\s*`nutriflow-photos-/);
+  // 导入按 id 跳过已有的，所以同一个包导两遍不会变成两张。
+  assert.match(html, /if \(!item \|\| !item.id \|\| !item.data \|\| existing.has\(item.id\)\) continue;/);
+  // 一个入口收两种包，靠 app 字段自己分辨，不用让人选类型；而且能一次多选。
+  assert.match(html, /payload.app === "nutriflow-photos"\) photos \+= await importPhotos\(payload\);/);
+  assert.match(html, /id="backupImport" multiple/);
+
   evaluate("manualPurchases = []; diningEntries = []; mealPlans = {}");
 });
 
@@ -2134,7 +2152,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v151"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v152"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 

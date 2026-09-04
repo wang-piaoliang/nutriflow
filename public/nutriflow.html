@@ -1224,7 +1224,8 @@ summary.week-block-head::after{
         <div class="note" id="backupStatus">文字数据随时可以导出。</div>
         <div class="backup-row">
           <button type="button" id="backupExport">导出全部记录</button>
-          <label class="backup-import">导入<input type="file" accept="application/json,.json" id="backupImport"></label>
+          <button type="button" id="backupExportPhotos">导出照片（分批）</button>
+          <label class="backup-import">导入<input type="file" accept="application/json,.json" id="backupImport" multiple></label>
         </div>
         <div class="note" id="syncNote">把网页上手动补记的餐食同步到你自建的 Cloudflare Worker，换设备也能看到。地址已预填，**每台设备各配一次**（口令存在这台设备的浏览器里，不会跟着网址走）；已经配好的那台可以用下面的按钮生成一个链接，在新设备上打开就配好了，不用再手打口令。不填口令就只存本机。照片和“吃完”勾选不走同步。部署方法见仓库 <code>api/README.md</code>。</div>
         <div class="sync-form" id="syncForm">
@@ -1402,7 +1403,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v151</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v152</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -6152,6 +6153,63 @@ function formatBytes(bytes){
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+// 照片得**分批**导出。78MB 的 JPEG 转成 base64 是 104MB，而 JSON.stringify 一个
+// 那么大的数组，峰值内存是它的两三倍——手机上的标签页就是这么被系统杀掉的。
+// 一次只装 10MB 左右，转完一批就下载一批、立刻松手，峰值始终很低。
+const PHOTO_BATCH_BYTES = 10 * 1024 * 1024;
+function photoBatches(photos){
+  const batches = [];
+  let current = [];
+  let bytes = 0;
+  photos.forEach(photo => {
+    const size = (photo.blob && photo.blob.size) || 0;
+    // 单张就超限也得自成一批，否则它永远进不去。
+    if (current.length && bytes + size > PHOTO_BATCH_BYTES){
+      batches.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(photo);
+    bytes += size;
+  });
+  if (current.length) batches.push(current);
+  return batches;
+}
+function downloadJson(name, text){
+  const blob = new Blob([text], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return blob.size;
+}
+// 导入照片：同 id 的跳过，所以同一个包导两遍不会变成两张。
+async function importPhotos(payload){
+  if (!payload || payload.app !== "nutriflow-photos" || !Array.isArray(payload.photos)){
+    throw new Error("这不像是 NutriFlow 导出的照片包。");
+  }
+  const existing = new Set((await listPrivatePhotos()).map(photo => photo.id));
+  let added = 0;
+  for (const item of payload.photos){
+    if (!item || !item.id || !item.data || existing.has(item.id)) continue;
+    const bytes = Uint8Array.from(atob(item.data), ch => ch.charCodeAt(0));
+    await putPrivatePhoto({
+      id: item.id,
+      receiptId: item.receiptId || "",
+      blob: new Blob([bytes], {type: item.mime || "image/jpeg"}),
+      normalized: true,
+      createdAt: item.createdAt || new Date().toISOString(),
+      ...(item.meal ? {meal: item.meal} : {}),
+    });
+    existing.add(item.id);
+    added += 1;
+  }
+  return added;
+}
 (function initBackup(){
   const exportBtn = document.getElementById("backupExport");
   const importInput = document.getElementById("backupImport");
@@ -6164,26 +6222,65 @@ function formatBytes(bytes){
       : "文字数据随时可以导出。这台设备上还没有照片。");
   });
   exportBtn.addEventListener("click", () => {
-    const text = JSON.stringify(exportPayload(), null, 2);
-    const blob = new Blob([text], {type: "application/json"});
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `nutriflow-${todayValue()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-    say(`已导出（${formatBytes(blob.size)}）。这个文件里没有同步口令和 API key。`);
+    const size = downloadJson(`nutriflow-${todayValue()}.json`, JSON.stringify(exportPayload(), null, 2));
+    say(`已导出（${formatBytes(size)}）。这个文件里没有同步口令和 API key。`);
   });
-  importInput.addEventListener("change", async () => {
-    const file = (importInput.files || [])[0];
-    if (!file) return;
+  const photoBtn = document.getElementById("backupExportPhotos");
+  photoBtn?.addEventListener("click", async () => {
+    photoBtn.disabled = true;
     try{
-      const touched = importPayload(JSON.parse(await file.text()));
+      const photos = await listPrivatePhotos();
+      if (!photos.length){ say("这台设备上还没有照片。"); return; }
+      const batches = photoBatches(photos);
+      for (let index = 0; index < batches.length; index += 1){
+        say(`正在导出照片 ${index + 1}/${batches.length} 包…别关页面。`);
+        // 一批一批地转，转完立刻下载并松手——不要先把所有照片都转成 base64 再拼。
+        const items = [];
+        for (const photo of batches[index]){
+          if (!photo.blob) continue;
+          items.push({
+            id: photo.id,
+            receiptId: photo.receiptId || "",
+            mime: photo.blob.type || "image/jpeg",
+            createdAt: photo.createdAt || "",
+            ...(photo.meal ? {meal: photo.meal} : {}),
+            data: await blobToBase64(photo.blob),
+          });
+        }
+        downloadJson(
+          `nutriflow-photos-${todayValue()}-${index + 1}of${batches.length}.json`,
+          JSON.stringify({app: "nutriflow-photos", version: 1, part: index + 1, total: batches.length, photos: items})
+        );
+        // 让浏览器喘口气把上一个 blob 回收掉，不然连着下十个还是会堆起来。
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+      say(`照片导完了，共 ${batches.length} 个文件、${photos.length} 张。到新设备用「导入」把它们一个个选进去（顺序无所谓，重复导也不会变成两张）。`);
+    }catch(error){
+      say(`导出照片失败：${error.message}`);
+    }finally{
+      photoBtn.disabled = false;
+    }
+  });
+  // 一次可以选多个文件：照片包有好几个，一个个点太烦。
+  importInput.addEventListener("change", async () => {
+    const files = Array.from(importInput.files || []);
+    if (!files.length) return;
+    let docs = 0;
+    let photos = 0;
+    try{
+      for (let index = 0; index < files.length; index += 1){
+        say(`正在导入 ${index + 1}/${files.length}…`);
+        const payload = JSON.parse(await files[index].text());
+        // 一个入口收两种包，靠 app 字段自己分辨，不用让人选类型。
+        if (payload && payload.app === "nutriflow-photos") photos += await importPhotos(payload);
+        else docs += importPayload(payload);
+      }
       render();
       void renderDining();
-      say(`已导入 ${touched} 类数据，和这台设备原有的记录合并了（没有覆盖）。`);
+      const parts = [];
+      if (docs) parts.push(`${docs} 类记录`);
+      if (photos) parts.push(`${photos} 张照片`);
+      say(`已导入 ${parts.join(" + ") || "0 项"}，和这台设备原有的合并了（没有覆盖）。`);
     }catch(error){
       say(`导入失败：${error.message}`);
     }finally{

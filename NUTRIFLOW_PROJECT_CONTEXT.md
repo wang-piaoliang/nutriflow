@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v151`
+- 当前离线缓存：`nutriflow-pwa-v152`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-04：**照片分批导出/导入**（用户实测照片共 **78.2 MB**）。78MB 的 JPEG 转成 base64 是约 104MB，而 `JSON.stringify` 一个那么大的数组峰值内存是它的两三倍——手机上的标签页就是这么被系统杀掉的。所以照片**一批 10MB**：转完一批立刻下载并松手，中间 `await` 400ms 让浏览器回收上一个 blob，峰值内存始终很低。78.2MB 大约 8 个文件。
+  - `photoBatches()` 的一个边界：**单张就超限也得自成一批**，否则它永远进不去（已加断言：一张 25MB + 一张 1KB → 两批）。
+  - `importPhotos()` 按 id 跳过已有的，所以同一个包导两遍不会变成两张。导入入口**一次可多选**，靠 `app` 字段自己分辨是记录包还是照片包，不用让人选类型。
+  - CDP 往返实测：6 张图导出 → 清空本机照片 → 导回来，张数、总字节、**餐次标记**、**小票归属**、blob 有效性全部还原；重复导入加 0 张；坏文件干脆拒绝。另测得 9.7MB 的图导出成 12.9MB 文件，**正好是 +33%**，和预估一致。
+  - 测试脚本本身踩了个坑记一下：把 12.9MB 的 payload 通过 `Runtime.evaluate` 内联传回宿主会直接卡死 CDP。大数据要留在页面里（`window.__packs`），只把小结果 `returnByValue` 回来。离线缓存与版本号升至 v152。
 
 - 2026-09-04：**加「备份 / 搬家」：导出、导入、以及照片到底占多大**（用户想要 PRETTIER 那样的账号制零配置同步；这是三步走的第一步，无论架构改不改都该有——在此之前用户连备份都没有，localStorage 被清一次就全没了）。
   - `exportPayload()` 把 `SYNC_DOCS` 的六份文档 + `consumed`（吃完勾选，它不走云同步但同样是用户数据）打成一个 JSON 下载。实测那点数据只有几百字节——**文字部分搬家毫无风险**。
