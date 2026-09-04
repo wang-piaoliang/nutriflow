@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v150`
+- 当前离线缓存：`nutriflow-pwa-v151`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,13 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-04：**加「备份 / 搬家」：导出、导入、以及照片到底占多大**（用户想要 PRETTIER 那样的账号制零配置同步；这是三步走的第一步，无论架构改不改都该有——在此之前用户连备份都没有，localStorage 被清一次就全没了）。
+  - `exportPayload()` 把 `SYNC_DOCS` 的六份文档 + `consumed`（吃完勾选，它不走云同步但同样是用户数据）打成一个 JSON 下载。实测那点数据只有几百字节——**文字部分搬家毫无风险**。
+  - **一个密钥都不导出**（同步口令、API key）：这个文件是要发来发去的。已加断言扫描导出内容里不得出现 `sync_token` / `AIza` / `sk-`。
+  - `importPayload()` 是**合并不是覆盖**：数组复用云同步那套 `mergeById`（本地优先），对象按 key 合。导到已有数据的设备上不会把那边抹掉，重复导入也不会翻倍（都有断言）。不认识的文件干脆拒绝。
+  - `photoFootprint()` 数出照片张数和总字节，写在这张卡的说明里。**这是为了不再靠猜**：跨域名搬照片只能转 base64 写进一个文件（体积涨 1/3），几十上百 MB 在手机上拼成一整个字符串很容易把标签页搞崩——先知道真实体积，再决定一把梭还是分批。
+  - 下一步（未做，等用户看到照片体积后决定）：把 NutriFlow 挪到本仓库那个 Next.js 托管应用上，用 `app/chatgpt-auth.ts` 的请求头身份做账号制同步，实现真正的零配置。代价是网址变化 + 主屏图标重加 + 数据迁移一次。离线缓存与版本号升至 v151。
 
 - 2026-09-04：**换设备一键带同步配置**（用户："为什么这个项目会自动同步，但这个不会，我现在在电脑上打开"）。不是 bug：同步口令**按浏览器**存在 localStorage 里，不跟着网址走，所以新设备一律是"未配置"，只剩写死在 HTML 里那批数据（截图里停在 2026-07-30、「本周吃到 0 天」）。他另一个项目有服务端账号体系，登录即同步，这个是 GitHub Pages 上的单文件静态页、没有登录，两者的架构差别就在这儿。
   - 与其让人去翻口令再手打一遍，加一个「把同步配置带到另一台设备」：在已配好的设备上生成 `#sync=<base64(url,token)>` 链接，新设备打开即配好。

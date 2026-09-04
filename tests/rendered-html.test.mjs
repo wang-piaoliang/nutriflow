@@ -1134,6 +1134,49 @@ test("re-anchors a receipt year the model misread", async () => {
   evaluate(`manualPurchases = []`);
 });
 
+test("exports and imports everything except the secrets", async () => {
+  const { evaluate } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // localStorage 和 IndexedDB 都是按域名隔离的：换网址等于换个空房间，浏览器一清
+  // 也全没。搬家和备份都得靠这个（用户要的是「至少先把非照片部分」能带走）。
+  evaluate('addPurchaseReceipt({date:"2026-09-03 19:00", store:"盒马鲜生", items:[{name:"长茄", amount:"约500g", price:4.9}]})');
+  evaluate('addDining({date:"2026-09-03", place:"作作烧肉", price:410})');
+  evaluate('setMealPlan("2026-09-03", "三文鱼 香菇")');
+  const payload = evaluate("exportPayload()");
+  assert.equal(payload.app, "nutriflow");
+  assert.deepEqual(Object.keys(payload.docs).sort(),
+    ["consumed", "deleted", "diet_entries", "dining", "meal_plan", "purchases", "remaining"]);
+
+  // **一个密钥都不能进这个文件**——它是要发来发去的。
+  const text = JSON.stringify(payload);
+  assert.ok(!/sync_token|nutriflow_ai_key|AIza|sk-/.test(text), "导出文件里不能有任何密钥");
+  assert.ok(!/exportPayload[\s\S]{0,400}SYNC_TOKEN_KEY/.test(html), "导出不该碰口令");
+
+  // 导入是**合并**不是覆盖：导到一台已经有数据的设备上，不能把那边的记录抹掉。
+  evaluate("manualPurchases = []; diningEntries = []; mealPlans = {}");
+  assert.equal(evaluate(`importPayload(${JSON.stringify(payload)})`), 7);
+  assert.equal(evaluate("manualPurchases.length"), 1);
+  assert.equal(evaluate("diningEntries.length"), 1);
+  assert.equal(evaluate('mealPlans["2026-09-03"]'), "三文鱼 香菇");
+  // 落盘了，不只是改了内存里的变量。
+  assert.equal(evaluate('JSON.parse(localStorage.getItem("nutriflow_purchases_v1") || "[]").length'), 1);
+  // 再导一次不能翻倍。
+  evaluate(`importPayload(${JSON.stringify(payload)})`);
+  assert.equal(evaluate("manualPurchases.length"), 1, "重复导入不该翻倍");
+
+  // 不认识的文件要干脆拒绝，不能把现有数据搞坏。
+  assert.throws(() => evaluate('importPayload({hello:1})'), /不像是 NutriFlow/);
+  assert.equal(evaluate("manualPurchases.length"), 1);
+
+  // 照片不在这个文件里，但得让人知道它有多大——搬家之前总要先知道这个数。
+  assert.match(html, /async function photoFootprint\(\)/);
+  assert.match(html, /照片不在这个文件里/);
+  assert.equal(evaluate("formatBytes(1536)"), "2 KB");
+  assert.equal(evaluate("formatBytes(5 * 1024 * 1024)"), "5.0 MB");
+  evaluate("manualPurchases = []; diningEntries = []; mealPlans = {}");
+});
+
 test("carries the sync setup to another device through a link", async () => {
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
 
@@ -2091,7 +2134,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v150"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v151"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
