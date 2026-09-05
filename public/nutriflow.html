@@ -475,7 +475,9 @@ summary.week-block-head::after{
 .cat-head.static b{color:var(--text)}
 .cat-items{display:grid;gap:3px;padding:4px 0 2px}
 .cat-item{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.cat-item{display:flex;align-items:baseline;gap:6px}
 .cat-item small{color:var(--muted);font-size:12px}
+.cat-item b{margin-left:auto;white-space:nowrap;color:var(--muted);font-weight:500}
 .price-fold{border:0;background:none;color:var(--muted);font-size:14px;padding:0 6px 0 0;line-height:1}
 /* 「全部折叠」也是轻量的文字按钮，不跟 ＋ 抢注意力。 */
 .week-fold-all{
@@ -1276,6 +1278,19 @@ summary.week-block-head::after{
         </div>
       </article>
 
+      <article class="card desktop-span">
+        <div class="section-title">
+          <h2>吃掉了多少</h2>
+          <span class="subtle"><button class="price-fold" type="button" id="eatenFold" title="收起" aria-label="收起">▾</button><span id="eatenMeta"></span></span>
+        </div>
+        <div id="eatenBody">
+          <div class="note" id="eatenNote">按重量买的食材，勾了「吃完」算整份、拖过滑条算已用掉的那部分。调料油水不计。</div>
+          <div class="tabs" id="eatenTabs"></div>
+          <div class="bars" id="eatenChart"></div>
+          <div id="eatenCategories"></div>
+        </div>
+      </article>
+
 
       <article class="card desktop-span">
         <div class="section-title has-sticky-tabs">
@@ -1403,7 +1418,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v156</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v157</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -4141,6 +4156,7 @@ function render(){
   `).join("");
   void renderShopping();
   renderPriceComparison();
+  renderEaten();
   renderStats();
   void renderDining();
   renderFoods();
@@ -4581,6 +4597,74 @@ function storeTotals(mode, periodKey){
     .filter(entry => entry.spend > 0)
     .sort((a, b) => b.spend - a.spend);
 }
+// ---- 吃掉了多少（按周/按月）----
+// **餐食记录里没有分量**：你记的是「牛排 · 茄子 · 土豆」，没有克数。所以"吃了多少"
+// 只能从采购这边推：**吃掉的量 = 采购量 × 消耗比例**。三种情况：
+//   ① 勾了「吃完」→ 整份都吃掉了，算在**吃完那天**所在的周/月；
+//   ② 拖过剩余量滑条 → 吃掉 (100-剩余)%，算在**今天**（正在吃的东西，没有更好的落点）；
+//   ③ 没动过（剩 100%）→ 一点没吃，不计。
+// 只算按重量买的（有 kg/g/斤），"1 盒""2 袋"折不成克数，跟着算只会得出假精度。
+function eatenRows(){
+  const rows = [];
+  allPurchases().forEach(row => {
+    if (!row.bought || row.placeholder) return;
+    if (NOT_INGREDIENT.includes(row.foodId)) return;   // 调料、油、水、账单行不算"吃的量"
+    if (!isWeighedAmount(row.amount)) return;
+    const grams = parseAmount(row.amount);
+    if (!grams) return;
+    const done = consumed[row.id];
+    // 吃完那天可能没记（早期数据的 consumed 是 true 不是时间戳），退回买入日。
+    const when = done
+      ? (consumedTimestamp(done) ? dayValue(new Date(consumedTimestamp(done))) : String(row.date).slice(0, 10))
+      : todayValue();
+    const ratio = done ? 1 : (100 - remainingFor(row.id)) / 100;
+    if (ratio <= 0) return;
+    rows.push({
+      foodId: row.foodId,
+      item: row.item,
+      grams: grams * ratio,
+      whole: Boolean(done),
+      date: when,
+    });
+  });
+  return rows;
+}
+function eatenByPeriod(mode){
+  const buckets = new Map();
+  eatenRows().forEach(row => {
+    const period = periodOf(row.date, mode);
+    if (!period) return;
+    const bucket = buckets.get(period.key) || {key: period.key, label: period.label, grams: 0, count: 0};
+    bucket.grams += row.grams;
+    bucket.count += 1;
+    buckets.set(period.key, bucket);
+  });
+  return Array.from(buckets.values()).sort((a, b) => b.key.localeCompare(a.key)).slice(0, 8).reverse();
+}
+// 某一期里各大类吃了多少，以及每类下面具体是哪些食材。
+// 和采购统计一个结构（大类 → 明细），这样两张卡看起来是一套东西。
+function eatenTotals(mode, periodKey){
+  const groups = purchaseGroupRules.map(rule => ({name: rule.name, icon: rule.icon, grams: 0, items: new Map()}));
+  const other = {name: "其他", icon: "🛒", grams: 0, items: new Map()};
+  eatenRows().forEach(row => {
+    if (periodKey){
+      const period = periodOf(row.date, mode);
+      if (!period || period.key !== periodKey) return;
+    }
+    const index = purchaseGroupRules.findIndex(rule => rule.ids.includes(row.foodId));
+    const group = index < 0 ? other : groups[index];
+    group.grams += row.grams;
+    const key = row.foodId || row.item;
+    const entry = group.items.get(key) || {name: shortItem(row.item) || row.item, grams: 0, times: 0};
+    entry.grams += row.grams;
+    entry.times += 1;
+    group.items.set(key, entry);
+  });
+  return groups.concat(other)
+    .filter(group => group.grams > 0)
+    .map(group => ({...group, items: Array.from(group.items.values()).sort((a, b) => b.grams - a.grams)}))
+    .sort((a, b) => b.grams - a.grams);
+}
 function priceCategoryOf(foodId){
   const rule = purchaseGroupRules.find(item => item.ids.includes(foodId));
   return rule ? rule.name : "";
@@ -4869,6 +4953,7 @@ async function renderShopping(){
       consumed[input.dataset.consumed] = input.checked ? new Date().toISOString() : false;
       saveConsumed();
       void renderShopping();
+      renderEaten();   // 「吃掉了多少」正是靠这个勾算的，勾完当场要变
     });
   });
   document.querySelectorAll("[data-remaining]").forEach(input => {
@@ -4881,6 +4966,7 @@ async function renderShopping(){
       const label = document.querySelector(`[data-remaining-label="${id}"]`);
       if (label) label.textContent = `剩 ${value}%`;
       saveRemaining();
+      renderEaten();   // 同上：滑条也是"吃掉多少"的输入
     });
   });
 
@@ -5449,6 +5535,100 @@ function searchAll(keyword, scopes){
 }
 // 单价对比可折叠：内容不短，平时收起来能少滑一大段（用户："食材单价，也加一个
 // 可折叠的小icon"）。状态存本机，下次进来还是收着的。
+// ---- 「吃掉了多少」这张卡 ----
+// 和采购统计刻意做成一套：一样的周/月切换、一样的条形分期、一样的「大类 → 明细」
+// 展开。两张卡回答的是同一个问题的两面——一个是花了多少钱买，一个是真吃掉了多少。
+let eatenMode = "week";
+let eatenPeriod = "";
+const closedEatenCategories = new Set();   // 记「收起了哪几类」，新分类默认展开
+const EATEN_FOLD_KEY = "nutriflow_eaten_folded";
+function eatenFolded(){ return localStorage.getItem(EATEN_FOLD_KEY) === "1"; }
+function applyEatenFold(){
+  const folded = eatenFolded();
+  const btn = document.getElementById("eatenFold");
+  if (btn){
+    btn.textContent = folded ? "▸" : "▾";
+    btn.title = btn.ariaLabel = folded ? "展开" : "收起";
+  }
+  const box = document.getElementById("eatenBody");
+  if (box) box.hidden = folded;
+}
+function renderEaten(){
+  const box = document.getElementById("eatenCategories");
+  if (!box) return;
+  applyEatenFold();
+  const periods = eatenByPeriod(eatenMode);
+  const meta = document.getElementById("eatenMeta");
+  const all = eatenTotals(eatenMode, "");
+  if (meta) meta.textContent = all.length ? `共 ${formatWeight(all.reduce((sum, g) => sum + g.grams, 0))}` : "还没数据";
+
+  const tabs = document.getElementById("eatenTabs");
+  if (tabs){
+    tabs.innerHTML = [["week", "🗓 按周"], ["month", "📆 按月"]]
+      .map(([mode, label]) => `<button class="tab-chip${eatenMode === mode ? " active" : ""}" type="button" data-eaten-mode="${mode}">${label}</button>`).join("");
+    tabs.querySelectorAll("[data-eaten-mode]").forEach(button => {
+      button.addEventListener("click", () => { eatenMode = button.dataset.eatenMode; eatenPeriod = ""; renderEaten(); });
+    });
+  }
+
+  // 选中的那一期若已不存在（数据变了），退回看全部——和采购统计同一个坑。
+  if (eatenPeriod && !periods.some(bucket => bucket.key === eatenPeriod)) eatenPeriod = "";
+  const ceiling = periods.reduce((max, bucket) => Math.max(max, bucket.grams), 0);
+  const chart = document.getElementById("eatenChart");
+  if (chart){
+    chart.innerHTML = periods.length ? periods.map(bucket => `<button type="button" class="bar-row period-row${bucket.key === eatenPeriod ? " on" : ""}" data-eaten-period="${bucket.key}" aria-pressed="${bucket.key === eatenPeriod}">
+      <div class="bar-head"><span>${bucket.label} · ${bucket.count} 样</span><b>${formatWeight(bucket.grams)}</b></div>
+      <div class="track"><div class="fill" style="width:${ceiling ? Math.max(4, Math.round(bucket.grams / ceiling * 100)) : 0}%"></div></div>
+    </button>`).join("") : "";
+    chart.querySelectorAll("[data-eaten-period]").forEach(button => {
+      button.addEventListener("click", () => {
+        eatenPeriod = eatenPeriod === button.dataset.eatenPeriod ? "" : button.dataset.eatenPeriod;
+        renderEaten();
+      });
+    });
+  }
+
+  const scope = eatenPeriod ? (periods.find(bucket => bucket.key === eatenPeriod) || {}).label : "";
+  const note = document.getElementById("eatenNote");
+  if (note){
+    note.textContent = all.length
+      ? (scope ? `下面只看 ${scope} 吃掉的。再点上面那一条取消。` : "按重量买的食材，勾了「吃完」算整份、拖过滑条算已用掉的那部分。调料油水不计。")
+      : "还没有可统计的量：在「现有食材」里勾掉吃完的，或者拖一下剩余量滑条，这里就有数了。";
+  }
+
+  const groups = eatenTotals(eatenMode, eatenPeriod);
+  if (!groups.length){ box.innerHTML = ""; return; }
+  const total = groups.reduce((sum, group) => sum + group.grams, 0) || 1;
+  const overview = `<div class="cat-head static">
+    <span>⚖️ 合计${scope ? ` · ${scope}` : ""}</span>
+    <b>${formatWeight(total)}</b>
+  </div>
+  <div class="chart-row">
+    ${donutSvg(groups.map(group => ({label: group.name, value: group.grams, text: formatWeight(group.grams)})), 132)}
+    <div class="legend">${groups.map((group, index) => `<span class="legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${group.icon} ${group.name}<b>${Math.round(group.grams / total * 100)}%</b></span>`).join("")}</div>
+  </div>`;
+  // 点大类展开具体食材（用户："再看是否可以点开每大类下面具体的食材量"）。默认展开。
+  const sections = groups.map(group => {
+    const folded = closedEatenCategories.has(group.name);
+    const items = group.items.slice(0, 20);
+    return `<section class="cat-block">
+      <button class="cat-head" type="button" data-eaten-cat="${group.name}" aria-expanded="${!folded}">
+        <span>${folded ? "▸" : "▾"} ${group.icon} ${group.name}</span>
+        <b>${formatWeight(group.grams)} · ${Math.round(group.grams / total * 100)}%</b>
+      </button>
+      ${folded ? "" : `<div class="cat-items">${items.map(item => `<div class="cat-item">${item.name}<small> · ${item.times} 次</small><b>${formatWeight(item.grams)}</b></div>`).join("")}${group.items.length > items.length ? `<div class="cat-item"><small>还有 ${group.items.length - items.length} 样</small></div>` : ""}</div>`}
+    </section>`;
+  }).join("");
+  box.innerHTML = overview + sections;
+  box.querySelectorAll("[data-eaten-cat]").forEach(button => {
+    button.addEventListener("click", () => {
+      const name = button.dataset.eatenCat;
+      if (closedEatenCategories.has(name)) closedEatenCategories.delete(name);
+      else closedEatenCategories.add(name);
+      renderEaten();
+    });
+  });
+}
 const PRICE_FOLD_KEY = "nutriflow_price_folded";
 function priceFolded(){ return localStorage.getItem(PRICE_FOLD_KEY) === "1"; }
 function applyPriceFold(){
@@ -5539,6 +5719,9 @@ function applyWeeklyFold(){
 })();
 (function initPriceFold(){
   bindFoldHead("priceFold", PRICE_FOLD_KEY, priceFolded, applyPriceFold);
+})();
+(function initEatenFold(){
+  bindFoldHead("eatenFold", EATEN_FOLD_KEY, eatenFolded, applyEatenFold);
 })();
 // 跳到某条记录：先切到它所在的 tab，收起搜索面板，再把目标滚到视野里并短暂高亮。
 // 目标可能藏在折叠的 <details> 里（采购小票），得先展开，否则滚过去是空的。

@@ -2246,6 +2246,59 @@ test("folds the eating-out card too", async () => {
   assert.ok(html.indexOf('const DINING_FOLD_KEY') < html.indexOf("async function renderDining()"));
 });
 
+test("works out how much of each food was actually eaten", async () => {
+  const { evaluate, elements, context } = await runAppScript();
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+
+  // 用户要按周/月看"吃了每种食材多少"。但**餐食记录里没有分量**（记的是
+  // 「牛排 · 茄子 · 土豆」，没有克数），所以只能从采购推：量 × 消耗比例。
+  // 一点状态都没有时必须是 0，不能凭空造数。
+  assert.equal(evaluate("eatenRows().length"), 0, "没勾吃完、没拖滑条时不该有量");
+
+  evaluate(`(() => {
+    const rows = allPurchases().filter(r => r.bought && isWeighedAmount(r.amount));
+    consumed[rows[0].id] = "2026-08-05T10:00:00.000Z";   // 吃完
+    remaining[rows[1].id] = 40;                           // 吃掉 60%
+    return rows.length;
+  })()`);
+  const rows = evaluate("eatenRows()");
+  const whole = rows.find((row) => row.whole);
+  const partial = rows.find((row) => !row.whole);
+  // 勾了「吃完」算整份，算在**吃完那天**；没勾的按滑条算已用掉的那部分。
+  assert.equal(whole.date, "2026-08-05");
+  assert.equal(whole.grams, evaluate("parseAmount(allPurchases().filter(r => r.bought && isWeighedAmount(r.amount))[0].amount)"));
+  const bought = evaluate("parseAmount(allPurchases().filter(r => r.bought && isWeighedAmount(r.amount))[1].amount)");
+  assert.equal(Math.round(partial.grams), Math.round(bought * 0.6), "剩 40% ＝ 吃掉 60%");
+  // 正在吃的没有"吃完日"，落在今天。
+  assert.equal(partial.date, evaluate("todayValue()"));
+
+  // 只算按重量买的：「1 盒」「2 袋」折不成克数，跟着算只会得出假精度。
+  assert.match(html, /if \(!isWeighedAmount\(row.amount\)\) return;/);
+  // 调料油水不是"吃的量"。
+  assert.match(html, /if \(NOT_INGREDIENT.includes\(row.foodId\)\) return;/);
+
+  // 大类 → 明细，和采购统计一个结构。
+  const groups = evaluate('eatenTotals("month", "")');
+  assert.ok(groups.length > 0);
+  assert.ok(groups.every((group) => group.grams > 0));
+  const gramsSorted = groups.map((group) => group.grams);
+  assert.deepEqual(gramsSorted, gramsSorted.slice().sort((a, b) => b - a), "大类按量从多到少");
+  assert.ok(groups[0].items.length > 0, "每一类下面要能点开具体食材");
+
+  // 分期：吃完那天决定落在哪一周/哪一月。
+  const weeks = evaluate('eatenByPeriod("week")');
+  assert.ok(weeks.some((bucket) => bucket.key === "2026-08-03"), `吃完于 8-05 该落在 8/3 那周：${weeks.map((b) => b.key).join(",")}`);
+
+  await context.renderShopping();
+  evaluate("renderEaten()");
+  const card = elements.get("eatenCategories").innerHTML;
+  assert.match(card, /data-eaten-cat=/);
+  assert.match(card, /⚖️ 合计/);
+  // 勾「吃完」「拖滑条」之后要当场重算——它们正是这张卡的输入。
+  assert.match(html, /saveConsumed\(\);\n      void renderShopping\(\);\n      renderEaten\(\);/);
+  assert.match(html, /saveRemaining\(\);\n      renderEaten\(\);/);
+});
+
 test("averages the unit price per category", async () => {
   const { evaluate, elements } = await runAppScript();
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
@@ -2340,7 +2393,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v156"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v157"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
