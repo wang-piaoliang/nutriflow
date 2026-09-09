@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v157`
+- 当前离线缓存：`nutriflow-pwa-v158`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,11 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-09：**每周计划里那排食材 chip 不跟着库存变**（用户："每周计划里的食材选项不会随着我剩下的食材更新"）。两个独立的毛病，一起修了：
+  - **① 算完就不再算了。** chip 是在输入框 `focus` 那一刻算出来的，之后库存怎么变都不回头看：勾掉「吃完」、拖剩余量、识别出一单新采购走的都是 `renderShopping`，它从不碰已经挂出来的这排 chip。切页也未必让输入框失焦，回来再点一下就不会再触发 `focus`——于是那排 chip 可以一整天停在早上的样子。修法：记住 chip 当前挂在哪个框下面（`planChipsArea`），`renderShopping` 末尾调 `refreshPlanChips()` 就地重算；同时给输入框补一个 `click` 监听（已经聚焦的框再点一下正是"我刚改完库存回来看看"）。算出来的名单没变就不动 DOM（比对 `planChipsSignature`），免得打字时底下闪。
+  - **② 名字会写错。** 取名原来是 `priceFoodNames[foodId] || shortItem(item)`——**先查别名表**。别名表按 `foodId` 取，可食材目录很粗：秋葵、芦笋、茼蒿、芹菜都落在 `leafy` 上，山药莲藕落在 `radish` 上，青椒落在 `pepper` 上。结果买回来的秋葵在计划里写成「生菜」、山药写成「白萝卜」——摆出来是个**错的菜名**，比长一点糟糕得多。改成先用商品名自己剪出来的短名，只有两种情况才用别名：商品名里本来就含这个词（「盒马日日鲜 生菜」→「生菜」），或者剪完还是超过 6 个字（「国产谷饲黄牛牛嫩肉」→「牛肉」）。fixture 那 20 个 chip 一个没变，说明没退化。
+  - 实测（headless Chromium，chip 已经挂在页面上、全程不再碰输入框）：勾掉生菜 → 那颗 chip 当场消失；塞一笔「新鲜秋葵」→ 当场多出一颗，且写的是「秋葵」不是「生菜」。已加回归测试。离线缓存与版本号升至 v158。
 
 - 2026-09-05：**新增「吃掉了多少」：按周/月统计各大类和具体食材的实际消耗量**（用户："统一下我每月、每周吃的每种食材的量…先算大类，再看是否可以点开每大类下面具体的食材量"）。在「食材」页，排在「现有食材」下面。
   - **数据从哪来是这件事的关键**：餐食记录**没有分量**（记的是「牛排 · 茄子 · 土豆」，没有克数），所以"吃了多少"不可能从那边算。真正带量的是采购（`amount`）加上消耗状态：`吃掉的量 = 采购量 × 消耗比例`。三种情况——① 勾了「吃完」→ 整份，算在**吃完那天**所在的周/月；② 拖过剩余量滑条 → 吃掉 `(100-剩余)%`，算在**今天**（正在吃的东西没有更好的落点）；③ 没动过 → 一点没吃，不计。

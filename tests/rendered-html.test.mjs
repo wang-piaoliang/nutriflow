@@ -2387,13 +2387,42 @@ test("strips the brand even when it trails in half-width brackets", async () => 
   assert.ok(names.every(name => !name.includes("盒马")), `chip 带品牌：${names.join(" ")}`);
 });
 
+test("keeps the plan ingredient chips in step with the stock list", async () => {
+  const { evaluate } = await runAppScript();
+
+  // chip 是在点进输入框那一刻算的，可库存会在这之后继续变。之前算完就挂在那儿不动了，
+  // 勾掉「吃完」、识别出一单新采购都不会回头刷新它
+  // （用户："每周计划里的食材选项不会随着我剩下的食材更新"）。
+  // 真正挂 DOM 的那步在浏览器里，这里守住它依赖的那个纯函数：同一次调用里，
+  // 库存变了 planIngredients() 就得跟着变。
+  const before = evaluate("planIngredients().map(chip => chip.name)");
+  const lettuce = evaluate('allPurchases().find(row => row.bought && !consumed[row.id] && row.item.includes("生菜"))');
+  assert.ok(lettuce, "fixture 里应该有生菜");
+  evaluate(`allPurchases().filter(row => row.item.includes("生菜")).forEach(row => { consumed[row.id] = new Date().toISOString(); })`);
+  const afterConsumed = evaluate("planIngredients().map(chip => chip.name)");
+  assert.ok(before.includes("生菜"));
+  assert.ok(!afterConsumed.includes("生菜"), "勾了吃完就不该再出现在 chip 里");
+
+  evaluate(`manualPurchases.push({id:"chip-test", receiptId:"chip-r", date:"2026-07-24 10:00", store:"盒马", item:"新鲜秋葵", amount:"300g", totalPrice:8.8, foodId:foodIdForItem("秋葵"), bought:true, manual:true})`);
+  const afterBuy = evaluate("planIngredients().map(chip => chip.name)");
+  assert.ok(afterBuy.some(name => name.includes("秋葵")), `新买的该冒出来：${afterBuy.join(" ")}`);
+
+  // 而且要写对名字。别名表是按 foodId 取的，可目录很粗——秋葵、芦笋、茼蒿都落在 leafy 上。
+  // 照 foodId 取别名，买回来的秋葵在计划里就成了「生菜」。
+  assert.ok(!afterBuy.includes("生菜"), "秋葵不该被写成生菜");
+  // 但长名字还是得靠别名兜底，不能因此退回「黄牛牛嫩肉」这种截出来的碎片。
+  assert.ok(afterBuy.includes("牛肉"), `长商品名仍要收敛成别名：${afterBuy.join(" ")}`);
+
+  evaluate(`manualPurchases = manualPurchases.filter(row => row.id !== "chip-test")`);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v157"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v158"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
