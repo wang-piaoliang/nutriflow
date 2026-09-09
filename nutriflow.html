@@ -1418,7 +1418,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v157</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v158</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -4290,11 +4290,17 @@ function planIngredients(){
     if (["milk", "greekYogurt", "cheese", "soyMilk"].includes(row.foodId)) return;
     // 名字太长没法扫（用户："不用写品牌，写实际是什么就行，比如 排骨、小里脊、后腿肉"）。
     // 先用短名表，再退回剥掉品牌的原名，最后硬截断——chip 是给人快速点的，不是标签全称。
-    let name = priceFoodNames[row.foodId] || shortItem(row.item);
-    // 剥完品牌还长就截尾——品类词通常在后面（「国产谷饲黄牛牛嫩肉」→「黄牛牛嫩肉」）。
-    // 但先把前面的修饰词整段丢掉再截，否则「冰鲜 猪汤骨」这种带空格的会被从中间切开。
+    // 先剥品牌、再把前面的修饰词整段丢掉（「冰鲜 猪汤骨」不能从中间切开），
+    // 品类词通常在最后一段。
+    let name = shortItem(row.item);
     const tail = name.split(/\s+/).filter(Boolean).pop() || name;
     if (tail.length >= 2 && tail.length <= 6) name = tail;
+    // 别名表是按 foodId 取的，用来给「国产谷饲黄牛牛嫩肉」这种名字兜底。但目录本身很粗：
+    // 秋葵、芦笋、茼蒿、芹菜都落在 leafy 上，山药莲藕落在 radish 上，直接照 foodId 取别名，
+    // 买回来的秋葵在计划里就写成「生菜」了——摆出来是个错的菜名，比长一点糟糕得多。
+    // 所以只有两种情况才用别名：商品名里本来就有这个词，或者自己的名字剪完还是太长。
+    const alias = priceFoodNames[row.foodId];
+    if (alias && (String(row.item).includes(alias) || name.length > 6)) name = alias;
     else if (name.length > 6) name = name.slice(-6);
     if (name && !seen.has(name)) seen.set(name, row.foodId);
   });
@@ -4394,11 +4400,29 @@ function renderMealPlan(){
     // 存着的那份就一直是老的（用户："本周计划编辑框里的食材，好像没随着现有食材更新"）。
     // 也不能反过来在库存变化时去调 renderMealPlan——那会把正在打字的框整个换掉。
     area.addEventListener("focus", () => showPlanChips(area));
+    // 已经聚焦的框再点一下不会再发 focus，可这一下往往正是"我刚改完库存回来看看"。
+    area.addEventListener("click", () => showPlanChips(area));
   });
+}
+// chip 是在 focus 那一刻算出来的，可库存会在这之后继续变——勾掉「吃完」、拖剩余、
+// 识别出一单新采购，走的都是 renderShopping，不会回头碰已经挂出来的这排 chip，
+// 于是它就一直停在老样子（用户："每周计划里的食材选项不会随着我剩下的食材更新"）。
+// 而且切页不一定会让输入框失焦，回来再点一下也未必重新触发 focus。
+// 所以：记住 chip 挂在哪个框下面，库存一变就地重算；算出来一样就不动 DOM，免得闪。
+let planChipsArea = null;
+let planChipsSignature = "";
+function refreshPlanChips(){
+  if (!planChipsArea || !planChipsArea.isConnected){ planChipsArea = null; return; }
+  showPlanChips(planChipsArea);
 }
 // 食材 chip 只挂在当前正在编辑的那天下面，一次只出现一处，不然七天七排太吵。
 function showPlanChips(area){
   const chips = planIngredients();
+  const signature = chips.map(chip => `${chip.rank}:${chip.name}`).join("|");
+  const showing = document.querySelector(".plan-chips");
+  if (showing && planChipsArea === area && planChipsSignature === signature) return;
+  planChipsArea = area;
+  planChipsSignature = signature;
   document.querySelectorAll(".plan-chips").forEach(row => row.remove());
   const row = document.createElement("div");
   row.className = "plan-chips";
@@ -4947,6 +4971,8 @@ async function renderShopping(){
   ` : `<div class="note">还没有吃完记录。</div>`;
   // 折叠状态每次重渲染都要回填，否则勾掉一样东西后清单又自己展开了。
   applyStockFold();
+  // 库存刚变过，计划页那排 chip 要跟着变（勾了吃完的当场消失、新买的当场出现）。
+  refreshPlanChips();
   document.getElementById("consumedMeta").textContent = `${consumedItems.length} 件`;
   document.querySelectorAll("[data-consumed]").forEach(input => {
     input.addEventListener("change", () => {
