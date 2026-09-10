@@ -1418,7 +1418,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v158</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v159</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2769,6 +2769,18 @@ function manualReceiptSignatures(){
 // 同一样东西两次记录的写法常常差一点：「悦鲜活 鲜牛奶 950ml」vs「悦鲜活 鲜牛奶」、
 // 规格「950ml/瓶」vs「950ml」。按原文比对就抓不住（用户截图：牛奶出现两次，
 // 实际只买过一笔）。所以先把规格数字和单位从名字里剥掉、空格压平再比。
+// 两条记录是不是"同一样东西被读了两遍"。光看 foodId 不够：牛嫩肉和牛腱肉都是 beef，
+// 真是两块不同的肉，撞上同价同规格就会被误合。所以还要名字对得上——
+// 重叠截图读出来的两个名字总是互相包含（「水果脆甜玉米」/「甜玉米」、
+// 「土豆（黄心）」/「黄心土豆」剥掉括号后是「土豆」/「黄心土豆」），
+// 而牛嫩肉和牛腱肉互不包含。
+function looksLikeSameItem(a, b){
+  const one = normalizeItemName(a);
+  const two = normalizeItemName(b);
+  if (!one || !two) return false;
+  const [shortName, longName] = one.length <= two.length ? [one, two] : [two, one];
+  return shortName.length >= 2 && longName.includes(shortName);
+}
 function normalizeItemName(name){
   return String(name || "")
     .replace(/\d+(?:\.\d+)?\s*(kg|g|ml|l|克|千克|公斤|毫升|升|个|袋|盒|瓶|份|箱|包|枚|片)/gi, "")
@@ -2779,9 +2791,16 @@ function normalizeItemName(name){
 function dedupeManualLines(){
   const seen = new Map();
   const doomed = [];
-  manualPurchases
-    .slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)))
+  // 去重原来只在 `manualPurchases` 里面互相比。可代码里还写死了一批早期的采购
+  // （`purchases`，7/30 那单盒马就在里面），把同一张小票重新拍一遍识别出来的行
+  // 和写死的那条**永远碰不上面**——于是土豆和甜玉米就一直是两条，怎么刷新都在
+  // （用户："甜玉米和土豆都被识别了两遍" → "没有去重？"）。
+  // 所以三道都改成在 `purchases + manualPurchases` 这个全集上比，
+  // 只是写死的那批删不掉：让它们永远排在前面当"留下来的那条"，被判重复的只可能是手工行。
+  const pool = () => purchases.concat(manualPurchases.filter(row => !doomed.includes(row.id)));
+  const seedFirst = (a, b) => Boolean(a.manual) - Boolean(b.manual);
+  pool()
+    .sort((a, b) => seedFirst(a, b) || String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)))
     .forEach(row => {
       // 金额不进 key：识别跑两遍时价格也可能差一点（读到的是优惠前/后），
       // 但同一家店同一天买的同一样东西、同样重量，就是同一笔。
@@ -2795,6 +2814,7 @@ function dedupeManualLines(){
       if (!first){ seen.set(key, row); return; }
       // 同一张单里也可能重复——一单要滚好几屏截图，重叠部分被读了两遍。
       // 真买两份现在是同一行 count:2（v99 起），不会写成两行一模一样的。
+      if (!row.manual) return;
       doomed.push(row.id);
     });
   // 第二道：日期本身可能是错的（`toISOString` 那个 UTC 坑串到了前一天），
@@ -2807,16 +2827,23 @@ function dedupeManualLines(){
   // 串到前一天的那条可能是错的，但"识别没读出日期、退回用今天"的那条同样可能是错的。
   // 改用一个更靠得住的信号：**它所在的那一单有几件商品**。完整识别出来的小票是十几行，
   // 而漂出来的那份往往只剩孤零零一条。所以留行数多的那一单里的，行数一样才按日期早的留。
-  const linesPerReceipt = manualPurchases.reduce((count, row) => {
+  const linesPerReceipt = pool().reduce((count, row) => {
     count[row.receiptId] = (count[row.receiptId] || 0) + 1;
     return count;
   }, {});
   const weight = row => linesPerReceipt[row.receiptId] || 0;
-  const byPrice = new Map();
-  manualPurchases
-    .slice()
-    .filter(row => !doomed.includes(row.id) && Number(row.totalPrice) > 0)
-    .sort((a, b) => weight(b) - weight(a)
+  // 金额原来是**键的一部分**，还要求 `totalPrice > 0` 才参与。于是漏掉了最常见的一种：
+  // 重叠截图切掉了价格那一列，同一样东西被读成两条，一条有价一条没价——名字又不一样
+  // （「水果脆甜玉米」/「甜玉米」），第一道按名字对不上，第二道因为价格是 0 干脆不看它。
+  // 两条就都留下了（用户："甜玉米和土豆都被识别了两遍"）。
+  // 现在金额从"键"降级成"否决票"：店 + 食材 + 规格 + 一天之内先认定是同一笔，
+  // 只有**两条都读到了价格、而且对不上**才判成真买了两回。
+  const byIdentity = new Map();
+  pool()
+    // 有价格的先落座：合并之后留下的要是信息更全的那条。
+    .sort((a, b) => seedFirst(a, b)
+      || weight(b) - weight(a)
+      || (Number(b.totalPrice) > 0) - (Number(a.totalPrice) > 0)
       || String(a.date).localeCompare(String(b.date))
       || String(a.id).localeCompare(String(b.id)))
     .forEach(row => {
@@ -2826,16 +2853,56 @@ function dedupeManualLines(){
       const identity = String(row.foodId || "").startsWith("custom:") || !row.foodId
         ? normalizeItemName(row.item)
         : row.foodId;
+      const key = [shortStore(row.store), identity, parseAmount(row.amount)].join("|");
+      // 一个桶里要存**所有**候选，不能只留第一条：写死的那批排在最前面，
+      // 要是只留它，后面两条真正互为重复的手工行就永远撞不上了（它们只会跟它比日期，
+      // 隔着一个多月，于是都判成"不是同一笔"各自留下）。
+      const bucket = byIdentity.get(key) || [];
+      const here = Number(row.totalPrice) || 0;
+      const twin = bucket.find(other => {
+        const gap = Math.abs(localDate(String(row.date).slice(0, 10)) - localDate(String(other.date).slice(0, 10)));
+        if (gap > 86400000) return false;
+        const kept = Number(other.totalPrice) || 0;
+        if (kept > 0 && here > 0 && kept.toFixed(2) !== here.toFixed(2)) return false;
+        // 放宽出来的那种情况（有一边没读到价）证据弱一档，得再要求名字对得上，
+        // 否则同店同天同规格、其中一条没读到价的牛嫩肉和牛腱肉会被合成一条。
+        if (!(kept > 0 && here > 0) && !looksLikeSameItem(other.item, row.item)) return false;
+        return true;
+      });
+      if (!twin || !row.manual){ bucket.push(row); byIdentity.set(key, bucket); return; }
+      // 留下的那条要是没读到价，就把这条的价捡过去——不然合并等于把金额丢了。
+      // 写死的那批改了也存不下来（下次打开又是代码里那份），所以只补手工行。
+      if (twin.manual && !(Number(twin.totalPrice) > 0) && here > 0){
+        twin.totalPrice = row.totalPrice;
+        if (row.unitPrice && !twin.unitPrice) twin.unitPrice = row.unitPrice;
+      }
+      doomed.push(row.id);
+    });
+  // 第三道：**规格**也可能是被切掉/读错的那一列——玉米在小票上一会儿是「2根」一会儿是
+  // 「500g」，前两道的键里都带着规格，一错就整个失效。这一道把规格拿掉，改成要求
+  // **同一天、金额分毫不差**：散装称重的东西价钱是按重量算出来的，重量不同价钱不可能
+  // 一样；价钱一样而重量对不上，那就是同一行被读了两遍。
+  const byPrice = new Map();
+  pool()
+    .filter(row => Number(row.totalPrice) > 0)
+    .sort((a, b) => seedFirst(a, b)
+      || weight(b) - weight(a)
+      || String(a.date).localeCompare(String(b.date))
+      || String(a.id).localeCompare(String(b.id)))
+    .forEach(row => {
+      const identity = String(row.foodId || "").startsWith("custom:") || !row.foodId
+        ? normalizeItemName(row.item)
+        : row.foodId;
       const key = [
         shortStore(row.store),
+        String(row.date || "").slice(0, 10),
         identity,
-        parseAmount(row.amount),
         Number(row.totalPrice).toFixed(2),
       ].join("|");
-      const first = byPrice.get(key);
-      if (!first){ byPrice.set(key, row); return; }
-      const gap = Math.abs(localDate(String(row.date).slice(0, 10)) - localDate(String(first.date).slice(0, 10)));
-      if (gap <= 86400000) doomed.push(row.id);
+      const bucket = byPrice.get(key) || [];
+      const twin = bucket.find(other => looksLikeSameItem(other.item, row.item));
+      if (!twin || !row.manual){ bucket.push(row); byPrice.set(key, bucket); return; }
+      doomed.push(row.id);
     });
   if (!doomed.length) return 0;
   markDeleted(doomed);

@@ -2387,6 +2387,102 @@ test("strips the brand even when it trails in half-width brackets", async () => 
   assert.ok(names.every(name => !name.includes("盒马")), `chip 带品牌：${names.join(" ")}`);
 });
 
+test("merges a re-read line even when one copy lost its price", async () => {
+  const { evaluate } = await runAppScript();
+
+  // 一单要滚几屏截图，重叠的那一段被读了两遍。重叠处常常正好切掉价格那一列，
+  // 于是同一样东西留下两条：名字不一样（第一道按名字对不上），其中一条没有价格
+  // （第二道原来要求 totalPrice > 0，压根不看它）。两道全漏
+  // （用户："甜玉米和土豆都被识别了两遍"）。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马鲜生（大钟寺店）", items:[
+    {name:"水果脆甜玉米", amount:"2根", price:9.9},
+    {name:"土豆（黄心）", amount:"1kg", price:5.8}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马鲜生", items:[
+    {name:"甜玉米", amount:"2根", price:null},
+    {name:"黄心土豆", amount:"1kg", price:null}]})`);
+  assert.equal(evaluate("manualPurchases.length"), 4);
+  assert.equal(evaluate("dedupeManualLines()"), 2, "两条没读到价的重复行该被收走");
+  assert.equal(evaluate("manualPurchases.length"), 2);
+  // 留下的必须是有价格那条，别把金额一起合没了。
+  const prices = evaluate("manualPurchases.map(row => Number(row.totalPrice)).sort((a,b) => a - b)");
+  assert.deepEqual(JSON.parse(JSON.stringify(prices)), [5.8, 9.9]);
+
+  // 反过来：先落盘的那条没价、后来的有价，也要把价捡回来，不能留个 0。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"甜玉米", amount:"2根", price:null}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"水果脆甜玉米", amount:"2根", price:9.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 1);
+  assert.equal(evaluate("Number(manualPurchases[0].totalPrice)"), 9.9, "合并后金额不能丢");
+
+  // 但**两条都读到价、而且对不上**，那更可能是真买了两回——留着。
+  // （名字得不一样，否则第一道就按"同店同天同名同规格"收走了，压根轮不到这一道。）
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"水果脆甜玉米", amount:"2根", price:9.9}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 18:00", store:"盒马", items:[{name:"甜玉米", amount:"2根", price:12.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "价格明确不同的两条是两次采购");
+  assert.equal(evaluate("manualPurchases.length"), 2);
+
+  // 隔得远的也还是两次，哪怕其中一条没价。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-10 10:00", store:"盒马", items:[{name:"甜玉米", amount:"2根", price:9.9}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"甜玉米", amount:"2根", price:null}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "隔了十二天是真的两次");
+
+  // 规格那一列也会被切掉或读错（玉米一会儿「2根」一会儿「500g」）。散装称重的价钱是
+  // 按重量算出来的，重量不同价钱不可能分毫不差——所以"同一天、同一家店、同一样东西、
+  // 金额一模一样、规格却对不上"只能是同一行被读了两遍。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马鲜生（大钟寺店）", items:[{name:"水果脆甜玉米", amount:"2根", price:9.9}]})`);
+  // 时间错开半小时：两单行数一样时按日期早的留，不然留哪条要看随机的 receiptId。
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:30", store:"盒马鲜生", items:[{name:"甜玉米", amount:"500g", price:9.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 1, "规格读岔了、金额一致的两条是同一笔");
+  assert.equal(evaluate("manualPurchases.length"), 1);
+  assert.equal(evaluate("manualPurchases[0].amount"), "2根", "留下的是早的那一单里的");
+
+  // 金额一样但**不是同一天**，那就是真买了两回（同样的东西同样的价钱，很正常）。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"水果脆甜玉米", amount:"2根", price:9.9}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-25 10:00", store:"盒马", items:[{name:"甜玉米", amount:"500g", price:9.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "隔天的同价采购不能合掉");
+
+  // 反过来要守住：同一个 foodId 不等于同一样东西。牛嫩肉和牛腱肉都是 beef，
+  // 同店同天同规格、其中一条没读到价，也不能合成一条。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"国产谷饲黄牛牛嫩肉", amount:"500g", price:39.9}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:30", store:"盒马", items:[{name:"国产谷饲黄牛牛腱肉", amount:"500g", price:null}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "牛嫩肉和牛腱肉是两块不同的肉");
+  // 金额也一样时同理——第三道也得看名字。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:00", store:"盒马", items:[{name:"牛嫩肉", amount:"500g", price:39.9}]})`);
+  evaluate(`addPurchaseReceipt({date:"2026-08-22 10:30", store:"盒马", items:[{name:"牛腱肉", amount:"400g", price:39.9}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "名字对不上就不算同一笔");
+
+  // 最要命的一种：重复的另一半根本不在 manualPurchases 里，而是代码里写死的那批
+  // （`purchases`，7/30 那单盒马）。把同一张小票重新拍一遍，识别出来的行和写死的那条
+  // 从来碰不上面，于是怎么刷新都是两条（用户："没有去重？"）。
+  evaluate(`manualPurchases = []`);
+  const seedCorn = evaluate(`purchases.find(row => row.item.includes("甜玉米"))`);
+  assert.ok(seedCorn, "写死的那批里应该有甜玉米");
+  evaluate(`addPurchaseReceipt({date:${JSON.stringify(seedCorn.date)}, store:${JSON.stringify(seedCorn.store)}, items:[
+    {name:"甜玉米", amount:"约850g", price:null},
+    {name:"黄心土豆", amount:"约1kg", price:3.5}]})`);
+  assert.equal(evaluate("manualPurchases.length"), 2);
+  assert.equal(evaluate("dedupeManualLines()"), 2, "和写死那批重的行也要收掉");
+  assert.equal(evaluate("manualPurchases.length"), 0);
+  // 写死的那批一条都不能少——它们只能当"留下来的那条"。
+  assert.ok(evaluate(`purchases.some(row => row.item.includes("甜玉米"))`));
+  assert.ok(evaluate(`purchases.some(row => row.item.includes("土豆"))`));
+
+  // 但真的隔了些日子又买一次，不能被写死那批吃掉。
+  evaluate(`manualPurchases = []`);
+  evaluate(`addPurchaseReceipt({date:"2026-09-08 10:00", store:${JSON.stringify(seedCorn.store)}, items:[{name:"甜玉米", amount:"约850g", price:4.45}]})`);
+  assert.equal(evaluate("dedupeManualLines()"), 0, "隔了一个多月是真的又买了一次");
+  assert.equal(evaluate("manualPurchases.length"), 1);
+
+  evaluate(`manualPurchases = []`);
+});
+
 test("keeps the plan ingredient chips in step with the stock list", async () => {
   const { evaluate } = await runAppScript();
 
@@ -2422,7 +2518,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v158"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v159"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
