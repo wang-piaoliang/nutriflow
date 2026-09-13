@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v159`
+- 当前离线缓存：`nutriflow-pwa-v160`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,12 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-13：**采购的编辑入口挪到标题行上**（用户："购买识别出来的菜名什么的我可以修改，一个小笔icon就行"）。就地改本来就能改——商品名、规格、金额、店名、日期都是输入框——但入口藏在卡片**最底下**，和「删掉这次采购」并排：得先展开这一单、再划到底才看得见。识别错个菜名是最常见的事，这个入口必须一眼就在。
+  - 铅笔挪到这一单标题行的金额右边，用和「在外就餐」同一支线条笔（`PENCIL_ICON`/`CHECK_ICON`），编辑中变成绿底勾。底部只留「删掉这次采购」。
+  - 铅笔长在 `<summary>` 里，点它会顺带触发 details 的展开/收起——「点笔进编辑」和「点标题折叠」打架，卡片当场收起来，输入框一个也看不见。处理器里 `preventDefault()` + `stopPropagation()`，展开状态由 `openReceipts` 单独管。
+  - 写死在代码里那批（`purchases`）改了也存不下来，所以没有笔；但位置要占住（一个同宽的空 span），不然有笔的那几单金额被推左一截，一列数字参差不齐。
+  - 实测（headless，390×844）：点笔 → 卡片展开且切成输入框、笔变勾；改「盒适粉红西红杮」→「粉红西红柿」当场存下且 `foodId` 重新认成 `tomato`；再点勾 → 回只读、卡片仍展开。截图确认三单的金额右对齐。离线缓存与版本号升至 v160。
 
 - 2026-09-10：**同一样东西被识别成两条**（用户："甜玉米和土豆都被识别了两遍"）。去重原来两道，都栽在"重叠截图切掉了某一列"上：
   - 第一道键 = 店 + 日期 + **品名** + 规格。名字读岔一个字就失效（「水果脆甜玉米」/「甜玉米」、「土豆（黄心）」/「黄心土豆」）。
