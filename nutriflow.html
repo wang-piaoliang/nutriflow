@@ -847,12 +847,16 @@ summary.week-block-head::after{
 .receipt-total small{font-size:11px;text-align:right}
 .receipt-card[open] .receipt-head{padding-bottom:10px;border-bottom:1px solid var(--line)}
 .receipt-lines{display:grid;gap:10px;margin-top:10px}
-/* 编辑入口：平时只是一个小 ✏️，和「删掉这次采购」并排放在卡片底部。
-   点开才把这一次采购切成输入框，编辑中变成 ✓。 */
+/* 编辑入口就一支线条铅笔，挂在这一单的标题行上（用户："购买识别出来的菜名什么的
+   我可以修改，一个小笔icon就行"）。原来它藏在卡片最底下、和「删掉这次采购」并排，
+   要先展开再划到底才看得见——识别错个菜名是常事，这个入口得一眼就在。
+   图标用和「在外就餐」同一支线条笔，emoji ✏️ 在 iOS 上是彩色立体的，太跳。 */
+.receipt-end{display:flex;align-items:flex-start;gap:2px}
 .receipt-actions{display:flex;align-items:center;gap:8px}
 .receipt-actions .receipt-del{flex:1 1 auto}
-.receipt-edit-toggle{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:7px 11px;line-height:1;font-size:14px}
-.receipt-edit-toggle.on{background:var(--green);border-color:var(--green);color:#fff}
+.receipt-edit-toggle{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
+.receipt-edit-toggle:active{opacity:.55}
+.receipt-edit-toggle.on{background:var(--green);color:#fff}
 /* 自己录的小票每行可就地改：名称一行，规格/金额/删除一行。字号和只读行保持一致。 */
 .receipt-line.editable{align-items:start}
 .receipt-edit-head{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px}
@@ -1418,7 +1422,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v159</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v160</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -5104,7 +5108,14 @@ async function renderShopping(){
       <summary class="receipt-head">
         <span class="receipt-toggle" aria-hidden="true">›</span>
         <div><strong>${receipt.store}</strong><small>${receipt.date} · ${boughtCount} 件${categorySummary ? ` · ${categorySummary}` : ""}${receipt.note ? `<br>${receipt.note}` : ""}</small></div>
-        <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
+        <div class="receipt-end">
+          <div class="receipt-total">¥${receiptTotal.toFixed(2)}<small>${attachedPhotos.length ? `📷 ${attachedPhotos.length}` : ""}</small></div>
+          ${receipt.items.every(item => item.manual)
+            ? `<button type="button" class="receipt-edit-toggle${editing ? " on" : ""}" data-edit-receipt="${receipt.key}" title="${editing ? "改完了" : "改这次采购"}" aria-label="${editing ? "改完了" : "改这次采购"}">${editing ? CHECK_ICON : PENCIL_ICON}</button>`
+            // 写死在代码里那批改不了（改了下次发版又回来），没有笔。但位置得占住，
+            // 不然有笔的那几单金额被推左一截，一列数字参差不齐。
+            : `<span class="receipt-edit-toggle" aria-hidden="true"></span>`}
+        </div>
       </summary>
       ${editing ? `<div class="receipt-edit-head">
         <input class="receipt-field" type="text" value="${escapeAttribute(receipt.store)}" placeholder="在哪买的" data-receipt-field="store" data-receipt-id="${receipt.key}" aria-label="在哪买的">
@@ -5112,7 +5123,6 @@ async function renderShopping(){
       </div>` : ""}
       <div class="receipt-lines">${lines}</div>
       ${receipt.items.every(item => item.manual) ? `<div class="receipt-actions">
-        <button type="button" class="receipt-edit-toggle${editing ? " on" : ""}" data-edit-receipt="${receipt.key}" title="${editing ? "改完了" : "编辑这次采购"}" aria-label="${editing ? "改完了" : "编辑这次采购"}">${editing ? "✓" : "✏️"}</button>
         <button type="button" class="receipt-del" data-receipt-del="${receipt.key}">删掉这次采购</button>
       </div>` : ""}
       ${photoSectionMarkup("shopping", receipt.key, attachedPhotos, `${receipt.store} 小票`)}
@@ -5127,7 +5137,11 @@ async function renderShopping(){
     });
   });
   document.getElementById("purchaseHistory").querySelectorAll("[data-edit-receipt]").forEach(button => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", async event => {
+      // 铅笔现在长在 <summary> 里，点它会顺带触发 details 的展开/收起——
+      // 于是「点笔进编辑」和「点标题折叠」打架，卡片当场收起来，输入框一个也看不见。
+      event.preventDefault();
+      event.stopPropagation();
       const key = button.dataset.editReceipt;
       editingReceipt = editingReceipt === key ? "" : key;
       openReceipts.add(key);
@@ -6224,7 +6238,7 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     enqueueReceiptJob(receiptId, cloudRecognizeOn() ? receiptId.replace(/[^A-Za-z0-9_]/g, "_") : "");
     await renderShopping();
     if (!aiConfig().key){
-      jobHint("照片已经存成一条待补充的采购了，但还没配 API key 认不出来——去「营养」页最下面配一个，或者点那一单的 ✏️ 手填。");
+      jobHint("照片已经存成一条待补充的采购了，但还没配 API key 认不出来——去「营养」页最下面配一个，或者点那一单右上角的小笔手填。");
       return;
     }
     backgroundJobs += 1;
@@ -6256,11 +6270,11 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
       renderFoods();
       jobHint(merged
         ? "这单刚记过了，没有重复记。"
-        : `已记下 ${count} 件（${store}）。金额认错是常事——在下面的采购历史里点开这次采购，点 ✏️ 直接改。`);
+        : `已记下 ${count} 件（${store}）。金额认错是常事——在下面的采购历史里点这一单右上角的小笔就能改。`);
     }catch(error){
       console.error(error);
       // 认不出来不删任务：占位那一单和照片都在，回到前台会自动接着试。
-      jobHint(`识别失败：${error.message} 照片已存成一条待补充的采购，回头会自动重试，也可以点 ✏️ 手填。`);
+      jobHint(`识别失败：${error.message} 照片已存成一条待补充的采购，回头会自动重试，也可以点那一单右上角的小笔手填。`);
     }finally{
       backgroundJobs -= 1;
     }
