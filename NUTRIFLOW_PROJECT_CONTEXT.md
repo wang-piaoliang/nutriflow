@@ -342,6 +342,12 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-09-14：**修好 `npm run publish:pages`**。它写死了 `github` 这个 remote，可仓库现在只剩 `origin`——第一步 `git push github main` 就挂，整条发布链路早就跑不动了（这一整轮我都是手工开 worktree 发的）。三处一起改：
+  - remote 改成自动挑（有 `github` 用它，否则 `origin`，也可以用 `NUTRIFLOW_REMOTE` 覆盖）；
+  - `git push <remote> main` 改成 `git push <remote> HEAD:main`——平时在 `claude/...` 分支上开发，本地 `main` 落后二十几个提交，写死分支名会被 non-fast-forward 顶回来。HEAD 不是 main 祖先时 git 仍会拒绝，保险还在；
+  - 末尾催 Pages 重建的 `gh api` 包了一层 `command -v gh`：这个环境没装 `gh`，不该为一句"催一下"把整条发布断掉（Pages 对 gh-pages 的推送本来就会自动构建）。
+  - 实测跑通：测试 77 通过 → 推 main（already up-to-date）→ 认出 gh-pages 已经是同一棵 `public/` 树，跳过部署提交 → 提示没装 gh 并正常退出。
+
 - 2026-09-14：**「现有食材」里也能就地改名**（用户："我说的是，现有食材那里也可以改"）。识别错的菜名往往是在这张清单上才被看见的——「上脑」歪在其他里、西红柿写成「西红杮」——翻回采购历史找是哪一单太绕。
   - 每条正在吃的食材，剩余量滑条那一行末尾多一支小笔（和采购历史同一支线条笔）。点开当场切成两个输入框：叫什么 / 规格。改完点绿勾收工。
   - **坑在 `<label>`**：整行本来是个 label，点行内任何地方都会切换「吃完」——把输入框塞进去，一改名就把这条勾成吃完了。所以编辑态整行改成普通 `div`（复选框还在，但不再被 label 联动），笔也和滑条一样摆在 label 外面。实测点笔、打字全程 `consumed` 都是空的。
