@@ -654,7 +654,15 @@ summary.week-block-head::after{
   background:var(--surface-2);
   border-radius:8px;
 }
-.buy-row input{width:20px;height:20px;accent-color:var(--green)}
+/* 只管那个复选框。编辑态下行里还有文本框，用 `.buy-row input` 会把它们也压成 20×20。 */
+.buy-row > input[type="checkbox"]{width:20px;height:20px;accent-color:var(--green)}
+/* 就地改名：名称一行、规格一行，和采购历史里的编辑行同一套字段样式。
+   整行这时不再是 <label>——label 里点任何地方都会切「吃完」，一改名就误勾。 */
+.buy-row.editing{align-items:center}
+.stock-edit{display:grid;gap:6px;min-width:0}
+.stock-edit-toggle{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
+.stock-edit-toggle:active{opacity:.55}
+.stock-edit-toggle.on{background:var(--green);color:#fff}
 /* 「现有食材」每条下面的剩余量细条。背景和圆角从 .buy-row 挪到外层 .buy-item，
    滑条才能和条目共用同一块底色、看起来是一整条；滑条本身在 label 外面，避免误勾「吃完」。
    轨道只有 4px 高，输入框撑到 18px 只是为了好按，整体多占约 22px。 */
@@ -1422,7 +1430,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v160</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v161</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -3592,6 +3600,10 @@ let activePriceCategory = "all";
 // 平时小票是只读的（用户："这个太奇怪了，改回原来的格式吧，只是加一个小的编辑的
 // icon"）。点 ✏️ 才把这一次采购切成输入框，一次只编辑一张。
 let editingReceipt = "";
+// 「现有食材」里也要能就地改名（用户："我说的是，现有食材那里也可以改"）。
+// 识别错的菜名往往是在这张清单上才被看见的——翻回采购历史找是哪一单太绕。
+// 同样一次只编辑一条。
+let editingStockRow = "";
 // 在外就餐同理：平时只读，点 ✏️ 才把这一笔切成可填（用户："价格不要直留着可编辑，
 // 没必要，一样加一个编辑的小 icon，点了才编辑，这几个字段都可以弄成可编辑"）。
 let editingDining = "";
@@ -4996,12 +5008,29 @@ async function renderShopping(){
   const renderBoughtItem = (purchase, done) => {
     const icon = iconForFood(purchase.foodId);
     const left = remainingFor(purchase.id);
+    // 写死在代码里那批改了也存不下来（下次发版又是代码里那份），所以只有自己录的能改。
+    // 吃完的那段是历史，不给笔——每条都挂一支，那张长列表会被撑得很吵。
+    const canEdit = Boolean(purchase.manual) && !done;
+    const editing = canEdit && editingStockRow === purchase.id;
     // 剩余量滑条必须放在 label 外面：label 内的任何点击都会切换「吃完」复选框，
-    // 放里面一拖就会误勾。吃完的条目不再显示滑条，历史列表保持紧凑。
+    // 放里面一拖就会误勾。铅笔同理，跟着滑条摆在这一行里。
+    // 吃完的条目不再显示滑条，历史列表保持紧凑。
     const meter = done ? "" : `<div class="buy-left">
         <input class="buy-range" type="range" min="0" max="100" step="5" value="${left}" data-remaining="${purchase.id}" aria-label="${purchase.item} 还剩多少" style="--track:${remainingTrack(left)}">
         <span class="buy-left-value" data-remaining-label="${purchase.id}">剩 ${left}%</span>
+        ${canEdit && !editing ? `<button type="button" class="stock-edit-toggle" data-stock-edit="${purchase.id}" title="改这条" aria-label="改这条">${PENCIL_ICON}</button>` : ""}
       </div>`;
+    // 编辑态整行不能再是 <label>：点输入框等于点 label，一改名就把「吃完」勾上了。
+    if (editing) return `<div class="buy-item">
+      <div class="buy-row editing">
+        <input type="checkbox" data-consumed="${purchase.id}">
+        <div class="stock-edit">
+          <input class="receipt-field name" type="text" value="${escapeAttribute(purchase.item)}" placeholder="叫什么" data-stock-line="${purchase.id}" data-field="item" aria-label="商品名">
+          <input class="receipt-field amount" type="text" value="${escapeAttribute(purchase.amount)}" placeholder="规格" data-stock-line="${purchase.id}" data-field="amount" aria-label="规格">
+        </div>
+        <button type="button" class="stock-edit-toggle on" data-stock-edit="${purchase.id}" title="改完了" aria-label="改完了">${CHECK_ICON}</button>
+      </div>${meter}
+    </div>`;
     return `<div class="buy-item ${done ? "done" : ""}">
       <label class="buy-row ${done ? "done" : ""}">
         <input type="checkbox" data-consumed="${purchase.id}" ${done ? "checked" : ""}>
@@ -5051,6 +5080,25 @@ async function renderShopping(){
       saveConsumed();
       void renderShopping();
       renderEaten();   // 「吃掉了多少」正是靠这个勾算的，勾完当场要变
+    });
+  });
+  stockBox.querySelectorAll("[data-stock-edit]").forEach(button => {
+    button.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = button.dataset.stockEdit;
+      editingStockRow = editingStockRow === id ? "" : id;
+      await renderShopping();
+      renderFoods();
+    });
+  });
+  // 改完即存。和采购历史那边同一个写法：不整块重渲染，否则正在打字的框会被换掉。
+  // 走的也是同一个 updateManualLine——改名会重新判分类，图标、统计、计划里的 chip
+  // 都跟着走（点勾收工时那次重渲染会把它们刷新）。
+  stockBox.querySelectorAll("[data-stock-line]").forEach(input => {
+    input.addEventListener("change", () => {
+      updateManualLine(input.dataset.stockLine, input.dataset.field, input.value);
+      renderEaten();
     });
   });
   document.querySelectorAll("[data-remaining]").forEach(input => {
