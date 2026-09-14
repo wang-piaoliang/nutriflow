@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v160`
+- 当前离线缓存：`nutriflow-pwa-v161`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -341,6 +341,13 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-09-14：**「现有食材」里也能就地改名**（用户："我说的是，现有食材那里也可以改"）。识别错的菜名往往是在这张清单上才被看见的——「上脑」歪在其他里、西红柿写成「西红杮」——翻回采购历史找是哪一单太绕。
+  - 每条正在吃的食材，剩余量滑条那一行末尾多一支小笔（和采购历史同一支线条笔）。点开当场切成两个输入框：叫什么 / 规格。改完点绿勾收工。
+  - **坑在 `<label>`**：整行本来是个 label，点行内任何地方都会切换「吃完」——把输入框塞进去，一改名就把这条勾成吃完了。所以编辑态整行改成普通 `div`（复选框还在，但不再被 label 联动），笔也和滑条一样摆在 label 外面。实测点笔、打字全程 `consumed` 都是空的。
+  - CSS 上还有一颗雷：`.buy-row input{width:20px;height:20px}` 本来是给复选框写的，会把新加的文本框一起压成 20×20。收窄成 `.buy-row > input[type="checkbox"]`。
+  - 走的是采购历史那边同一个 `updateManualLine`：改名会重新判分类（「上脑」→「牛上脑」当场从其他归回肉类），改规格会重算单价，「吃掉了多少」也跟着变。写死在代码里那批（`purchases`）改了存不下来，所以没有笔；「已吃完历史」是历史，也不给笔，免得那张长列表被撑得很吵。
+  - 实测（headless，390×844）：现有食材 2 条手工行各一支笔、吃完历史 0 支；改「上脑 300g」→「牛上脑 350g」当场存下，`foodId` 仍是 `beef`、单价重算成 85.43 元/kg；点绿勾回只读。离线缓存与版本号升至 v161。
 
 - 2026-09-13：**采购的编辑入口挪到标题行上**（用户："购买识别出来的菜名什么的我可以修改，一个小笔icon就行"）。就地改本来就能改——商品名、规格、金额、店名、日期都是输入框——但入口藏在卡片**最底下**，和「删掉这次采购」并排：得先展开这一单、再划到底才看得见。识别错个菜名是最常见的事，这个入口必须一眼就在。
   - 铅笔挪到这一单标题行的金额右边，用和「在外就餐」同一支线条笔（`PENCIL_ICON`/`CHECK_ICON`），编辑中变成绿底勾。底部只留「删掉这次采购」。
