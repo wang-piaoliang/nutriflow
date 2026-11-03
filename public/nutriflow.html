@@ -663,6 +663,9 @@ summary.week-block-head::after{
 .stock-edit-toggle{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--muted);padding:0;cursor:pointer}
 .stock-edit-toggle:active{opacity:.55}
 .stock-edit-toggle.on{background:var(--green);color:#fff}
+.stock-category-toggle{flex:0 0 auto;border:0;background:none;color:var(--green);font-size:12px;padding:6px 2px;white-space:nowrap}
+.purchase-category{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.purchase-category select{width:100%;max-width:100%;font-family:inherit}
 /* 「现有食材」每条下面的剩余量细条。背景和圆角从 .buy-row 挪到外层 .buy-item，
    滑条才能和条目共用同一块底色、看起来是一整条；滑条本身在 label 外面，避免误勾「吃完」。
    轨道只有 4px 高，输入框撑到 18px 只是为了好按，整体多占约 22px。 */
@@ -1430,7 +1433,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v161</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v162</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -2969,11 +2972,10 @@ function healManualFoodIds(){
   });
   manualPurchases.forEach(row => {
     // 原来只补 custom: 开头的，于是「已经归错类」的行永远轮不到——鲑鱼早就被存成
-    // whiteFish，别名表后来加了「鲑鱼」也纹丝不动（用户："三文鱼，不要写白肉鱼，
-    // 这个改一下，没改"）。改成对所有手动行重新推导：foodId 本来就是从 item 派生的，
-    // 用户改名时也会跟着重算，不存在"手动指定过的分类"会被覆盖。
+    // whiteFish，别名表后来加了「鲑鱼」也纹丝不动。没有手动指定类别的继续重新推导；
+    // 手动指定过的优先保留，刷新、重命名和更新别名表都不能覆盖用户的更正。
     if (!row || typeof row.foodId !== "string") return;
-    const fresh = foodIdForItem(row.item);
+    const fresh = purchaseFoodId(row);
     if (fresh === row.foodId) return;
     row.foodId = fresh;
     // 包装费、购物袋这类不是买到手的食材，别让它们出现在「现有食材」清单里。
@@ -3097,6 +3099,33 @@ function foodIdForItem(name){
   // 认成了牛肉）。真正常用的单字（蛋、鱼、虾、菜…）上面的别名表都已经覆盖了。
   const known = foods.find(food => clean.includes(food.name) || (clean.length >= 2 && food.name.includes(clean)));
   return known ? known.id : `custom:${clean}`;
+}
+// 手动分类仍使用同一套 foodId，库存、图标、单价和统计无需各存一份分类。
+function purchaseCategoryGroups(){
+  const extras = {name:"调料和其他", ids:["allium","ginger","oil","seasoning","sauce","water","soda","iceCream","dessert","bag"]};
+  return purchaseGroupRules.concat(extras);
+}
+function purchaseCategoryName(id){
+  const names = {
+    porkShoulder:"梅花肉", porkTenderloin:"猪里脊", chickenThigh:"鸡腿", chickenBreast:"鸡胸", chickenTender:"鸡小胸",
+    mackerel:"鲭鱼", salmon:"三文鱼", sardine:"沙丁鱼", cod:"鳕鱼", shrimp:"虾", scallop:"扇贝", tuna:"金枪鱼",
+    enoki:"金针菇", potato:"土豆", avocado:"牛油果", allium:"葱蒜类", ginger:"生姜", oil:"食用油",
+    seasoning:"香辛调料", sauce:"酱料", water:"饮用水", soda:"饮料", iceCream:"冰淇淋", dessert:"烘焙甜品", bag:"包装和费用"
+  };
+  return names[id] || foodById(id)?.name || "其他";
+}
+function validFoodIdOverride(id){
+  return id === "other" || purchaseCategoryGroups().some(group => group.ids.includes(id));
+}
+function purchaseFoodId(row){
+  if (row.foodIdOverride === "other") return `custom:${row.item}`;
+  return validFoodIdOverride(row.foodIdOverride) ? row.foodIdOverride : foodIdForItem(row.item);
+}
+function purchaseCategoryField(row, attribute){
+  const selected = validFoodIdOverride(row.foodIdOverride) ? row.foodIdOverride : "";
+  const automatic = foodIdForItem(row.item);
+  const options = purchaseCategoryGroups().map(group => `<optgroup label="${group.name}">${group.ids.map(id => `<option value="${id}"${selected === id ? " selected" : ""}>${purchaseCategoryName(id)}</option>`).join("")}</optgroup>`).join("");
+  return `<label class="purchase-category">类别<select class="receipt-field" ${attribute}="${escapeAttribute(row.id)}" data-field="foodId" aria-label="${escapeAttribute(row.item)}的类别"><option value=""${!selected ? " selected" : ""}>自动识别 · ${purchaseCategoryName(automatic)}</option>${options}<option value="other"${selected === "other" ? " selected" : ""}>其他</option></select></label>`;
 }
 // 单价那行文案照硬编码那批的写法生成，"约 X 元/kg" 让单价对比能解析。
 function unitPriceText(amount, price){
@@ -3228,10 +3257,16 @@ function updateManualLine(rowId, field, value){
   if (!row) return;
   if (field === "item"){
     row.item = String(value).trim();
-    // 名字改了分类也得跟着改，否则图标和「食材单价对比」的归类还停在旧的上面。
-    row.foodId = foodIdForItem(row.item);
+    // 未手动分类时随名称重算；用户明确选过的类别保留，直到切回自动识别。
+    row.foodId = purchaseFoodId(row);
     // 有名字就不再是占位行，该进「现有食材」了。
     if (row.item && row.placeholder){ delete row.placeholder; row.bought = true; }
+  } else if (field === "foodId"){
+    if (value !== "" && !validFoodIdOverride(value)) return;
+    if (value) row.foodIdOverride = value;
+    else delete row.foodIdOverride;
+    row.foodId = purchaseFoodId(row);
+    row.bought = Boolean(row.item) && !row.placeholder && row.foodId !== "bag";
   } else if (field === "amount"){
     row.amount = String(value).trim();
   } else if (field === "price"){
@@ -5018,6 +5053,7 @@ async function renderShopping(){
     const meter = done ? "" : `<div class="buy-left">
         <input class="buy-range" type="range" min="0" max="100" step="5" value="${left}" data-remaining="${purchase.id}" aria-label="${purchase.item} 还剩多少" style="--track:${remainingTrack(left)}">
         <span class="buy-left-value" data-remaining-label="${purchase.id}">剩 ${left}%</span>
+        ${canEdit && !editing ? `<button type="button" class="stock-category-toggle" data-stock-category="${purchase.id}">修改类别</button>` : ""}
         ${canEdit && !editing ? `<button type="button" class="stock-edit-toggle" data-stock-edit="${purchase.id}" title="改这条" aria-label="改这条">${PENCIL_ICON}</button>` : ""}
       </div>`;
     // 编辑态整行不能再是 <label>：点输入框等于点 label，一改名就把「吃完」勾上了。
@@ -5027,6 +5063,7 @@ async function renderShopping(){
         <div class="stock-edit">
           <input class="receipt-field name" type="text" value="${escapeAttribute(purchase.item)}" placeholder="叫什么" data-stock-line="${purchase.id}" data-field="item" aria-label="商品名">
           <input class="receipt-field amount" type="text" value="${escapeAttribute(purchase.amount)}" placeholder="规格" data-stock-line="${purchase.id}" data-field="amount" aria-label="规格">
+          ${purchaseCategoryField(purchase, "data-stock-line")}
         </div>
         <button type="button" class="stock-edit-toggle on" data-stock-edit="${purchase.id}" title="改完了" aria-label="改完了">${CHECK_ICON}</button>
       </div>${meter}
@@ -5092,13 +5129,24 @@ async function renderShopping(){
       renderFoods();
     });
   });
+  stockBox.querySelectorAll("[data-stock-category]").forEach(button => {
+    button.addEventListener("click", async () => {
+      editingStockRow = button.dataset.stockCategory;
+      await renderShopping();
+      stockBox.querySelector(`select[data-stock-line="${CSS.escape(editingStockRow)}"]`)?.focus();
+    });
+  });
   // 改完即存。和采购历史那边同一个写法：不整块重渲染，否则正在打字的框会被换掉。
-  // 走的也是同一个 updateManualLine——改名会重新判分类，图标、统计、计划里的 chip
-  // 都跟着走（点勾收工时那次重渲染会把它们刷新）。
+  // 走的也是同一个 updateManualLine，手动类别会优先于自动判断。
   stockBox.querySelectorAll("[data-stock-line]").forEach(input => {
     input.addEventListener("change", () => {
       updateManualLine(input.dataset.stockLine, input.dataset.field, input.value);
       renderEaten();
+      if (input.dataset.field === "foodId"){
+        void renderShopping();
+        renderPriceComparison();
+        renderStats();
+      }
     });
   });
   document.querySelectorAll("[data-remaining]").forEach(input => {
@@ -5138,6 +5186,7 @@ async function renderShopping(){
         <span class="icon">${iconForFood(item.foodId)}</span>
         <div class="receipt-edit">
           <input class="receipt-field name" type="text" value="${escapeAttribute(item.placeholder ? "" : item.item)}" placeholder="商品名" data-line="${item.id}" data-field="item" aria-label="商品名">
+          ${purchaseCategoryField(item, "data-line")}
           <div class="receipt-edit-row">
             <input class="receipt-field amount" type="text" value="${escapeAttribute(item.amount)}" placeholder="规格" data-line="${item.id}" data-field="amount" aria-label="规格">
             <input class="receipt-field price" type="number" inputmode="decimal" value="${item.totalPrice ? Number(item.totalPrice) : ""}" placeholder="金额" data-line="${item.id}" data-field="price" aria-label="金额">
@@ -5207,6 +5256,12 @@ async function renderShopping(){
       // 其实早就存下来了，只是没有任何反馈。仍然刻意不调 renderShopping()：
       // 整块重渲染会替换掉正在打字的输入框，光标和键盘一起跳掉。
       refreshReceiptTotals(input.closest("[data-receipt]"));
+      if (input.dataset.field === "foodId"){
+        void renderShopping();
+        renderPriceComparison();
+        renderStats();
+        renderEaten();
+      }
     });
   });
   document.getElementById("purchaseHistory").querySelectorAll("[data-receipt-field]").forEach(input => {

@@ -1,6 +1,6 @@
 # NutriFlow 项目上下文
 
-> 最后更新：2026-07-24
+> 最后更新：2026-11-03
 >
 > 用途：让新的 Codex 任务无需依赖旧聊天记录，也能继续维护本项目。开始工作前同时阅读根目录 `AGENTS.md`。
 
@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v161`
+- 当前离线缓存：`nutriflow-pwa-v162`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -45,6 +45,8 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 
 ### 食材
 
+- 现有食材的手动采购条目新增「修改类别」按钮，点开可选具体食材类别；原有小笔入口也能修改名称、规格和类别。采购历史的编辑态提供同一个类别选择器，便于更正因误分类而未出现在库存中的商品。
+- 手动分类随采购记录存为 `foodIdOverride`，优先于名称自动判断；改名、刷新和启动时修复不会覆盖它，可随时选「自动识别」恢复。沿用 `purchases` 的持久化、云同步和备份链路，分组、图标、单价对比和统计都使用更正后的 `foodId`。
 - 周采购分类：鱼禽瘦肉、蛋奶豆、蔬菜、主食、水果坚果。
 - 动物性食物采用合并额度：鱼禽肉每周合计 600-1000g，其中水产 300-500g；蛋类每周 300-350g（约 7 个）。
 - 蛋只在「蛋奶豆」这一类里出现。用户要求「鱼禽瘦肉」卡片下不再提蛋，所以该分类的 `note` 里删掉了“另加蛋类 300-350g，动物性食物总计约 900-1350g”——后半句的总量是把蛋算进去才成立的，蛋既然不在这张卡片上说，这个合计数也一并移除，避免出现没有依据的数字。营养口径本身没变，只是不在这里展示。
@@ -306,6 +308,7 @@ python3 -m http.server 8000 -d public
 
 ## 7. 发布状态
 
+- 2026-11-03：v162 增加食材类别手动修改；78 项测试通过，手机与桌面视图检查通过；本轮按 `npm run publish:pages` 发布到现用 GitHub Pages（发布结果见最近变更）。
 - 计划使用的公开 GitHub 仓库：<https://github.com/wang-piaoliang/nutriflow>
 - 计划使用的 GitHub Pages 地址：<https://wang-piaoliang.github.io/nutriflow/>
 - 当前本地 `github` remote 指向公开仓库，`origin` 仍保留旧 ChatGPT Sites 源仓库作为历史，不作为发布目标。
@@ -341,6 +344,8 @@ python3 -m http.server 8000 -d public
 6. 新增小票时继续使用稳定 `receipt_id` 和 `item_id`，避免重复导入。
 
 ## 9. 最近变更
+
+- 2026-11-03：v162 为现有食材增加「修改类别」，在库存和采购历史编辑中共用类别选择器。更正保存在采购记录的 `foodIdOverride`，不会被改名或启动时重新识别覆盖；支持恢复自动识别，沿用已有同步和备份。类别变更立即刷新库存、图标、单价对比和采购/消耗统计。78 项测试通过；390px 手机和 1280px 桌面检查通过。发布状态：待本轮发布验证。
 
 - 2026-09-14：**修好 `npm run publish:pages`**。它写死了 `github` 这个 remote，可仓库现在只剩 `origin`——第一步 `git push github main` 就挂，整条发布链路早就跑不动了（这一整轮我都是手工开 worktree 发的）。三处一起改：
   - remote 改成自动挑（有 `github` 用它，否则 `origin`，也可以用 `NUTRIFLOW_REMOTE` 覆盖）；

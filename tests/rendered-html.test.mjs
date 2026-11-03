@@ -1090,7 +1090,7 @@ test("auto-saves a recognised receipt and keeps every line editable", async () =
   await context.renderShopping();
   const history = elements.get("purchaseHistory").innerHTML;
   assert.match(history, /receipt-line editable/);
-  assert.equal(history.match(/data-line="/g).length, 3);
+  assert.equal(history.match(/data-line="/g).length, 4);
   assert.match(history, /data-line-del="/);
 
   // 改名要连带重算分类和单价，否则图标和单价对比还停在旧值上。
@@ -2180,7 +2180,7 @@ test("keeps chillies out of the rice bucket", async () => {
   assert.equal(evaluate('NOT_INGREDIENT.includes("seasoning")'), true);
   // 存量里已经归错的行靠启动时的重推导修正，不用用户手工改。
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
-  assert.match(html, /const fresh = foodIdForItem\(row.item\);/);
+  assert.match(html, /const fresh = purchaseFoodId\(row\);/);
 });
 
 test("writes Member's Mark as 山姆 and always shows the buy count", async () => {
@@ -2512,13 +2512,54 @@ test("keeps the plan ingredient chips in step with the stock list", async () => 
   evaluate(`manualPurchases = manualPurchases.filter(row => row.id !== "chip-test")`);
 });
 
+test("keeps a corrected purchase category through renaming, reload and sync", async () => {
+  const { context, elements, evaluate } = await runAppScript();
+  evaluate(`manualPurchases = [{id:"category-test", receiptId:"category-r", date:"2026-07-23", store:"分类测试", item:"鲜鱼豆腐", amount:"300g", totalPrice:9, foodId:"whiteFish", bought:true, manual:true}]`);
+  await context.renderShopping();
+  assert.match(elements.get("boughtFoods").innerHTML, /data-stock-category="category-test">修改类别/);
+
+  evaluate('editingStockRow = "category-test"; updateManualLine("category-test", "foodId", "tofu")');
+  await context.renderShopping();
+  assert.equal(evaluate('manualPurchases[0].foodId'), "tofu");
+  assert.equal(evaluate('stockBucket(manualPurchases[0].foodId)'), 0, "更正后的豆腐进入蔬菜分区");
+  assert.equal(evaluate('summarizeReceipt(manualPurchases)'), "蛋奶豆 300g");
+  assert.equal(evaluate('comparablePurchases().find(row => row.item === "鲜鱼豆腐").foodId'), "tofu");
+  assert.match(elements.get("boughtFoods").innerHTML, /<option value="tofu" selected>/);
+  assert.match(elements.get("boughtFoods").innerHTML, /<div class="buy-row editing">/);
+  assert.equal(evaluate('Object.keys(consumed).length'), 0, "编辑类别不能误勾吃完");
+
+  evaluate('updateManualLine("category-test", "item", "鲜嫩鱼豆腐")');
+  assert.equal(evaluate('manualPurchases[0].foodId'), "tofu", "改名不能覆盖手动类别");
+  evaluate('manualPurchases = load(MANUAL_PURCHASES_KEY, []); healManualFoodIds()');
+  assert.equal(evaluate('manualPurchases[0].foodId'), "tofu", "刷新和迁移不能覆盖手动类别");
+  assert.equal(evaluate('exportPayload().docs.purchases[0].foodIdOverride'), "tofu", "备份要包含手动分类");
+  evaluate('SYNC_DOCS.find(doc => doc.key === "purchases").set(JSON.parse(JSON.stringify(manualPurchases))); healManualFoodIds()');
+  assert.equal(evaluate('manualPurchases[0].foodIdOverride'), "tofu", "同步写回保留更正");
+
+  evaluate('updateManualLine("category-test", "foodId", "not-a-category")');
+  assert.equal(evaluate('manualPurchases[0].foodId'), "tofu", "无效类别不能破坏记录");
+  evaluate('updateManualLine("category-test", "foodId", "")');
+  assert.equal(evaluate('manualPurchases[0].foodId'), "whiteFish", "可以切回按名称自动识别");
+  assert.equal(evaluate('manualPurchases[0].foodIdOverride'), undefined);
+
+  evaluate('updateManualLine("category-test", "foodId", "other"); healManualFoodIds()');
+  assert.equal(evaluate('manualPurchases[0].foodId'), "custom:鲜嫩鱼豆腐");
+  evaluate('updateManualLine("category-test", "foodId", "bag"); updateManualLine("category-test", "foodId", "tofu")');
+  assert.equal(evaluate('manualPurchases[0].bought'), true, "误认成包装费也能改回现有食材");
+
+  evaluate('editingReceipt = "category-r"');
+  await context.renderShopping();
+  assert.match(elements.get("purchaseHistory").innerHTML, /<select[^>]*data-line="category-test"[^>]*data-field="foodId"/);
+  assert.match(elements.get("purchaseHistory").innerHTML, /<option value="tofu" selected>/);
+});
+
 test("bumps the offline cache when the app shell changes", async () => {
   const serviceWorker = await readFile(
     new URL("../public/sw.js", import.meta.url),
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v161"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v162"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
