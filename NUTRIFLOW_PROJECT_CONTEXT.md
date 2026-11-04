@@ -1,6 +1,6 @@
 # NutriFlow 项目上下文
 
-> 最后更新：2026-11-03
+> 最后更新：2026-11-04
 >
 > 用途：让新的 Codex 任务无需依赖旧聊天记录，也能继续维护本项目。开始工作前同时阅读根目录 `AGENTS.md`。
 
@@ -23,7 +23,7 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 - PWA：`public/manifest.webmanifest`、`public/sw.js`
 - 根路径：`app/page.tsx` 和 `public/index.html` 均转到 `/nutriflow.html`
 - 图标：根 `public/` 下的 `apple-touch-icon.png`、`icon-192.png`、`icon-512.png`、`maskable-512.png`
-- 当前离线缓存：`nutriflow-pwa-v162`
+- 当前离线缓存：`nutriflow-pwa-v163`
 - 应用壳更新机制（2026-07-23）：`nutriflow.html` 注册 SW 后，监听 `controllerchange`，新 SW 接管时自动 `location.reload()` 一次（用 `hadController` 跳过首次安装那次），并在 `visibilitychange → visible` 时再 `registration.update()`。这是为了解决**独立/桌面 dock app 停在旧版本**：Safari 每次导航都会重新检查 SW 所以总是最新，dock app 会常驻、只吃旧缓存壳。SW 侧 `install` 有 `skipWaiting()`、`activate` 有 `clients.claim()`，配合页面的 reload 让 dock app 冷启动或回前台时自动切到新版。
 - 底部导航顺序（2026-07-24 改）：`饮食`、`采购`、`食材`、`目标`。默认落地页是 `饮食`（其 `<section>` 和第一个导航按钮带 `active`）。最后一个 `目标` 是原来的 `首页`——只改了导航文案和顺序，`data-view="home"`、`id="home"` 及页内内容都不变。
 - 数据尚未拆成 JSON，食材和采购记录仍写在 `public/nutriflow.html` 的 JavaScript 数组中。
@@ -62,6 +62,10 @@ NutriFlow 是用户自用的中文手机 PWA，用来完成三件事：
 
 ### 饮食
 
+- 2026-11-04：新上传的餐食照片默认先读取原图 EXIF 的拍摄日期/时间，再压缩入库；按拍摄地的本地钟点自动分配日期和餐次，多张跨天照片逐张归档。主表单和每天标题里的相机入口均适用。用户显式点选日期或餐次时，仅覆盖自己选的字段。
+- 拍摄时间以 `capturedAt/captureDate/captureTime/captureOffset/timeSource` 随照片存入本机 IndexedDB，与上传时间 `createdAt` 分开；查看大图可见拍摄时间。照片包导入导出保留这些字段。读取使用本地 vendored `exifr@7.1.3`，覆盖 JPEG/HEIC 等，已纳入离线缓存，不依赖 CDN 或外发读取。
+- 只有 `DateTimeOriginal` / `CreateDate` 可作为拍摄时间；不使用文件修改时间冒充。图片没有可读 EXIF 时沿用当前所选日期与餐次，查看大图会说明“未读到拍摄时间”。此前已压缩入库的照片不自动追溯迁移。
+- 自动识别、后台恢复和大图手动重试都沿用照片已保存的餐次，模型不会重新覆盖；整批照片先入识别队列再开始第一张请求，切到后台后其余照片也可恢复。时段沿用既有规则：10 点前早餐、10–15 点午餐、15–21 点晚餐，其余加餐。
 - 饮食页按日期展示已确认的餐食记录；新收到餐食照片或文字后，写入 `dietRecords`。两条录入通道：手机 ChatGPT 对话整理成同步包，或用户直接在 Claude Code thread 里发照片（见第 5 节「直传照片」约定）。
 - 目前的 `dietRecords` 仍是硬编码数组，尚未做设备间自动同步。
 - 记录格式：`{date, summary, meals:[{name, items:[], note}]}`。`date` 用 `YYYY-MM-DD`，页面按它倒序排列；`summary` 省略时自动显示“N 餐”，现在所有记录都省略它。
@@ -308,6 +312,7 @@ python3 -m http.server 8000 -d public
 
 ## 7. 发布状态
 
+- 2026-11-04：v163 增加饮食照片按拍摄时间自动归档；82 项测试通过，真实 JPEG 上传、iPhone HEIC 元数据读取、跨天/凌晨/无 EXIF 回退、刷新保留与 390px/1280px 布局已验证；待本轮发布核对。
 - 2026-11-03：v162 增加食材类别手动修改；78 项测试通过，手机与桌面视图检查通过；本轮按 `npm run publish:pages` 发布到现用 GitHub Pages（发布结果见最近变更）。
 - 计划使用的公开 GitHub 仓库：<https://github.com/wang-piaoliang/nutriflow>
 - 计划使用的 GitHub Pages 地址：<https://wang-piaoliang.github.io/nutriflow/>
@@ -345,6 +350,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
+- 2026-11-04：v163 饮食上传照片自动读原始 EXIF，逐张按拍摄日期与钟点归档，支持手动选择覆盖、无 EXIF 说明和照片备份保留时间。读取先于压缩；后台识别/恢复沿用已保存餐次，整批任务先入队。保留 v162 食材类别编辑。82 项测试通过；手机实际上传、刷新、无 EXIF 回退及 390px/1280px 视图已验证。发布状态：待本轮发布验证。
 - 2026-11-03：v162 为现有食材增加「修改类别」，在库存和采购历史编辑中共用类别选择器。更正保存在采购记录的 `foodIdOverride`，不会被改名或启动时重新识别覆盖；支持恢复自动识别，沿用已有同步和备份。类别变更立即刷新库存、图标、单价对比和采购/消耗统计。78 项测试通过；390px 手机和 1280px 桌面检查通过。发布状态：`npm run publish:pages` 成功，GitHub Pages 构建为 `built`，线上 HTML 与 SW 均已验证为 v162。
 
 - 2026-09-14：**修好 `npm run publish:pages`**。它写死了 `github` 这个 remote，可仓库现在只剩 `origin`——第一步 `git push github main` 就挂，整条发布链路早就跑不动了（这一整轮我都是手工开 worktree 发的）。三处一起改：

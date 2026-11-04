@@ -196,7 +196,7 @@ test("ships the personalized nutrition and purchase views", async () => {
   assert.match(html, /国产谷饲黄牛牛腱肉/);
   assert.match(html, /indexedDB/);
   // 隐私说明在饮食页写一次就够了；在外就餐那张卡按用户要求把小字都删了。
-  assert.match(html, /照片存本地不传 GitHub/);
+  assert.match(html, /自动按拍摄时间记录日期和餐次。照片存本地/);
   assert.match(html, /data-open-photo/);
 
   // The 食材 category filter bar pins to the top while the list scrolls, so it
@@ -1522,14 +1522,143 @@ test("lets the person pick which meal a photo belongs to", async () => {
   assert.ok(form.indexOf("data-meal-pick") < form.indexOf("或者手动填"));
   assert.doesNotMatch(form, /id="dietFormMeal"/);
 
-  // 识别时以人选的餐次为准，模型的判断只在没得选时用。
+  // 已保存的拍摄餐次优先于模型；手动点选仍能覆盖自动归档。
   const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
-  assert.match(html, /const meal = forcedMeal \|\| result\.meal;/);
-  assert.match(html, /const shotMeal = pickedMeal\(container\);/);
-  assert.match(html, /autoRecognize\(owner, saved, \{meal: shotMeal\}\)/);
-  // 餐次还要写进照片记录本身，事后没有任何办法反推一张图是午饭还是晚饭。
-  assert.match(html, /savePrivatePhoto\(owner, file, shotMeal\)/);
+  assert.match(html, /const meal = photoMeal \|\| result\.meal;/);
+  assert.match(html, /const photoMeal = forcedMeal \|\| \(MEAL_ORDER.includes\(photo.meal\)/);
+  assert.match(html, /saveDietPhotos\(files, \{date, meal:pickedMeal\(container\), dateOverride, mealOverride\}\)/);
   assert.match(html, /\.\.\.\(meal \? \{meal\} : \{\}\)/);
+});
+
+// Minimal camera EXIF fixtures, without personal photos. Both TIFF byte orders
+// go through the actual vendored parser rather than a stubbed metadata result.
+function captureJpeg(tags, little = true){
+  const ids = {DateTimeOriginal:0x9003, CreateDate:0x9004, OffsetTimeOriginal:0x9011, OffsetTimeDigitized:0x9012};
+  const entries = Object.entries(tags).map(([name, value]) => [ids[name], Buffer.from(`${value}\0`)]);
+  const dataOffset = 26 + 2 + entries.length * 12 + 4;
+  const tiff = Buffer.alloc(dataOffset + entries.reduce((sum, [, data]) => sum + data.length, 0));
+  const u16 = (offset, value) => little ? tiff.writeUInt16LE(value, offset) : tiff.writeUInt16BE(value, offset);
+  const u32 = (offset, value) => little ? tiff.writeUInt32LE(value, offset) : tiff.writeUInt32BE(value, offset);
+  tiff.write(little ? "II" : "MM"); u16(2, 42); u32(4, 8);
+  u16(8, 1); u16(10, 0x8769); u16(12, 4); u32(14, 1); u32(18, 26);
+  u16(26, entries.length);
+  let cursor = dataOffset;
+  entries.forEach(([tag, data], index) => {
+    const offset = 28 + index * 12;
+    u16(offset, tag); u16(offset + 2, 2); u32(offset + 4, data.length); u32(offset + 8, cursor);
+    data.copy(tiff, cursor); cursor += data.length;
+  });
+  const segment = Buffer.concat([Buffer.from("Exif\0\0"), tiff]);
+  const header = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0, 0]);
+  header.writeUInt16BE(segment.length + 2, 4);
+  return Buffer.concat([header, segment, Buffer.from([0xff, 0xd9])]);
+}
+async function captureTestApp(){
+  const app = await runAppScript();
+  const parser = {};
+  const bundle = await readFile(new URL("../public/vendor/exifr-7.1.3.umd.js", import.meta.url), "utf8");
+  vm.runInNewContext(bundle, {exports:parser, module:{exports:parser}, global:globalThis, Buffer, Uint8Array, ArrayBuffer, DataView, TextDecoder, setTimeout, clearTimeout});
+  app.context.window.exifr = parser;
+  return app;
+}
+
+test("reads capture time from real JPEG EXIF without shifting the camera's local day", async () => {
+  const { context, evaluate } = await captureTestApp();
+  for (const little of [true, false]){
+    context.fixture = captureJpeg({DateTimeOriginal:"2026:11:03 00:15:06", OffsetTimeOriginal:"+08:00"}, little);
+    const result = await evaluate("photoCaptureDetails(fixture)");
+    assert.equal(result.capturedAt, "2026-11-03T00:15:06+08:00");
+    assert.equal(result.captureDate, "2026-11-03");
+    assert.equal(result.captureTime, "00:15:06");
+    assert.equal(result.timeSource, "exif");
+  }
+  // Use creation time only when the camera's original timestamp is absent or invalid.
+  context.fixture = captureJpeg({DateTimeOriginal:"2026:02:30 12:00:00", CreateDate:"2026:11:02 19:30:00"});
+  assert.equal((await evaluate("photoCaptureDetails(fixture)")).captureTime, "19:30:00");
+  context.fixture = captureJpeg({DateTimeOriginal:"0000:00:00 00:00:00"});
+  assert.equal(JSON.stringify(await evaluate("photoCaptureDetails(fixture)")), "{}");
+});
+
+test("saves each uploaded photo under its own capture day and meal before compression", async () => {
+  const { context, evaluate } = await captureTestApp();
+  context.files = [
+    captureJpeg({DateTimeOriginal:"2026:11:02 12:05:00"}),
+    captureJpeg({DateTimeOriginal:"2026:11:03 19:10:00"}),
+    captureJpeg({DateTimeOriginal:"2026:11:04 00:15:00"}),
+  ];
+  // Exercise the real savePrivatePhoto write, with an in-memory IndexedDB store.
+  evaluate(`
+    globalThis.storedPhotos = [];
+    openPhotoDatabase = async () => ({transaction:() => ({objectStore:() => ({add:record => {
+      storedPhotos.push(record);
+      const request = {};
+      setTimeout(() => request.onsuccess(), 0);
+      return request;
+    }})})});
+    normalizedOrOriginal = async () => ({type:"image/jpeg", compressed:true});
+  `);
+  const saved = await evaluate('saveDietPhotos(files, {date:"2026-11-04", meal:"午餐"})');
+  assert.deepEqual(Array.from(saved, p => [p.receiptId, p.meal]), [
+    ["diet:2026-11-02", "午餐"], ["diet:2026-11-03", "晚餐"], ["diet:2026-11-04", "早餐"],
+  ]);
+  assert.equal(saved[1].captureTime, "19:10:00");
+  assert.ok(saved.every(p => p.blob.compressed && p.normalized));
+  assert.equal(evaluate("storedPhotos.length"), 3);
+  assert.equal(evaluate("storedPhotos[1].capturedAt"), "2026-11-03T19:10:00");
+  // Upload time remains separate from capture time.
+  assert.notEqual(saved[1].createdAt.slice(0, 10), saved[1].captureDate);
+  context.saved = saved;
+  evaluate('aiConfig = () => ({key:"fixture"}); globalThis.calls = []; autoRecognize = async (owner, photos, options) => {calls.push([owner, options.meal]); if(aiQueue().length !== 3) throw new Error("entire batch must be queued first"); return 1;}');
+  assert.equal(await evaluate("recognizeDietPhotos(saved)"), 3);
+  assert.equal(evaluate("JSON.stringify(calls)"), JSON.stringify(Array.from(saved, p => [p.receiptId, p.meal])));
+});
+
+test("keeps explicit corrections and does not treat a file modification date as capture time", async () => {
+  const { context, evaluate } = await captureTestApp();
+  context.files = [captureJpeg({DateTimeOriginal:"2026:11:02 12:05:00"})];
+  evaluate('savePrivatePhoto = async (owner, file, meal, metadata) => ({receiptId:owner, meal, ...metadata})');
+  let saved = await evaluate('saveDietPhotos(files, {date:"2026-11-01", meal:"晚餐", dateOverride:true, mealOverride:true})');
+  assert.equal(saved[0].receiptId, "diet:2026-11-01");
+  assert.equal(saved[0].meal, "晚餐");
+  assert.equal(saved[0].captureDate, "2026-11-02");
+  context.files = [Object.assign(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), {lastModified:Date.now()})];
+  saved = await evaluate('saveDietPhotos(files, {date:"2026-10-30", meal:"晚餐"})');
+  assert.equal(saved[0].receiptId, "diet:2026-10-30");
+  assert.equal(saved[0].meal, "晚餐");
+  assert.equal(saved[0].timeSource, "selection");
+  assert.equal(saved[0].capturedAt, undefined);
+  context.photo = saved[0];
+  assert.match(evaluate("photoTimeLabel(photo)"), /未读到拍摄时间/);
+});
+
+test("preserves capture metadata in photo backups and queues the saved meal for retries", async () => {
+  const { context, evaluate } = await runAppScript();
+  context.URL = {createObjectURL:() => "blob:fixture", revokeObjectURL(){}};
+  evaluate(`
+    aiConfig = () => ({key:"fixture"});
+    recognizePhoto = async () => {throw new Error("offline");};
+  `);
+  await evaluate('autoRecognize("diet:2026-11-03", [{id:"shot", blob:{}, meal:"晚餐"}])');
+  assert.equal(evaluate('aiQueue().find(job => job.photoId === "shot").meal'), "晚餐");
+  context.photo = {id:"shot", receiptId:"diet:2026-11-03", meal:"晚餐", capturedAt:"2026-11-03T19:05:00+08:00", captureDate:"2026-11-03", captureTime:"19:05:00", captureOffset:"+08:00", timeSource:"exif"};
+  // Resume from the persisted queue, with the model deliberately guessing the
+  // wrong meal: the saved capture meal must win.
+  evaluate('listPrivatePhotos = async () => [{...photo, blob:{}}]; recognizePhoto = async () => ({meal:"午餐", items:["番茄"]});');
+  assert.equal(await evaluate("drainRecognitionQueue()"), 1);
+  assert.equal(evaluate('dietEntries.find(entry => entry.date === "2026-11-03").meal'), "晚餐");
+  assert.equal(evaluate("aiQueue().length"), 0);
+  assert.equal(evaluate('JSON.stringify(photoTimeMetadata(photo))'), JSON.stringify({capturedAt:context.photo.capturedAt, captureDate:context.photo.captureDate, captureTime:context.photo.captureTime, captureOffset:"+08:00", timeSource:"exif"}));
+  context.Blob = Blob;
+  context.Uint8Array = Uint8Array;
+  context.atob = atob;
+  evaluate('listPrivatePhotos = async () => []; globalThis.restored = []; putPrivatePhoto = async record => {restored.push(record)};');
+  await evaluate('importPhotos({app:"nutriflow-photos", photos:[{...photo, data:"/9j/2Q==", mime:"image/jpeg"}]})');
+  assert.equal(evaluate("restored[0].captureTime"), "19:05:00");
+  assert.equal(evaluate("restored[0].meal"), "晚餐");
+  const html = await readFile(new URL("../public/nutriflow.html", import.meta.url), "utf8");
+  assert.match(html, /\.\.\.photoTimeMetadata\(photo\)/);
+  const sw = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  assert.match(sw, /\.\/vendor\/exifr-7\.1\.3\.umd\.js/);
 });
 
 test("classifies tricky product names and normalises store names", async () => {
@@ -1669,7 +1798,7 @@ test("resumes recognition that iOS cut off when the app went to the background",
   assert.equal(evaluate("JSON.stringify(aiQueue().map(j => j.photoId))"), '["p2"]');
 
   // 先入队再发请求，识别成功才出队——顺序反了就等于没排队。
-  assert.ok(html.indexOf("enqueueRecognition(photo.id, owner, forcedMeal)") < html.indexOf("dequeueRecognition(photo.id)"));
+  assert.ok(html.indexOf("enqueueRecognition(photo.id, owner, photoMeal)") < html.indexOf("dequeueRecognition(photo.id)"));
   assert.match(html, /drainRecognitionQueue/);
   // 小票是"一单一任务"：整单的几张图要一起看，不能一张一张认。
   evaluate('enqueueReceiptJob("r1")');
@@ -1944,10 +2073,10 @@ test("recognises receipts in the background so the form frees up at once", async
   assert.match(html, /还有 \$\{backgroundJobs\} 单在跑/);
 
   // 饮食页那条路同样不能干等：照片存好先 render() 放开入口，识别不 await。
-  const dietJob = html.slice(html.indexOf('const owner = dietPhotoOwner(date);'));
+  const dietJob = html.slice(html.indexOf('const saved = await saveDietPhotos(files, {date, meal:pickedMeal(container)'));
   assert.match(dietJob.slice(0, 1400), /后台识别中…可以接着记/);
-  assert.match(dietJob.slice(0, 1400), /void autoRecognize\(owner, saved/);
-  assert.ok(dietJob.indexOf("render();") < dietJob.indexOf("void autoRecognize"));
+  assert.match(dietJob.slice(0, 1400), /void recognizeDietPhotos\(saved\)/);
+  assert.ok(dietJob.indexOf("render();") < dietJob.indexOf("void recognizeDietPhotos"));
 
   // 识别失败也别让照片白传：存成一条待补充的采购，照片挂上去。
   assert.match(html, /照片已存成一条待补充的采购/);
@@ -2559,7 +2688,7 @@ test("bumps the offline cache when the app shell changes", async () => {
     "utf8",
   );
 
-  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v162"/);
+  assert.match(serviceWorker, /CACHE_NAME = "nutriflow-pwa-v163"/);
   assert.match(serviceWorker, /\.\/nutriflow\.html/);
   assert.match(serviceWorker, /isAppShell/);
 
