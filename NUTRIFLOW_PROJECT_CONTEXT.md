@@ -312,7 +312,7 @@ python3 -m http.server 8000 -d public
 
 ## 7. 发布状态
 
-- 2026-11-04：v163 增加饮食照片按拍摄时间自动归档；82 项测试通过，真实 JPEG 上传、iPhone HEIC 元数据读取、跨天/凌晨/无 EXIF 回退、刷新保留与 390px/1280px 布局已验证；待本轮发布核对。
+- 2026-11-04：v163 增加饮食照片按拍摄时间自动归档；82 项测试通过，真实 JPEG 上传、iPhone HEIC 元数据读取、跨天/凌晨/无 EXIF 回退、刷新保留与 390px/1280px 布局已验证；已发布，GitHub Pages 构建为 `built`，线上 HTML、SW 与 EXIF 解析库均与本地一致。
 - 2026-11-03：v162 增加食材类别手动修改；78 项测试通过，手机与桌面视图检查通过；本轮按 `npm run publish:pages` 发布到现用 GitHub Pages（发布结果见最近变更）。
 - 计划使用的公开 GitHub 仓库：<https://github.com/wang-piaoliang/nutriflow>
 - 计划使用的 GitHub Pages 地址：<https://wang-piaoliang.github.io/nutriflow/>
@@ -350,7 +350,7 @@ python3 -m http.server 8000 -d public
 
 ## 9. 最近变更
 
-- 2026-11-04：v163 饮食上传照片自动读原始 EXIF，逐张按拍摄日期与钟点归档，支持手动选择覆盖、无 EXIF 说明和照片备份保留时间。读取先于压缩；后台识别/恢复沿用已保存餐次，整批任务先入队。保留 v162 食材类别编辑。82 项测试通过；手机实际上传、刷新、无 EXIF 回退及 390px/1280px 视图已验证。发布状态：待本轮发布验证。
+- 2026-11-04：v163 饮食上传照片自动读原始 EXIF，逐张按拍摄日期与钟点归档，支持手动选择覆盖、无 EXIF 说明和照片备份保留时间。读取先于压缩；后台识别/恢复沿用已保存餐次，整批任务先入队。保留 v162 食材类别编辑。82 项测试通过；手机实际上传、刷新、无 EXIF 回退及 390px/1280px 视图已验证。发布状态：`npm run publish:pages` 成功，GitHub Pages 为 `built`；线上 HTML、SW 与本地 EXIF 库逐字节一致，版本为 v163。
 - 2026-11-03：v162 为现有食材增加「修改类别」，在库存和采购历史编辑中共用类别选择器。更正保存在采购记录的 `foodIdOverride`，不会被改名或启动时重新识别覆盖；支持恢复自动识别，沿用已有同步和备份。类别变更立即刷新库存、图标、单价对比和采购/消耗统计。78 项测试通过；390px 手机和 1280px 桌面检查通过。发布状态：`npm run publish:pages` 成功，GitHub Pages 构建为 `built`，线上 HTML 与 SW 均已验证为 v162。
 
 - 2026-09-14：**修好 `npm run publish:pages`**。它写死了 `github` 这个 remote，可仓库现在只剩 `origin`——第一步 `git push github main` 就挂，整条发布链路早就跑不动了（这一整轮我都是手工开 worktree 发的）。三处一起改：
