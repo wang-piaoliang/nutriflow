@@ -1,7 +1,8 @@
-const CACHE_NAME = "nutriflow-pwa-v162";
+const CACHE_NAME = "nutriflow-pwa-v163";
 const APP_SHELL = [
   "./",
   "./nutriflow.html",
+  "./vendor/exifr-7.1.3.umd.js",
   "./manifest.webmanifest",
   "./offline.html",
   "./balanced-diet-pagoda-2022.png",

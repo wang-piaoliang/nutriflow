@@ -1412,7 +1412,7 @@ summary.week-block-head::after{
           <h2>每天吃了什么</h2>
           <span class="subtle"><button class="week-fold-all" type="button" id="weekFoldAll" hidden>全部折叠</button><span id="dietLogMeta">0 天</span><button class="head-add" type="button" id="dietAddDay" title="补记一顿" aria-label="补记一顿">＋</button></span>
         </div>
-        <div class="note">发张餐食照片就自动记好，照片存本地不传 GitHub。</div>
+        <div class="note">上传餐食照片，自动按拍摄时间记录日期和餐次。照片存本地。</div>
         <div id="dietLogList"></div>
       </article>
     </div>
@@ -1433,7 +1433,7 @@ summary.week-block-head::after{
     </div>
   </section>
 
-  <footer class="app-version" id="appVersion">NutriFlow v162</footer>
+  <footer class="app-version" id="appVersion">NutriFlow v163</footer>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
@@ -1448,6 +1448,7 @@ summary.week-block-head::after{
   <button class="photo-viewer-close" type="button" aria-label="关闭大图">×</button>
   <img id="photoViewerImage" alt="小票照片大图">
   <div class="photo-viewer-actions" id="photoViewerActions" hidden>
+    <p class="photo-viewer-note" id="photoCaptureNote"></p>
     <button type="button" id="recognizePhoto">🔍 识别这张</button>
     <p class="photo-viewer-note" id="recognizeNote"></p>
   </div>
@@ -1456,6 +1457,7 @@ summary.week-block-head::after{
 <div class="pull-refresh" id="pullRefresh" aria-hidden="true"><span id="pullRefreshText">下拉刷新</span></div>
 <div class="storage-error" id="storageError" role="alert" hidden></div>
 
+<script src="./vendor/exifr-7.1.3.umd.js"></script>
 <script>
 const categories = [
   {id:"animalProtein", name:"鱼禽瘦肉", icon:"🐟", weeklyAmount:"鱼禽肉合计 600-1000g（其中水产 300-500g）", weeklyVariety:"3-5 种", note:"水产 2 次、禽肉 2-3 次、牛猪羊合计约 2 次；同类替换，不把每项次数相加。"},
@@ -2363,12 +2365,13 @@ async function autoRecognize(owner, saved, options){
   for (const photo of saved){
     if (!photo?.blob || recognizedIds().includes(photo.id)) continue;
     // 先入队再发请求：切到别的 App 把请求掐断时，这条还留在队列里，回来能接着跑。
-    enqueueRecognition(photo.id, owner, forcedMeal);
+    const photoMeal = forcedMeal || (MEAL_ORDER.includes(photo.meal) ? photo.meal : "");
+    enqueueRecognition(photo.id, owner, photoMeal);
     try{
       const result = await recognizePhoto(photo.blob);
       const {items} = result;
       // 人在表单上选了餐次就以它为准；从已有那天的 📷 传的没得选，才用模型的判断。
-      const meal = forcedMeal || result.meal;
+      const meal = photoMeal || result.meal;
       let place = context.place;
       // 店名和账单必须按「这张照片认出来的那一餐」去找，不能在整个循环外面共用一个。
       // 一天的照片里午饭和晚饭常常混在一起，共用一个 diningId 会让同一笔钱同时显示
@@ -3759,6 +3762,68 @@ function openPhotoDatabase(){
 // `diet:<date>`. The stored field keeps its original `receiptId` name so the
 // existing IndexedDB records stay readable without a schema migration.
 function dietPhotoOwner(date){return `diet:${date}`}
+// 在 canvas 压缩之前读原图。只取 EXIF 时间，不把文件修改时间冒充拍摄时间。
+// 保留拍摄地的墙上时间：跨时区上传也不能把昨天的晚饭挪成今天的早餐。
+async function photoCaptureDetails(file){
+  try{
+    if (!window.exifr?.parse) return {};
+    const tags = await window.exifr.parse(file, {
+      pick:["DateTimeOriginal", "CreateDate", "OffsetTimeOriginal", "OffsetTimeDigitized"],
+      reviveValues:false,
+    });
+    for (const [key, offsetKey] of [["DateTimeOriginal", "OffsetTimeOriginal"], ["CreateDate", "OffsetTimeDigitized"]]){
+      const match = String(tags?.[key] || "").match(/^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+      if (!match) continue;
+      const [, year, month, day, hour, minute, second] = match;
+      const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+      if (Number(year) < 1900 || date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day) || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) continue;
+      const captureDate = `${year}-${month}-${day}`;
+      const captureTime = `${hour}:${minute}:${second}`;
+      const rawOffset = String(tags?.[offsetKey] || "").trim();
+      const captureOffset = /^[+-](?:0\d|1[0-4]):[0-5]\d$/.test(rawOffset) ? rawOffset : "";
+      return {capturedAt:`${captureDate}T${captureTime}${captureOffset}`, captureDate, captureTime, captureOffset, timeSource:"exif"};
+    }
+  }catch(error){
+    console.warn("NutriFlow could not read the photo capture time", error);
+  }
+  return {};
+}
+async function saveDietPhotos(files, {date = todayValue(), meal = guessMealByClock(), dateOverride = false, mealOverride = false} = {}){
+  const saved = [];
+  // 一张张读和压缩，避免批量补记时把 iPhone 内存撑满。
+  for (const file of files){
+    const capture = await photoCaptureDetails(file);
+    const photoDate = !dateOverride && capture.captureDate ? capture.captureDate : date;
+    const photoMeal = !mealOverride && capture.captureTime
+      ? guessMealByClock(new Date(`${capture.captureDate}T${capture.captureTime}`)) : meal;
+    saved.push(await savePrivatePhoto(dietPhotoOwner(photoDate), file, photoMeal, {
+      ...capture, timeSource:capture.timeSource || "selection",
+    }));
+  }
+  return saved;
+}
+async function recognizeDietPhotos(saved){
+  let added = 0;
+  // 先把整批任务入队，再开始第一张的网络请求；切到后台时后面的照片也能恢复。
+  if (aiConfig().key){
+    for (const photo of saved) enqueueRecognition(photo.id, photo.receiptId, photo.meal);
+  }
+  // 每张图有自己的日期和餐次，批量上传跨天的照片也不能并到同一顿。
+  for (const photo of saved) added += await autoRecognize(photo.receiptId, [photo], {meal:photo.meal});
+  return added;
+}
+function photoTimeLabel(photo){
+  if (photo.captureDate && photo.captureTime) return `拍摄于 ${photo.captureDate} ${photo.captureTime.slice(0,5)}${photo.meal ? ` · ${photo.meal}` : ""}`;
+  return photo.timeSource === "selection" ? `未读到拍摄时间，按所选日期${photo.meal ? `和${photo.meal}` : ""}保存` : "";
+}
+// 照片包导出和导入都保留独立的拍摄时间；createdAt 仍表示上传时间。
+function photoTimeMetadata(photo){
+  const metadata = {};
+  for (const key of ["capturedAt", "captureDate", "captureTime", "captureOffset", "timeSource"]){
+    if (typeof photo[key] === "string") metadata[key] = photo[key];
+  }
+  return metadata;
+}
 async function listPrivatePhotos(){
   const database = await openPhotoDatabase();
   return new Promise((resolve, reject) => {
@@ -3851,18 +3916,18 @@ async function normalizedOrOriginal(blob){
 }
 // meal 是可选的：饮食页传「午餐」「晚餐」，好让「在外就餐」只借属于那一顿的照片
 // （用户："要区分下是午餐的图还是晚餐的图，现在一拉拉一天的图"）。
-async function savePrivatePhoto(ownerId, file, meal){
+async function savePrivatePhoto(ownerId, file, meal, metadata = {}){
   const database = await openPhotoDatabase();
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const blob = await normalizedOrOriginal(file);
-  const record = {id, receiptId:ownerId, blob, normalized:true, createdAt:new Date().toISOString(), ...(meal ? {meal} : {})};
+  const record = {...photoTimeMetadata(metadata), id, receiptId:ownerId, blob, normalized:true, createdAt:new Date().toISOString(), ...(meal ? {meal} : {})};
   await new Promise((resolve, reject) => {
     const request = database.transaction(PHOTO_STORE_NAME, "readwrite").objectStore(PHOTO_STORE_NAME).add(record);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || new Error("无法保存本机照片"));
   });
-  // 返回 id 和 blob，好让调用方接着自动识别。
-  return {id, blob};
+  // 连同归档日期、餐次和拍摄时间返回，供后台识别与重试使用。
+  return record;
 }
 async function removePrivatePhoto(id){
   const database = await openPhotoDatabase();
@@ -3927,7 +3992,8 @@ function photoSectionMarkup(scope, ownerId, photos, label){
     const removable = photo.borrowed
       ? ""
       : ` data-delete-photo="${photo.id}" data-photo-belongs="${ownerId}"`;
-    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}"${removable} data-photo-alt="${label}照片" aria-label="打开${label}照片${photo.borrowed ? "" : "，长按可删除"}"><img src="${url}" alt="${label}照片"></button></div>`;
+    const time = scope === "diet" ? photoTimeLabel(photo) : "";
+    return `<div class="photo-tile"><button class="photo-open" type="button" data-open-photo="${url}"${removable} data-photo-time="${escapeAttribute(time)}" data-photo-alt="${label}照片" aria-label="打开${label}照片${photo.borrowed ? "" : "，长按可删除"}"><img src="${url}" alt="${label}照片"></button></div>`;
   }).join("");
   const grid = tiles ? `<div class="photo-grid">${tiles}</div>` : "";
   // 饮食页每天的加照片入口移到了标题行的小相机（photoAddLabel），这里就不再放大相机按钮，
@@ -3948,11 +4014,13 @@ function bindPhotoControls(container, rerender){
       if (!files.length) return;
       try{
         const owner = input.dataset.photoOwner;
-        const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
+        const isDiet = owner.startsWith("diet:");
+        const saved = isDiet ? await saveDietPhotos(files, {date:owner.slice(5)})
+          : await Promise.all(files.map(file => savePrivatePhoto(owner, file)));
         rerender();
         // 识别放后台跑，界面不等它——照片存下来缩略图就该立刻出现，
         // 模型那几秒不该把整个页面卡住（用户："照片上传后后台识别，前端页面不用等"）。
-        void autoRecognize(owner, saved).then(added => { if (added){ render(); rerender(); } });
+        void (isDiet ? recognizeDietPhotos(saved) : autoRecognize(owner, saved)).then(added => { if (added){ render(); rerender(); } });
       }catch(error){
         console.error(error);
         window.alert("照片未能保存到这台设备。请检查 Safari 的网站数据权限后重试。");
@@ -4003,6 +4071,7 @@ function bindPhotoControls(container, rerender){
       image.alt = button.dataset.photoAlt || "本机照片大图";
       photoViewerTrigger = button;
       openViewerFor(button.dataset.photoBelongs, button.dataset.deletePhoto, rerender);
+      document.getElementById("photoCaptureNote").textContent = button.dataset.photoTime || "";
       viewer.hidden = false;
       viewer.querySelector(".photo-viewer-close").focus();
     });
@@ -5371,9 +5440,7 @@ async function renderDietLog(){
 }
 // 整天/整顿都还没有记录时才用得上这个表单，平时收起来。
 // 已经存在的那一顿直接用它自己那一行的 ＋，不必回到这里选日期。
-// 照片里看不出这是第几餐——一盘番茄炒蛋中午晚上都可能吃（用户："我刚上传了晚餐的
-// 番茄炒蛋，他就直接追加在午餐的后面了"）。所以餐次由人来选，默认按当前钟点猜，
-// 比让模型瞎猜准得多。
+// 优先用照片的拍摄钟点，缺失时用当前钟点；用户仍可手动选餐次覆盖。
 function guessMealByClock(now = new Date()){
   const hour = now.getHours();
   if (hour < 10) return "早餐";
@@ -5439,7 +5506,8 @@ function dietDayFormMarkup(){
     <div class="diet-form-meals" id="dietFormMeals" role="group" aria-label="这是哪一餐">
       ${MEAL_ORDER.map(name => `<button type="button" class="meal-chip${name === meal ? " active" : ""}" data-meal-pick="${name}">${name}</button>`).join("")}
     </div>
-    <label class="diet-form-photo" id="dietFormPhotoLabel" title="直接发照片，自动识别" aria-label="直接发照片，自动识别">📷 发张照片就行<input class="photo-input" type="file" accept="image/*" multiple id="dietFormPhoto"></label>
+    <label class="diet-form-photo" id="dietFormPhotoLabel" title="自动读取拍摄日期和餐次" aria-label="自动读取拍摄日期和餐次">📷 发张照片就行<input class="photo-input" type="file" accept="image/*" multiple id="dietFormPhoto"></label>
+    <small class="subtle">默认按拍摄时间；也可点选日期或餐次覆盖。</small>
     <details class="diet-form-manual">
       <summary>或者手动填</summary>
       <div class="diet-form-row">
@@ -5461,6 +5529,8 @@ function pickedMeal(container){
   return MEAL_ORDER.includes(name) ? name : guessMealByClock();
 }
 function bindDietForm(container){
+  let dateOverride = false;
+  let mealOverride = false;
   const submit = () => {
     const date = container.querySelector("#dietFormDate").value;
     const meal = pickedMeal(container);
@@ -5489,6 +5559,7 @@ function bindDietForm(container){
   };
   container.querySelectorAll("[data-day-pick]").forEach(button => {
     button.addEventListener("click", () => {
+      dateOverride = true;
       if (dateInput) dateInput.value = button.dataset.dayPick;
       syncDayChips();
     });
@@ -5504,10 +5575,11 @@ function bindDietForm(container){
     if (typeof dateInput.showPicker === "function"){ try{ dateInput.showPicker(); }catch{ dateInput.focus(); } }
     else dateInput.focus();
   });
-  dateInput?.addEventListener("change", syncDayChips);
+  dateInput?.addEventListener("change", () => { dateOverride = true; syncDayChips(); });
 
   container.querySelectorAll("[data-meal-pick]").forEach(button => {
     button.addEventListener("click", () => {
+      mealOverride = true;
       container.querySelectorAll("[data-meal-pick]").forEach(other => other.classList.remove("active"));
       button.classList.add("active");
     });
@@ -5526,10 +5598,7 @@ function bindDietForm(container){
     };
     setLabel(aiConfig().key ? "识别中…" : "已存下照片");
     try{
-      const owner = dietPhotoOwner(date);
-      // 存的时候就把餐次记在照片上——事后没有任何办法反推一张图是午饭还是晚饭。
-      const shotMeal = pickedMeal(container);
-      const saved = await Promise.all(files.map(file => savePrivatePhoto(owner, file, shotMeal)));
+      const saved = await saveDietPhotos(files, {date, meal:pickedMeal(container), dateOverride, mealOverride});
       // 照片存好就先刷一遍、把入口放开——识别慢，不能让人干等着
       // （用户："照片识别太慢了，所以就后台识别吧，页面先可以继续用"）。
       render();
@@ -5541,8 +5610,8 @@ function bindDietForm(container){
       setLabel("后台识别中…可以接着记");
       // 刻意不 await：识别在后台跑完再刷新。中途被系统掐断也不怕，
       // 照片已进 IndexedDB、任务已入队，回到前台会自动补跑。
-      // 照片里看不出是第几餐，以人选的为准，别让模型的猜测把晚餐并进午餐。
-      void autoRecognize(owner, saved, {meal: shotMeal}).then(added => {
+      // 识别沿用每张照片已保存的日期和餐次，不让模型猜测覆盖拍摄时间。
+      void recognizeDietPhotos(saved).then(added => {
         render();
         setLabel(added ? "✅ 已记录" : "没认出来，点开大图重试");
         setTimeout(() => setLabel("📷 发张照片就行"), 4000);
@@ -6040,6 +6109,7 @@ function openViewerFor(owner, photoId, rerender){
   // 以及「在外就餐」每笔消费下面那组（owner 是 dining:<id>，日期和店名从那笔记录里取）。
   // 小票照片不给识别按钮。
   viewerPhoto = null;
+  document.getElementById("photoCaptureNote").textContent = "";
   if (typeof owner === "string" && owner.startsWith("diet:")){
     viewerPhoto = {date: owner.slice(5), photoId, rerender};
   } else if (typeof owner === "string" && owner.startsWith("dining:")){
@@ -6076,8 +6146,11 @@ document.getElementById("recognizePhoto").addEventListener("click", async () => 
     const photos = await listPrivatePhotos();
     const photo = photos.find(entry => entry.id === photoId);
     if (!photo?.blob) throw new Error("找不到这张照片了，可能刚被删掉。");
-    const {meal, items} = await recognizePhoto(photo.blob);
+    const result = await recognizePhoto(photo.blob);
+    const meal = MEAL_ORDER.includes(photo.meal) ? photo.meal : result.meal;
+    const {items} = result;
     addDietEntry(date, meal, items, place, diningId);
+    await stampPhotoMeal(photoId, meal);
     markRecognized(photoId);
     note.textContent = `已写入 ${date} ${meal}${place ? `（${place}）` : ""}：${items.map(itemLabel).join(" · ")}`;
     button.textContent = "✅ 已记录";
@@ -6694,6 +6767,7 @@ async function importPhotos(payload){
       normalized: true,
       createdAt: item.createdAt || new Date().toISOString(),
       ...(item.meal ? {meal: item.meal} : {}),
+      ...photoTimeMetadata(item),
     });
     existing.add(item.id);
     added += 1;
@@ -6734,6 +6808,7 @@ async function importPhotos(payload){
             mime: photo.blob.type || "image/jpeg",
             createdAt: photo.createdAt || "",
             ...(photo.meal ? {meal: photo.meal} : {}),
+            ...photoTimeMetadata(photo),
             data: await blobToBase64(photo.blob),
           });
         }
